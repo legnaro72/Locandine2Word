@@ -1,0 +1,189 @@
+import os
+import json
+import re
+from datetime import datetime
+from tkinter import Tk, filedialog
+
+from docx import Document
+from bs4 import BeautifulSoup
+
+
+# ==========================
+# Utility: estrazione data
+# ==========================
+
+def extract_date(text):
+    """
+    Prova a estrarre una data dal testo.
+    Supporta formati tipo:
+    01/02/2026
+    1 Febbraio 2026
+    """
+    # formato 01/02/2026
+    match = re.search(r"\b(\d{1,2}/\d{1,2}/\d{4})\b", text)
+    if match:
+        try:
+            return datetime.strptime(match.group(1), "%d/%m/%Y").isoformat()
+        except:
+            pass
+
+    # formato 1 Febbraio 2026
+    mesi = {
+        "gennaio": 1, "febbraio": 2, "marzo": 3, "aprile": 4,
+        "maggio": 5, "giugno": 6, "luglio": 7, "agosto": 8,
+        "settembre": 9, "ottobre": 10, "novembre": 11, "dicembre": 12
+    }
+
+    match = re.search(r"\b(\d{1,2})\s+([A-Za-z]+)\s+(\d{4})\b", text, re.IGNORECASE)
+    if match:
+        giorno = int(match.group(1))
+        mese_nome = match.group(2).lower()
+        anno = int(match.group(3))
+
+        if mese_nome in mesi:
+            try:
+                return datetime(anno, mesi[mese_nome], giorno).isoformat()
+            except:
+                pass
+
+    return None
+
+
+# ==========================
+# Estrazione da DOCX
+# ==========================
+
+def extract_from_docx(filepath, output_dir):
+    document = Document(filepath)
+
+    results = []
+    image_counter = 1
+
+    for table in document.tables:
+        if len(table.rows) == 1 and len(table.columns) == 2:
+            left_cell = table.rows[0].cells[0]
+            right_cell = table.rows[0].cells[1]
+
+            # Testo descrittivo
+            text = right_cell.text.strip()
+
+            # Cerca immagini nella prima cella
+            for paragraph in left_cell.paragraphs:
+                for run in paragraph.runs:
+                    if run._element.xpath('.//pic:pic'):
+                        image_part = run._element.xpath('.//a:blip')[0]
+                        rId = image_part.get(
+                            '{http://schemas.openxmlformats.org/officeDocument/2006/relationships}embed'
+                        )
+                        image = document.part.related_parts[rId]
+                        image_bytes = image.blob
+
+                        image_filename = f"locandina_{image_counter}.png"
+                        image_path = os.path.join(output_dir, image_filename)
+
+                        with open(image_path, "wb") as f:
+                            f.write(image_bytes)
+
+                        results.append({
+                            "image_file": image_filename,
+                            "text": text,
+                            "date_extracted": extract_date(text)
+                        })
+
+                        image_counter += 1
+
+    return results
+
+
+# ==========================
+# Estrazione da HTML
+# ==========================
+
+def extract_from_html(filepath, output_dir):
+    with open(filepath, "r", encoding="utf-8") as f:
+        soup = BeautifulSoup(f, "lxml")
+
+    results = []
+    image_counter = 1
+
+    tables = soup.find_all("table")
+
+    for table in tables:
+        rows = table.find_all("tr")
+        if len(rows) == 1:
+            cells = rows[0].find_all("td")
+            if len(cells) == 2:
+                left_cell = cells[0]
+                right_cell = cells[1]
+
+                text = right_cell.get_text(separator="\n").strip()
+
+                img = left_cell.find("img")
+                if img and img.get("src"):
+                    img_src = img["src"]
+
+                    # Se l'immagine è locale
+                    if not img_src.startswith("http"):
+                        image_path_original = os.path.join(os.path.dirname(filepath), img_src)
+
+                        if os.path.exists(image_path_original):
+                            image_filename = f"locandina_{image_counter}.png"
+                            image_path = os.path.join(output_dir, image_filename)
+
+                            with open(image_path_original, "rb") as f_in:
+                                with open(image_path, "wb") as f_out:
+                                    f_out.write(f_in.read())
+
+                            results.append({
+                                "image_file": image_filename,
+                                "text": text,
+                                "date_extracted": extract_date(text)
+                            })
+
+                            image_counter += 1
+
+    return results
+
+
+# ==========================
+# MAIN
+# ==========================
+
+def main():
+    print("Seleziona un file Word (.docx) o HTML (.html)")
+
+    Tk().withdraw()
+    filepath = filedialog.askopenfilename(
+        filetypes=[
+            ("Word files", "*.docx"),
+            ("HTML files", "*.html")
+        ]
+    )
+
+    if not filepath:
+        print("Nessun file selezionato.")
+        return
+
+    output_dir = "output_images"
+    os.makedirs(output_dir, exist_ok=True)
+
+    if filepath.endswith(".docx"):
+        results = extract_from_docx(filepath, output_dir)
+    elif filepath.endswith(".html"):
+        results = extract_from_html(filepath, output_dir)
+    else:
+        print("Formato non supportato.")
+        return
+
+    # Salvataggio JSON
+    with open("locandine.json", "w", encoding="utf-8") as f:
+        json.dump(results, f, indent=4, ensure_ascii=False)
+
+    print(f"\nEstrazione completata!")
+    print(f"Immagini salvate in: {output_dir}/")
+    print(f"File JSON creato: locandine.json")
+    print(f"Totale locandine trovate: {len(results)}")
+
+
+if __name__ == "__main__":
+    main()
