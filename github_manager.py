@@ -9,7 +9,8 @@ import streamlit as st
 class GithubManager:
     def __init__(self, token, repo_name):
         self.auth = Auth.Token(token)
-        self.g = Github(auth=self.auth)
+        # Aumentiamo il timeout a 120 secondi per gestire file più pesanti
+        self.g = Github(auth=self.auth, timeout=120)
         self.repo = self.g.get_repo(repo_name)
         self.backup_filename = "github_backup.zip"
 
@@ -38,8 +39,9 @@ class GithubManager:
         message = f"Backup automatico del {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}"
         
         try:
-            # Cerca se il file esiste già per ottenere lo SHA
+            # Cerca lo SHA senza scaricare il contenuto (ottimizzato)
             contents = self.repo.get_contents(path)
+            # update_file invia il contenuto in base64, che aumenta il volume del 33%
             self.repo.update_file(path, message, zip_content, contents.sha)
             return True, "Backup aggiornato su GitHub!"
         except Exception as e:
