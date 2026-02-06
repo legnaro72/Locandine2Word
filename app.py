@@ -4,6 +4,7 @@ import json
 import re
 import zipfile
 import io
+from github_manager import GithubManager
 from datetime import datetime
 from PIL import Image
 from ocr_engine import LocandineOCR
@@ -130,6 +131,15 @@ OUTPUT_DIR = "output"
 os.makedirs(UPLOADS_DIR, exist_ok=True)
 os.makedirs(OUTPUT_DIR, exist_ok=True)
 
+# --- CONFIGURAZIONE GITHUB ---
+# La configurazione corretta va fatta nei Secrets di Streamlit (GITHUB_TOKEN)
+# Localmente: creare .streamlit/secrets.toml con GITHUB_TOKEN="tuo_token"
+GITHUB_TOKEN = st.secrets.get("GITHUB_TOKEN", None)
+GITHUB_REPO = "legnaro72/Locandine2Word"
+
+if 'github_manager' not in st.session_state and GITHUB_TOKEN:
+    st.session_state.github_manager = GithubManager(GITHUB_TOKEN, GITHUB_REPO)
+
 if 'events' not in st.session_state:
     loaded = False
     # 1. Prova a caricare lo stato salvato (data.json)
@@ -194,6 +204,60 @@ with st.sidebar:
             mime="application/zip"
         )
     
+    st.write("---")
+
+    st.markdown("### ☁️ Sincronizzazione GitHub")
+    
+    if not GITHUB_TOKEN:
+        st.warning("⚠️ GitHub non configurato. Inserisci il GITHUB_TOKEN nei Secrets di Streamlit per attivare il backup cloud.")
+    
+    # --- GITHUB PUSH ---
+    if st.button("🚀 Salva su GitHub (Cloud)", disabled=not GITHUB_TOKEN):
+        st.session_state.show_confirm_push = True
+    
+    if st.session_state.get('show_confirm_push'):
+        st.warning("⚠️ Confermi di voler inviare l'attuale database e le immagini su GitHub?")
+        col_c1, col_c2 = st.columns(2)
+        if col_c1.button("✅ Sì, Invia", key="confirm_push_btn"):
+            with st.spinner("Sincronizzazione con GitHub in corso..."):
+                try:
+                    zip_data = st.session_state.github_manager.create_backup_zip(DATA_FILE, UPLOADS_DIR)
+                    success, msg = st.session_state.github_manager.upload_backup(zip_data)
+                    if success:
+                        st.success(msg)
+                    else:
+                        st.error(msg)
+                except Exception as e:
+                    st.error(f"Errore GitHub: {e}")
+            st.session_state.show_confirm_push = False
+            # st.rerun() # Evitiamo rerun immediato per far leggere il msg
+        if col_c2.button("❌ Annulla", key="cancel_push_btn"):
+            st.session_state.show_confirm_push = False
+            st.rerun()
+
+    # --- GITHUB PULL ---
+    if st.button("☁️ Carica da GitHub (Cloud)", disabled=not GITHUB_TOKEN):
+        st.session_state.show_confirm_pull = True
+
+    if st.session_state.get('show_confirm_pull'):
+        st.error("⚠️ ATTENZIONE: Questo sovrascriverà tutti i dati locali con quelli di GitHub!")
+        col_cp1, col_cp2 = st.columns(2)
+        if col_cp1.button("✅ Sì, Ripristina", key="confirm_pull_btn"):
+            with st.spinner("Scaricamento backup da GitHub..."):
+                try:
+                    zip_content = st.session_state.github_manager.download_backup()
+                    st.session_state.github_manager.restore_from_zip(zip_content)
+                    st.success("Dati ripristinati da GitHub correttamente! Ricarico...")
+                    st.session_state.events = [] # Reset memoria per ricaricare da disco
+                    st.session_state.show_confirm_pull = False
+                    st.rerun()
+                except Exception as e:
+                    st.error(f"Errore durante il ripristino: {e}")
+            st.session_state.show_confirm_pull = False
+        if col_cp2.button("❌ Annulla", key="cancel_pull_btn"):
+            st.session_state.show_confirm_pull = False
+            st.rerun()
+
     st.write("---")
 
     # --- IMPORT BACKUP ---
