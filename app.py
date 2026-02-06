@@ -581,7 +581,7 @@ with tab2:
                 st.divider()
 
                 c1, c2 = st.columns([1, 2])
-
+                ###
                 # Normalizzazione cross-platform
                 image_path = os.path.normpath(event.get('image_path', ''))
 
@@ -590,8 +590,6 @@ with tab2:
                 else:
                     c1.error(f"Immagine non trovata: {image_path}")
 
-                else:
-                    c1.error("Immagine non trovata")
 
                 with c2:
                     st.markdown("### Modifica Dettagli")
