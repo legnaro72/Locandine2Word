@@ -55,8 +55,21 @@ class GithubManager:
     def download_backup(self):
         """Scarica il file backup.zip dal repository GitHub."""
         try:
+            # Per file > 1MB, get_contents restituisce solo i metadati, non il contenuto.
+            # Dobbiamo usare l'URL di download diretto.
             contents = self.repo.get_contents(self.backup_filename)
-            return contents.decoded_content
+            
+            import requests
+            # Usiamo il token per scaricare l'URL (necessario se il repo è privato)
+            # NOTA: GITHUB_TOKEN è accessibile dalla variabile fornita all'init
+            headers = {"Authorization": f"token {self.auth.token}"}
+            response = requests.get(contents.download_url, headers=headers, timeout=120)
+            
+            if response.status_code == 200:
+                return response.content
+            else:
+                raise Exception(f"GitHub API ha risposto con codice {response.status_code}")
+                
         except Exception as e:
             raise Exception(f"Impossibile scaricare il backup da GitHub: {e}")
 
