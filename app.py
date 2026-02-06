@@ -8,6 +8,10 @@ from datetime import datetime
 from PIL import Image
 from ocr_engine import LocandineOCR
 from word_generator import WordGenerator
+try:
+    from streamlit_mic_recorder import speech_to_text
+except ImportError:
+    speech_to_text = None  # Fallback gracefully
 
 # --- STREAMLIT IMAGE WIDTH PARAMETER ---
 # Usa il parametro moderno 'width' (valido per st.image(), NON per button/download_button)
@@ -139,25 +143,9 @@ if 'events' not in st.session_state:
         except Exception as e:
             st.warning(f"Errore caricamento data.json: {e}")
 
-    # 2. Se vuoto, carica il dataset iniziale (locandine.json)
+    # 2. Inizializza lista vuota se non c'è nulla
     if not loaded:
         st.session_state.events = []
-        if os.path.exists(LOCANDINE_FILE):
-            try:
-                with open(LOCANDINE_FILE, 'r', encoding='utf-8') as f:
-                    raw_data = json.load(f)
-                    # Converti ogni entry
-                    for entry in raw_data:
-                        parsed = parse_json_event(entry, image_base_path=UPLOADS_DIR)
-                        parsed['added_on'] = datetime.now().strftime('%Y-%m-%d')
-                        st.session_state.events.append(parsed)
-                
-                # Salva subito il nuovo stato
-                with open(DATA_FILE, 'w', encoding='utf-8') as f:
-                    json.dump(st.session_state.events, f, ensure_ascii=False, indent=2)
-                st.info(f"Caricati {len(st.session_state.events)} eventi da {LOCANDINE_FILE}")
-            except Exception as e:
-                st.error(f"Errore caricamento {LOCANDINE_FILE}: {e}")
 
 
 if 'ocr_engine' not in st.session_state:
@@ -258,8 +246,34 @@ with st.sidebar:
 tab1, tab2, tab3 = st.tabs(["📤 Carica & Analizza", "📋 Modifica Dati", "📖 Export Word"])
 
 # --- TAB 1: CARICAMENTO ---
+# --- TAB 1: CARICAMENTO ---
 with tab1:
     st.subheader("Carica nuove locandine")
+    
+    # 1. OPTIONAL: Caricamento JSON Precompilato
+    prefill_map = {}
+    prefill_file = st.file_uploader("📂 Carica JSON Metadati (Opzionale)", type=['json'], help="Se hai un JSON con campi 'filename', 'title', 'date' ecc., caricalo qui per saltare l'OCR.")
+    
+    if prefill_file is not None:
+        try:
+            pf_data = json.load(prefill_file)
+            count_pf = 0
+            if isinstance(pf_data, list):
+                for item in pf_data:
+                    # Cerca una chiave filename
+                    fname = item.get('filename') or item.get('image') or item.get('file')
+                    if fname:
+                        # Normalizza un po' i nomi (solo nome file base)
+                        fname_clean = os.path.basename(fname)
+                        prefill_map[fname_clean] = item
+                        count_pf += 1
+            if count_pf > 0:
+                st.success(f"✅ Caricati metadati per {count_pf} file.")
+            else:
+                st.warning("Nessun campo 'filename' trovato nel JSON.")
+        except Exception as e:
+            st.error(f"Errore lettura JSON: {e}")
+
     uploaded_files = st.file_uploader("Trascina qui le immagini", type=['png', 'jpg', 'jpeg'], accept_multiple_files=True)
     
     if uploaded_files:
@@ -269,26 +283,49 @@ with tab1:
                 
                 # Salvataggio e Anteprima Immagine
                 image_path = os.path.join(UPLOADS_DIR, uploaded_file.name)
+                # Salva solo se non esiste o aggiorna? Meglio sovrascrivere per sicurezza
                 with open(image_path, 'wb') as f:
                     f.write(uploaded_file.getbuffer())
                 
-                # Visualizza immagine (con fix compatibilità)
+                # Visualizza immagine
                 col1.image(image_path, **IMG_WIDTH_ARG)
                 
                 with col2:
-                    # Pulsante OCR
-                    if st.button(f"🔍 Estrai Dati", key=f"ocr_{idx}"):
-                        with st.spinner("Analisi OCR in corso..."):
-                            # 1. OCR
-                            raw_ocr = st.session_state.ocr_engine.analyze_poster(image_path)
-                            # FIX: usa 'full_text' perché 'text' non esiste nel dict restituito
-                            raw_text = raw_ocr.get('full_text', '')
-                            # 2. Parsing
-                            parsed = parse_event_text(raw_text)
+                    # Check match JSON
+                    json_match = prefill_map.get(uploaded_file.name)
+                    
+                    if json_match:
+                        st.info("✨ Dati precompilati trovati da JSON!")
+                        btn_label = "✅ Usa Dati da JSON"
+                    else:
+                        btn_label = "🔍 Estrai Dati (OCR)"
+
+                    # Pulsante Elaborazione
+                    if st.button(btn_label, key=f"proc_{idx}"):
+                        with st.spinner("Elaborazione..."):
+                            
+                            if json_match:
+                                # USA DATI JSON
+                                parsed = {
+                                    'title': json_match.get('title', ''),
+                                    'date': json_match.get('date', ''),
+                                    'time': json_match.get('time', ''),
+                                    'location': json_match.get('location', ''),
+                                    'venue': json_match.get('venue', ''),
+                                    'address': json_match.get('address', ''),
+                                    'description': json_match.get('description', '')
+                                }
+                            else:
+                                # USA OCR
+                                raw_ocr = st.session_state.ocr_engine.analyze_poster(image_path)
+                                raw_text = raw_ocr.get('full_text', '')
+                                parsed = parse_event_text(raw_text)
+                            
                             parsed['image_path'] = image_path
+                            
                             # Salva in temp per mostrare il form
                             st.session_state[f'temp_data_{idx}'] = parsed
-                            st.success("Dati estratti! Verifica qui sotto.")
+                            st.rerun() # Refresh per mostrare il form sotto
 
                     # Form di Verifica (appare SOLO se abbiamo i dati in temp)
                     if f'temp_data_{idx}' in st.session_state:
@@ -318,7 +355,8 @@ with tab1:
                                     'title': f_title, 'date': f_date, 'time': f_time,
                                     'location': f_loc, 'venue': f_venue, 'address': f_addr,
                                     'description': f_desc, 'image_path': data['image_path'],
-                                    'added_on': datetime.now().strftime('%Y-%m-%d')
+                                    'added_on': datetime.now().strftime('%Y-%m-%d'),
+                                    'is_new': True
                                 }
                                 st.session_state.events.append(new_event)
                                 # Salva su disco
@@ -331,77 +369,204 @@ with tab1:
                                 st.rerun()
 
 # --- TAB 2: GESTIONE ---
+# --- TAB 2: GESTIONE ---
 with tab2:
     st.subheader("Gestione Eventi Salvati")
     
     if not st.session_state.events:
         st.info("Nessun evento in archivio.")
     else:
-        col_m1, col_m2 = st.columns([3, 1])
+        col_m1, col_m2, col_m3 = st.columns([2, 1, 1])
+        
         with col_m2:
-            if st.button("🔄 Riordina Date", help="Forza l'ordinamento cronologico di tutti gli eventi salvati"):
+            if st.button("🏷️ Rinomina Auto"):
+                import dateparser
+                import locale
+                try:
+                    locale.setlocale(locale.LC_TIME, 'it_IT.utf8')
+                except:
+                    pass
+
+                for event in st.session_state.events:
+                    raw_date = event.get('date', '').strip()
+                    location = event.get('location', '').strip()
+                    
+                    if raw_date:
+                        dt = dateparser.parse(raw_date, languages=['it'])
+                        if dt:
+                            clean_date = dt.strftime("%d %B %Y").upper()
+                            event['date'] = clean_date
+                            
+                            day_map_safe = {
+                                0: "LUNEDI'", 1: "MARTEDI'", 2: "MERCOLEDI'", 
+                                3: "GIOVEDI'", 4: "VENERDI'", 5: "SABATO'", 6: "DOMENICA"
+                            }
+                            weekday = day_map_safe.get(dt.weekday(), "")
+                            full_date_string = f"{weekday} {clean_date}"
+                            
+                            event['title'] = f"{full_date_string} - {location}" if location else full_date_string
+                
+                with open(DATA_FILE, 'w', encoding='utf-8') as f:
+                    json.dump(st.session_state.events, f, ensure_ascii=False, indent=2)
+                st.success("Date pulite e Titoli rinominati!")
+                st.rerun()
+
+        with col_m3:
+            if st.button("🔄 Riordina Date"):
                 st.session_state.events.sort(key=WordGenerator.get_sort_date)
                 with open(DATA_FILE, 'w', encoding='utf-8') as f:
                     json.dump(st.session_state.events, f, ensure_ascii=False, indent=2)
                 st.success("Eventi riordinati!")
                 st.rerun()
-        # Prepara la lista con indici originali per poter modificare/eliminare correttamente
-        # Lista di tuple: (indice_originale, evento)
+
         indexed_events = list(enumerate(st.session_state.events))
-        
-        # Ordina usando la logica condivisa in WordGenerator (per Data)
-        # WordGenerator.get_sort_date è statico
         sorted_indexed_events = sorted(
             indexed_events, 
             key=lambda x: WordGenerator.get_sort_date(x[1])
         )
 
-        st.info("ℹ️ Gli eventi sono ordinati cronologicamente (dal più prossimo al più lontano).")
+        st.info("ℹ️ Gli eventi sono ordinati cronologicamente.")
 
+        # -------- LOOP EVENTI --------
         for real_idx, event in sorted_indexed_events:
-            with st.expander(f"📅 {event.get('date', 'Data n/d')} - {event.get('title', 'Titolo n/d')}"):
+            title_prefix = "🆕 " if event.get('is_new') else ""
+            with st.expander(f"{title_prefix}📅 {event.get('title', 'Titolo n/d')}"):
+
+                # ===== INIZIALIZZAZIONE WIDGET STATE SICURA =====
+                def init_widget(key, default):
+                    if key not in st.session_state:
+                        st.session_state[key] = default
+
+                k_tit = f"e_tit_{real_idx}"
+                k_dat = f"e_dat_{real_idx}"
+                k_tim = f"e_tim_{real_idx}"
+                k_loc = f"e_loc_{real_idx}"
+                k_ven = f"e_ven_{real_idx}"
+                k_add = f"e_add_{real_idx}"
+                k_des = f"e_des_{real_idx}"
+
+                init_widget(k_tit, event.get('title', ''))
+                init_widget(k_dat, event.get('date', ''))
+                init_widget(k_tim, event.get('time', ''))
+                init_widget(k_loc, event.get('location', ''))
+                init_widget(k_ven, event.get('venue', ''))
+                init_widget(k_add, event.get('address', ''))
+                init_widget(k_des, event.get('description', ''))
+
+
+                # ===== DETTATURA =====
+                # ===== DETTATURA STABILE =====
+                if speech_to_text:
+                    st.markdown("#### 🎤 Dettatura Vocale")
+
+                    sel_key = f"sel_field_{real_idx}"
+                    mic_buffer_key = f"mic_buffer_{real_idx}"
+
+                    # Selettore campo
+                    st.selectbox(
+                        "Campo da compilare con la voce",
+                        options=['description', 'title', 'location', 'venue', 'address', 'date', 'time'],
+                        key=sel_key
+                    )
+
+                    # Microfono salva SOLO in buffer
+                    text_dettato = speech_to_text(
+                        language='it',
+                        start_prompt="🔴 PARLA",
+                        stop_prompt="⏹️ STOP",
+                        just_once=True,
+                        key=f"stt_widget_{real_idx}"
+                    )
+
+                    if text_dettato:
+                        st.session_state[mic_buffer_key] = text_dettato
+
+                    # Se c'è testo nel buffer lo mostriamo
+                    if mic_buffer_key in st.session_state:
+                        st.info(f"Testo rilevato: {st.session_state[mic_buffer_key]}")
+
+                        if st.button("✅ Inserisci nel campo selezionato", key=f"apply_mic_{real_idx}"):
+
+                            final_field = st.session_state.get(sel_key, "description")
+
+                            mapping = {
+                                'title': k_tit,
+                                'date': k_dat,
+                                'time': k_tim,
+                                'location': k_loc,
+                                'venue': k_ven,
+                                'address': k_add,
+                                'description': k_des
+                            }
+
+                            widget_k = mapping.get(final_field)
+
+                            if widget_k:
+                                st.session_state[widget_k] = st.session_state[mic_buffer_key]
+                                event[final_field] = st.session_state[mic_buffer_key]
+
+                                with open(DATA_FILE, 'w', encoding='utf-8') as f:
+                                    json.dump(st.session_state.events, f, ensure_ascii=False, indent=2)
+
+                                del st.session_state[mic_buffer_key]
+                                st.success("Campo aggiornato!")
+                                st.rerun()
+
+
+                st.divider()
+
                 c1, c2 = st.columns([1, 2])
-                
-                # Immagine
+
                 if os.path.exists(event['image_path']):
                     c1.image(event['image_path'], **IMG_WIDTH_ARG)
                 else:
                     c1.error("Immagine non trovata")
-                
+
                 with c2:
                     st.markdown("### Modifica Dettagli")
-                    
-                    # Campi modificabili
-                    n_title = st.text_input("Titolo", event.get('title', ''), key=f"e_tit_{real_idx}")
-                    
+
+                    n_title = st.text_input("Titolo", key=k_tit)
                     r1, r2 = st.columns(2)
-                    n_date = r1.text_input("Data", event.get('date', ''), key=f"e_dat_{real_idx}")
-                    n_time = r2.text_input("Orario", event.get('time', ''), key=f"e_tim_{real_idx}")
-                    
+                    n_date = r1.text_input("Data", key=k_dat)
+                    n_time = r2.text_input("Orario", key=k_tim)
+
                     r3, r4 = st.columns(2)
-                    n_loc = r3.text_input("Luogo", event.get('location', ''), key=f"e_loc_{real_idx}")
-                    n_venue = r4.text_input("Presso", event.get('venue', ''), key=f"e_ven_{real_idx}")
-                    
-                    n_addr = st.text_input("Indirizzo", event.get('address', ''), key=f"e_add_{real_idx}")
-                    n_desc = st.text_area("Descrizione", event.get('description', ''), key=f"e_des_{real_idx}", height=100)
-                    
-                    # Pulsantiera
-                    col_b1, col_b2 = st.columns([1, 1])
-                    
+                    n_loc = r3.text_input("Luogo", key=k_loc)
+                    n_venue = r4.text_input("Presso", key=k_ven)
+
+                    n_addr = st.text_input("Indirizzo", key=k_add)
+                    n_desc = st.text_area("Descrizione", key=k_des, height=100)
+
+                    col_b1, col_b2, col_b3 = st.columns([1, 1, 1])
+
                     if col_b1.button("💾 Aggiorna", key=f"upd_{real_idx}"):
-                        # Aggiorna l'oggetto in memoria
                         st.session_state.events[real_idx].update({
-                            'title': n_title, 'date': n_date, 'time': n_time,
-                            'location': n_loc, 'venue': n_venue, 'address': n_addr,
+                            'title': n_title,
+                            'date': n_date,
+                            'time': n_time,
+                            'location': n_loc,
+                            'venue': n_venue,
+                            'address': n_addr,
                             'description': n_desc
                         })
-                        # Salva su file
+
                         with open(DATA_FILE, 'w', encoding='utf-8') as f:
                             json.dump(st.session_state.events, f, ensure_ascii=False, indent=2)
+
                         st.success("Aggiornato!")
                         st.rerun()
-                        
-                    if col_b2.button("🗑️ Elimina", key=f"del_{real_idx}", type="primary"):
+
+                    # Pulsante RIMUOVI NEW (visibile solo se l'evento è nuovo)
+                    if event.get('is_new'):
+                        if col_b2.button("🚫 Rimuovi Etichetta", key=f"unew_{real_idx}", help="Rimuove l'etichetta NEW da questo evento"):
+                            st.session_state.events[real_idx]['is_new'] = False
+                            with open(DATA_FILE, 'w', encoding='utf-8') as f:
+                                json.dump(st.session_state.events, f, ensure_ascii=False, indent=2)
+                            st.rerun()
+                    else:
+                         col_b2.write("") # Spacer se non c'è il pulsante
+
+                    if col_b3.button("🗑️ Elimina", key=f"del_{real_idx}", type="primary"):
                         st.session_state.events.pop(real_idx)
                         with open(DATA_FILE, 'w', encoding='utf-8') as f:
                             json.dump(st.session_state.events, f, ensure_ascii=False, indent=2)
