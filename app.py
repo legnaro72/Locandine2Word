@@ -141,21 +141,15 @@ if 'github_manager' not in st.session_state and GITHUB_TOKEN:
     st.session_state.github_manager = GithubManager(GITHUB_TOKEN, GITHUB_REPO)
 
 if 'events' not in st.session_state:
-    loaded = False
-    # 1. Prova a caricare lo stato salvato (data.json)
+    st.session_state.events = []
     if os.path.exists(DATA_FILE):
         try:
             with open(DATA_FILE, 'r', encoding='utf-8') as f:
                 content = json.load(f)
-                if content:
+                if isinstance(content, list):
                     st.session_state.events = content
-                    loaded = True
         except Exception as e:
-            st.warning(f"Errore caricamento data.json: {e}")
-
-    # 2. Inizializza lista vuota se non c'è nulla
-    if not loaded:
-        st.session_state.events = []
+            st.error(f"Errore caricamento database locale: {e}")
 
 
 if 'ocr_engine' not in st.session_state:
@@ -248,7 +242,9 @@ with st.sidebar:
                     zip_content = st.session_state.github_manager.download_backup()
                     st.session_state.github_manager.restore_from_zip(zip_content)
                     st.success("Dati ripristinati da GitHub correttamente! Ricarico...")
-                    st.session_state.events = [] # Reset memoria per ricaricare da disco
+                    # Rimuoviamo la chiave per forzare la rilettura dal nuovo data.json su disco al rerun
+                    if 'events' in st.session_state:
+                        del st.session_state['events']
                     st.session_state.show_confirm_pull = False
                     st.rerun()
                 except Exception as e:
@@ -272,12 +268,9 @@ with st.sidebar:
                         # Estrai tutto nella cartella corrente (sovrascrive data.json e uploads/)
                         z.extractall(".")
                     
-                    # Ricarica lo stato
-                    st.session_state.events = [] # Reset memoria
-                    if os.path.exists(DATA_FILE):
-                        with open(DATA_FILE, 'r', encoding='utf-8') as f:
-                            st.session_state.events = json.load(f)
-                    
+                    # Forza ricaricamento totale
+                    if 'events' in st.session_state:
+                        del st.session_state['events']
                     st.success("Backup ripristinato con successo! Ricarico...")
                     st.rerun()
 
@@ -303,8 +296,9 @@ with st.sidebar:
 
     st.divider()
     if st.button("🗑️ Reset Database Completo"):
-        st.session_state.events = []
-        with open(DATA_FILE, 'w') as f: json.dump([], f)
+        with open(DATA_FILE, 'w', encoding='utf-8') as f: json.dump([], f)
+        if 'events' in st.session_state:
+            del st.session_state['events']
         st.rerun()
 
 tab1, tab2, tab3 = st.tabs(["📤 Carica & Analizza", "📋 Modifica Dati", "📖 Export Word"])
@@ -437,7 +431,10 @@ with tab1:
 with tab2:
     st.subheader("Gestione Eventi Salvati")
     
-    if not st.session_state.events:
+    # Recupero sicuro degli eventi
+    events_list = st.session_state.get('events', [])
+    
+    if not events_list:
         st.info("Nessun evento in archivio.")
     else:
         col_m1, col_m2, col_m3 = st.columns([2, 1, 1])
@@ -451,7 +448,7 @@ with tab2:
                 except:
                     pass
 
-                for event in st.session_state.events:
+                for event in events_list:
                     raw_date = event.get('date', '').strip()
                     location = event.get('location', '').strip()
                     
@@ -471,19 +468,19 @@ with tab2:
                             event['title'] = f"{full_date_string} - {location}" if location else full_date_string
                 
                 with open(DATA_FILE, 'w', encoding='utf-8') as f:
-                    json.dump(st.session_state.events, f, ensure_ascii=False, indent=2)
+                    json.dump(events_list, f, ensure_ascii=False, indent=2)
                 st.success("Date pulite e Titoli rinominati!")
                 st.rerun()
 
         with col_m3:
             if st.button("🔄 Riordina Date"):
-                st.session_state.events.sort(key=WordGenerator.get_sort_date)
+                events_list.sort(key=WordGenerator.get_sort_date)
                 with open(DATA_FILE, 'w', encoding='utf-8') as f:
-                    json.dump(st.session_state.events, f, ensure_ascii=False, indent=2)
+                    json.dump(events_list, f, ensure_ascii=False, indent=2)
                 st.success("Eventi riordinati!")
                 st.rerun()
 
-        indexed_events = list(enumerate(st.session_state.events))
+        indexed_events = list(enumerate(events_list))
         sorted_indexed_events = sorted(
             indexed_events, 
             key=lambda x: WordGenerator.get_sort_date(x[1])
@@ -604,7 +601,7 @@ with tab2:
                     col_b1, col_b2, col_b3 = st.columns([1, 1, 1])
 
                     if col_b1.button("💾 Aggiorna", key=f"upd_{real_idx}"):
-                        st.session_state.events[real_idx].update({
+                        events_list[real_idx].update({
                             'title': n_title,
                             'date': n_date,
                             'time': n_time,
@@ -615,7 +612,7 @@ with tab2:
                         })
 
                         with open(DATA_FILE, 'w', encoding='utf-8') as f:
-                            json.dump(st.session_state.events, f, ensure_ascii=False, indent=2)
+                            json.dump(events_list, f, ensure_ascii=False, indent=2)
 
                         st.success("Aggiornato!")
                         st.rerun()
@@ -623,23 +620,25 @@ with tab2:
                     # Pulsante RIMUOVI NEW (visibile solo se l'evento è nuovo)
                     if event.get('is_new'):
                         if col_b2.button("🚫 Rimuovi Etichetta", key=f"unew_{real_idx}", help="Rimuove l'etichetta NEW da questo evento"):
-                            st.session_state.events[real_idx]['is_new'] = False
+                            events_list[real_idx]['is_new'] = False
                             with open(DATA_FILE, 'w', encoding='utf-8') as f:
-                                json.dump(st.session_state.events, f, ensure_ascii=False, indent=2)
+                                json.dump(events_list, f, ensure_ascii=False, indent=2)
                             st.rerun()
                     else:
                          col_b2.write("") # Spacer se non c'è il pulsante
 
                     if col_b3.button("🗑️ Elimina", key=f"del_{real_idx}", type="primary"):
-                        st.session_state.events.pop(real_idx)
+                        events_list.pop(real_idx)
                         with open(DATA_FILE, 'w', encoding='utf-8') as f:
-                            json.dump(st.session_state.events, f, ensure_ascii=False, indent=2)
+                            json.dump(events_list, f, ensure_ascii=False, indent=2)
                         st.rerun()
 
 # --- TAB 3: EXPORT ---
 with tab3:
     st.subheader("Generazione Documento")
-    st.write(f"Eventi pronti per la stampa: **{len(st.session_state.events)}**")
+    # Usa events_list invece di session_state
+    events_list_exp = st.session_state.get('events', [])
+    st.write(f"Eventi pronti per la stampa: **{len(events_list_exp)}**")
     
     
     col_opts1, col_opts2 = st.columns(2)
@@ -653,7 +652,7 @@ with tab3:
     export_mode = "minimal" if "Minimal" in export_mode_sel else "standard"
 
     if st.button("📥 Genera Word", type="primary"):
-        if not st.session_state.events:
+        if not events_list_exp:
             st.error("Nessun evento da stampare!")
         else:
             with st.spinner("Creazione documento Word in corso..."):
@@ -661,7 +660,7 @@ with tab3:
                 out_path = os.path.join(OUTPUT_DIR, doc_name)
                 # Passiamo la lista ordinata e le opzioni
                 gen.generate_from_data(
-                    st.session_state.events, 
+                    events_list_exp, 
                     out_path, 
                     mode=export_mode, 
                     show_borders=show_borders_opt
