@@ -442,6 +442,32 @@ with tab2:
     if not events_list:
         st.info("Nessun evento in archivio.")
     else:
+        # --- STATISTICHE E CONTROLLI ---
+        total_ev = len(events_list)
+        st.write(f"📊 Totale Eventi in Archivio: **{total_ev}**")
+
+        # Controllo Duplicati (Basato esclusivamente sul Percorso Immagine)
+        image_counts = {}
+        for ev in events_list:
+            img_path = ev.get('image_path', '').strip()
+            if img_path:
+                image_counts[img_path] = image_counts.get(img_path, 0) + 1
+        
+        # Percorsi che appaiono più di una volta
+        duplicate_paths = {path for path, count in image_counts.items() if count > 1}
+        
+        if duplicate_paths:
+            total_dup_events = sum(image_counts[p] for p in duplicate_paths)
+            st.error(f"🚨 ALERT: Trovate **{len(duplicate_paths)}** immagini usate in più eventi (totale **{total_dup_events}** eventi duplicati)!")
+            with st.expander("📖 Legenda Duplicati Immagine"):
+                for path in duplicate_paths:
+                    titles = [ev.get('title', 'Senza Titolo') for ev in events_list if ev.get('image_path', '').strip() == path]
+                    st.write(f"🖼️ `{path}`")
+                    for t in titles:
+                        st.write(f"  - {t}")
+        else:
+            st.success("✅ Nessun duplicato di immagine rilevato.")
+
         col_m1, col_m2, col_m3 = st.columns([2, 1, 1])
         
         with col_m2:
@@ -495,7 +521,8 @@ with tab2:
 
         # -------- LOOP EVENTI --------
         for real_idx, event in sorted_indexed_events:
-            title_prefix = "🆕 " if event.get('is_new') else ""
+            dup_icon = "👯 " if event.get('image_path', '').strip() in duplicate_paths else ""
+            title_prefix = f"{dup_icon}🆕 " if event.get('is_new') else dup_icon
             with st.expander(f"{title_prefix}📅 {event.get('title', 'Titolo n/d')}"):
 
                 # ===== INIZIALIZZAZIONE WIDGET STATE SICURA =====
