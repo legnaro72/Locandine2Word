@@ -103,7 +103,8 @@ def parse_json_event(json_entry, image_base_path="uploads"):
     
     # Aggiungi percorso immagine
     if image_file:
-        data['image_path'] = os.path.join(image_base_path, image_file)
+        # Forza l'uso di / anche su Windows per compatibilità Cloud
+        data['image_path'] = f"{image_base_path}/{image_file}"
         
     # Fallback per il titolo se il parser lo ha lasciato vuoto o generico
     # (sovrascrive solo se title manca o è quello di default)
@@ -147,6 +148,10 @@ if 'events' not in st.session_state:
             with open(DATA_FILE, 'r', encoding='utf-8') as f:
                 content = json.load(f)
                 if isinstance(content, list):
+                    # Normalizzazione percorsi (\ -> /) per compatibilità cloud
+                    for ev in content:
+                        if 'image_path' in ev:
+                            ev['image_path'] = ev['image_path'].replace('\\', '/')
                     st.session_state.events = content
         except Exception as e:
             st.error(f"Errore caricamento database locale: {e}")
@@ -163,7 +168,7 @@ with st.sidebar:
     doc_name = st.text_input("Nome file Word", "Eventi.docx")
     st.divider()
     
-    st.markdown("### � Backup & Portabilità")
+    st.markdown("### 📦 Backup & Portabilità")
     
     # --- EXPORT BACKUP ---
     if st.button("📦 Crea Backup (.zip)"):
@@ -181,8 +186,9 @@ with st.sidebar:
                         for root, _, files in os.walk(UPLOADS_DIR):
                             for file in files:
                                 file_path = os.path.join(root, file)
-                                # Salva nel zip con percorso relativo 'uploads/nomefile'
-                                zf.write(file_path, arcname=os.path.join('uploads', file))
+                                # Forza l'uso di / nello ZIP per compatibilità Linux/Cloud
+                                arcname = f"uploads/{os.path.basename(file)}"
+                                zf.write(file_path, arcname=arcname)
                 
                 zip_buffer.seek(0)
                 st.session_state['backup_zip'] = zip_buffer
@@ -304,7 +310,6 @@ with st.sidebar:
 tab1, tab2, tab3 = st.tabs(["📤 Carica & Analizza", "📋 Modifica Dati", "📖 Export Word"])
 
 # --- TAB 1: CARICAMENTO ---
-# --- TAB 1: CARICAMENTO ---
 with tab1:
     st.subheader("Carica nuove locandine")
     
@@ -379,7 +384,8 @@ with tab1:
                                 raw_text = raw_ocr.get('full_text', '')
                                 parsed = parse_event_text(raw_text)
                             
-                            parsed['image_path'] = image_path
+                            # Forza separatore /
+                            parsed['image_path'] = f"{UPLOADS_DIR}/{uploaded_file.name}"
                             
                             # Salva in temp per mostrare il form
                             st.session_state[f'temp_data_{idx}'] = parsed
@@ -426,7 +432,6 @@ with tab1:
                                 del st.session_state[f'temp_data_{idx}']
                                 st.rerun()
 
-# --- TAB 2: GESTIONE ---
 # --- TAB 2: GESTIONE ---
 with tab2:
     st.subheader("Gestione Eventi Salvati")
@@ -516,7 +521,6 @@ with tab2:
 
 
                 # ===== DETTATURA =====
-                # ===== DETTATURA STABILE =====
                 if speech_to_text:
                     st.markdown("#### 🎤 Dettatura Vocale")
 
@@ -567,7 +571,7 @@ with tab2:
                                 event[final_field] = st.session_state[mic_buffer_key]
 
                                 with open(DATA_FILE, 'w', encoding='utf-8') as f:
-                                    json.dump(st.session_state.events, f, ensure_ascii=False, indent=2)
+                                    json.dump(events_list, f, ensure_ascii=False, indent=2)
 
                                 del st.session_state[mic_buffer_key]
                                 st.success("Campo aggiornato!")
@@ -578,8 +582,14 @@ with tab2:
 
                 c1, c2 = st.columns([1, 2])
 
-                if os.path.exists(event['image_path']):
-                    c1.image(event['image_path'], **IMG_WIDTH_ARG)
+                # Normalizzazione cross-platform
+                image_path = os.path.normpath(event.get('image_path', ''))
+
+                if image_path and os.path.exists(image_path):
+                    c1.image(image_path, **IMG_WIDTH_ARG)
+                else:
+                    c1.error(f"Immagine non trovata: {image_path}")
+
                 else:
                     c1.error("Immagine non trovata")
 
