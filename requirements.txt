@@ -6,3 +6,6 @@ Pillow
 dateparser
 numpy
 opencv-python-headless
+streamlit-mic-recorder
+PyGithub
+
