@@ -27,8 +27,10 @@ class GithubManager:
                 for root, _, files in os.walk(uploads_dir):
                     for file in files:
                         file_path = os.path.join(root, file)
-                        # Salva nel zip con percorso relativo 'uploads/nomefile'
-                        zf.write(file_path, arcname=os.path.join('uploads', file))
+                        # Assicuriamoci che nel ZIP il percorso sia sempre 'uploads/nomefile'
+                        # indipendentemente dal sistema operativo
+                        arcname = f"uploads/{os.path.basename(file)}"
+                        zf.write(file_path, arcname=arcname)
         
         zip_buffer.seek(0)
         return zip_buffer.getvalue()
