@@ -520,9 +520,18 @@ with tab2:
         st.info("ℹ️ Gli eventi sono ordinati cronologicamente.")
 
         # -------- LOOP EVENTI --------
+        now = datetime.now()
         for real_idx, event in sorted_indexed_events:
+            # Calcolo scadenza
+            is_expired = False
+            ev_date = WordGenerator.get_sort_date(event)
+            if ev_date != datetime.max and ev_date.date() < now.date():
+                is_expired = True
+
             dup_icon = "👯 " if event.get('image_path', '').strip() in duplicate_paths else ""
-            title_prefix = f"{dup_icon}🆕 " if event.get('is_new') else dup_icon
+            exp_icon = "🚫 EXPIRED " if is_expired else ""
+            title_prefix = f"{dup_icon}{exp_icon}🆕 " if event.get('is_new') else f"{dup_icon}{exp_icon}"
+            
             with st.expander(f"{title_prefix}📅 {event.get('title', 'Titolo n/d')}"):
 
                 # ===== INIZIALIZZAZIONE WIDGET STATE SICURA =====
