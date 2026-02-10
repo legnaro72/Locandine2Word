@@ -42,7 +42,12 @@ def normalize_date_to_italian(raw_date):
 # --- FUNZIONE DI PARSING INTELLIGENTE ---
 def parse_event_text(text):
     """
-    Analizza il testo OCR e lo suddivide nei campi specifici richiesti.
+    Analizza il testo OCR e lo suddivide nei campi specifici richiesti secondo le regole:
+    1. Data: dopo il giorno della settimana (Lunedì ecc) + anno 2026.
+    2. Ora: dopo "Ore".
+    3. Luogo: dopo la data (separato da trattino).
+    4. Descrizione: contenuto tra data/luogo e presso.
+    5. Presso: tra "presso" e "Ore".
     """
     data = {
         'title': '', 'date': '', 'location': '', 'description': '',
@@ -52,59 +57,57 @@ def parse_event_text(text):
     if not text:
         return data
 
+    # Pulizia preliminare
+    text = text.replace('\r', '')
     lines = [l.strip() for l in text.split('\n') if l.strip()]
+    if not lines:
+        return data
+
+    # --- 1 & 3. DATA E LUOGO (Dalla prima riga) ---
+    first_line = lines[0]
+    # Rimuove giorno della settimana (es: LUNEDÌ, MARTEDÌ...)
+    clean_first = re.sub(r'^(?:LUNED[ÌI]|MARTED[ÌI]|MERCOLED[ÌI]|GIOVED[ÌI]|VENERD[ÌI]|SABATO|DOMENICA)\s*', '', first_line, flags=re.IGNORECASE).strip()
     
-    # 1. Analisi Prima Riga (Solitamente DATA - LUOGO)
-    if len(lines) > 0:
-        first_line = lines[0]
-        # Cerca separatore "–" o "-"
-        parts = re.split(r'\s+[–-]\s+', first_line, maxsplit=1)
-        
-        # Estrazione e Normalizzazione Data
-        raw_date = parts[0].strip()
-        data['date'] = normalize_date_to_italian(raw_date)
-        
-        # Estrazione Luogo (Parte dopo il trattino nella prima riga)
-        if len(parts) > 1:
-            data['location'] = parts[1].strip()
+    # Split per trovare il Luogo (solitamente dopo un trattino '–' o '-')
+    parts = re.split(r'\s*[–-]\s*', clean_first, maxsplit=1)
+    
+    raw_date = parts[0].strip()
+    data['date'] = normalize_date_to_italian(raw_date)
+    
+    if len(parts) > 1:
+        data['location'] = parts[1].strip()
 
-    # 2. Analisi Righe Successive (Descrizione, Orario, Presso)
-    if len(lines) > 1:
-        rest_text = " ".join(lines[1:])
-        
-        # Cerca pattern Orario (es. Ore 16:30, 16.30, 16,30)
-        time_match = re.search(r'(?:Ore|ore)\s*(\d{1,2}[:.,]\d{2})', rest_text)
-        
+    # --- 2, 4 & 5. DESCRIZIONE, PRESSO, ORA (Dal resto del testo) ---
+    full_rest = "\n".join(lines[1:])
+    
+    # Estrazione Ora (Ore 18.00 -> 18:00)
+    time_match = re.search(r'(?:Ore|ore)\s*(\d{1,2}[:.,]\d{2})', full_rest)
+    if time_match:
+        data['time'] = time_match.group(1).replace('.', ':').replace(',', ':')
+    
+    # Estrazione Presso (Tra 'presso' e '- Ore' o 'Ore')
+    presso_match = re.search(r'presso\s+(.*?)\s*(?:[-]\s*Ore|Ore)', full_rest, re.IGNORECASE | re.DOTALL)
+    if presso_match:
+        data['venue'] = presso_match.group(1).strip().replace('\n', ' ')
+        # La Descrizione è tutto ciò che sta tra la prima riga e l'inizio di "presso"
+        data['description'] = full_rest[:presso_match.start()].strip()
+    else:
+        # Fallback se non c'è "presso"
         if time_match:
-            # Normalizza orario con i due punti
-            data['time'] = time_match.group(1).replace('.', ':').replace(',', ':')
-            
-            # Testo PRIMA dell'orario -> Solitamente la DESCRIZIONE
-            pre_time = rest_text[:time_match.start()].strip()
-            # Pulisce trattini finali
-            data['description'] = pre_time.rstrip(' –-')
-            
-            # Testo DOPO l'orario -> Solitamente il PRESSO (Luogo specifico)
-            post_time = rest_text[time_match.end():].strip()
-            if post_time.startswith('–') or post_time.startswith('-'):
-                post_time = post_time[1:].strip()
-            data['venue'] = post_time
+            data['description'] = full_rest[:time_match.start()].strip()
         else:
-            # Se non trova l'orario, considera tutto descrizione
-            data['description'] = rest_text
+            data['description'] = full_rest
 
-    # 3. Ricerca Indirizzo (Via, Piazza, ecc.) nel testo completo
+    # --- INDIRIZZO (Pattern residui Via/Piazza) ---
     address_match = re.search(r'(?:Via|Vico|Piazza|Corso|Largo|Strada)\s+[A-Z][a-z]+.*?\d+', text, re.IGNORECASE)
     if address_match:
         data['address'] = address_match.group(0)
 
-    # Titolo di default se vuoto usa la descrizione troncata
-    if not data['title']:
-        # Se abbiamo data e luogo, costruiamo un titolo decente
-        if data['date'] and data['location']:
-            data['title'] = f"{data['date']} – {data['location']}"
-        else:
-            data['title'] = data['description'][:50] + "..." if data['description'] else "Nuovo Evento"
+    # --- TITOLO AUTOMATICO ---
+    if data['date'] and data['location']:
+        data['title'] = f"{data['date']} – {data['location']}"
+    else:
+        data['title'] = data['description'][:50].replace('\n', ' ') + "..." if data['description'] else "Nuovo Evento"
     
     return data
 
@@ -390,16 +393,24 @@ with tab1:
                         with st.spinner("Elaborazione..."):
                             
                             if json_match:
-                                # USA DATI JSON
-                                parsed = {
-                                    'title': json_match.get('title', ''),
-                                    'date': json_match.get('date', ''),
-                                    'time': json_match.get('time', ''),
-                                    'location': json_match.get('location', ''),
-                                    'venue': json_match.get('venue', ''),
-                                    'address': json_match.get('address', ''),
-                                    'description': json_match.get('description', '')
-                                }
+                                # USA DATI JSON: Parserizza il testo se presente, o usa i campi pronti
+                                raw_text_json = json_match.get('text', '')
+                                if raw_text_json:
+                                    parsed = parse_event_text(raw_text_json)
+                                    # Se il JSON ha comunque dei campi specifici pronti, usa quelli come override
+                                    for field in ['title', 'date', 'time', 'location', 'venue', 'address', 'description']:
+                                        if json_match.get(field):
+                                            parsed[field] = json_match[field]
+                                else:
+                                    parsed = {
+                                        'title': json_match.get('title', ''),
+                                        'date': json_match.get('date', ''),
+                                        'time': json_match.get('time', ''),
+                                        'location': json_match.get('location', ''),
+                                        'venue': json_match.get('venue', ''),
+                                        'address': json_match.get('address', ''),
+                                        'description': json_match.get('description', '')
+                                    }
                             else:
                                 # USA OCR
                                 raw_ocr = st.session_state.ocr_engine.analyze_poster(image_path)
@@ -709,10 +720,28 @@ with tab2:
 with tab3:
     st.subheader("Generazione Documento")
     # Usa events_list invece di session_state
-    events_list_exp = st.session_state.get('events', [])
+    events_list_all = st.session_state.get('events', [])
+    
+    # --- FILTRAGGIO ---
+    st.markdown("#### 🔍 1. Filtra Eventi")
+    filter_choice = st.radio(
+        "Scegli quali eventi includere nell'export:",
+        ["Tutti gli eventi", "Solo attivi (non scaduti)", "Solo i NEW"],
+        horizontal=True
+    )
+    
+    now = datetime.now()
+    if filter_choice == "Solo attivi (non scaduti)":
+        events_list_exp = [ev for ev in events_list_all if WordGenerator.get_sort_date(ev).date() >= now.date()]
+    elif filter_choice == "Solo i NEW":
+        events_list_exp = [ev for ev in events_list_all if ev.get('is_new')]
+    else:
+        events_list_exp = events_list_all
+
     st.write(f"Eventi pronti per la stampa: **{len(events_list_exp)}**")
-    
-    
+    st.divider()
+
+    st.markdown("#### 🎨 2. Opzioni Stile")
     col_opts1, col_opts2 = st.columns(2)
     with col_opts1:
         export_mode_sel = st.radio("Stile Documento", ["Standard (Foto + Testo)", "Minimal (Solo Foto)"])
