@@ -12,7 +12,8 @@ import numpy as np
 class LocandineOCR:
     def __init__(self):
         """Inizializza il reader OCR per italiano"""
-        self.reader = easyocr.Reader(['it', 'en'], gpu=False)
+        # Usiamo solo 'it' per evitare che interpreti testi italiani come parole inglesi simili
+        self.reader = easyocr.Reader(['it'], gpu=False)
     
     def extract_text(self, image_path: str) -> str:
         """Estrae tutto il testo dall'immagine"""
@@ -141,12 +142,14 @@ class LocandineOCR:
             lower_line = line.lower()
             
             # Salta righe che contengono solo la data e la città (intestazione)
-            if any(m in lower_line for m in ['gennaio', 'febbraio', 'marzo', 'aprile', 'maggio', 'giugno']):
+            months_list = ['gennaio', 'febbraio', 'marzo', 'aprile', 'maggio', 'giugno', 
+                           'luglio', 'agosto', 'settembre', 'ottobre', 'novembre', 'dicembre']
+            if any(m in lower_line for m in months_list):
                 # Se c'è un trattino, quello che segue è probabilmente la location
                 parts = re.split(r'[–\-\—]', line)
                 if len(parts) > 1:
                     # Se la prima parte ha la data, la seconda è la location
-                    if any(m in parts[0].lower() for m in ['gennaio', 'febbraio', 'marzo']):
+                    if any(m in parts[0].lower() for m in months_list):
                         location = parts[1].strip()
                 continue
             

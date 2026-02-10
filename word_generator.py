@@ -102,8 +102,17 @@ class WordGenerator:
         if event_data.get('date'):
             date_str = event_data['date']
             try:
-                dt = dateparser.parse(date_str, languages=['it'])
-                date_formatted = dt.strftime('%d %B %Y') if dt else date_str
+                # Supportiamo sia IT che EN per recuperare date in inglese
+                dt = dateparser.parse(date_str, languages=['it', 'en'])
+                if dt:
+                    IT_MONTHS = {
+                        1: "Gennaio", 2: "Febbraio", 3: "Marzo", 4: "Aprile",
+                        5: "Maggio", 6: "Giugno", 7: "Luglio", 8: "Agosto",
+                        9: "Settembre", 10: "Ottobre", 11: "Novembre", 12: "Dicembre"
+                    }
+                    date_formatted = f"{dt.day} {IT_MONTHS[dt.month]} {dt.year}"
+                else:
+                    date_formatted = date_str
             except:
                 date_formatted = date_str
             add_field("DATA", date_formatted)
@@ -124,9 +133,9 @@ class WordGenerator:
         if not d_str:
             return datetime.max # Metti in fondo se non ha data
         
-        # Usa dateparser per capire la data
+        # Usa dateparser per capire la data (IT e EN)
         try:
-            dt = dateparser.parse(d_str, languages=['it'])
+            dt = dateparser.parse(d_str, languages=['it', 'en'])
             if dt:
                 return dt
         except:

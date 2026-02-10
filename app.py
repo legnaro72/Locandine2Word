@@ -18,6 +18,27 @@ except ImportError:
 # Usa il parametro moderno 'width' (valido per st.image(), NON per button/download_button)
 IMG_WIDTH_ARG = {"width": "stretch"}
 
+# --- FUNZIONI DI SUPPORTO ---
+def normalize_date_to_italian(raw_date):
+    """Converte una stringa data (anche in inglese) in formato italiano standard."""
+    import dateparser
+    IT_MONTHS = {
+        1: "GENNAIO", 2: "FEBBRAIO", 3: "MARZO", 4: "APRILE",
+        5: "MAGGIO", 6: "GIUGNO", 7: "LUGLIO", 8: "AGOSTO",
+        9: "SETTEMBRE", 10: "OTTOBRE", 11: "NOVEMBRE", 12: "DICEMBRE"
+    }
+    if not raw_date:
+        return ""
+    
+    # Pulizia anno se assente
+    if not re.search(r'\d{4}', raw_date) and len(raw_date) > 3:
+        raw_date += " 2026"
+        
+    dt = dateparser.parse(raw_date, languages=['it', 'en'])
+    if dt:
+        return f"{dt.day} {IT_MONTHS[dt.month]} {dt.year}"
+    return raw_date
+
 # --- FUNZIONE DI PARSING INTELLIGENTE ---
 def parse_event_text(text):
     """
@@ -39,14 +60,9 @@ def parse_event_text(text):
         # Cerca separatore "–" o "-"
         parts = re.split(r'\s+[–-]\s+', first_line, maxsplit=1)
         
-        # Estrazione Data
+        # Estrazione e Normalizzazione Data
         raw_date = parts[0].strip()
-        # Aggiungi anno 2026 se non presente e se sembra una data
-        if raw_date and '2026' not in raw_date and not re.search(r'\d{4}', raw_date):
-             # Evita di aggiungerlo se la stringa è spazzatura corta
-            if len(raw_date) > 3: 
-                raw_date += " 2026"
-        data['date'] = raw_date
+        data['date'] = normalize_date_to_italian(raw_date)
         
         # Estrazione Luogo (Parte dopo il trattino nella prima riga)
         if len(parts) > 1:
@@ -84,7 +100,11 @@ def parse_event_text(text):
 
     # Titolo di default se vuoto usa la descrizione troncata
     if not data['title']:
-        data['title'] = data['description'][:50] + "..." if data['description'] else "Nuovo Evento"
+        # Se abbiamo data e luogo, costruiamo un titolo decente
+        if data['date'] and data['location']:
+            data['title'] = f"{data['date']} – {data['location']}"
+        else:
+            data['title'] = data['description'][:50] + "..." if data['description'] else "Nuovo Evento"
     
     return data
 
@@ -133,8 +153,6 @@ os.makedirs(UPLOADS_DIR, exist_ok=True)
 os.makedirs(OUTPUT_DIR, exist_ok=True)
 
 # --- CONFIGURAZIONE GITHUB ---
-# La configurazione corretta va fatta nei Secrets di Streamlit (GITHUB_TOKEN)
-# Localmente: creare .streamlit/secrets.toml con GITHUB_TOKEN="tuo_token"
 GITHUB_TOKEN = st.secrets.get("GITHUB_TOKEN", None)
 GITHUB_REPO = "legnaro72/Locandine2Word"
 
@@ -148,10 +166,14 @@ if 'events' not in st.session_state:
             with open(DATA_FILE, 'r', encoding='utf-8') as f:
                 content = json.load(f)
                 if isinstance(content, list):
-                    # Normalizzazione percorsi (\ -> /) per compatibilità cloud
+                    # Normalizzazione automatica al caricamento
                     for ev in content:
+                        # 1. Normalizzazione percorsi (\ -> /)
                         if 'image_path' in ev:
                             ev['image_path'] = ev['image_path'].replace('\\', '/')
+                        # 2. Normalizzazione DATE (Forza Italiano se erano in inglese)
+                        if 'date' in ev:
+                            ev['date'] = normalize_date_to_italian(ev['date'])
                     st.session_state.events = content
         except Exception as e:
             st.error(f"Errore caricamento database locale: {e}")
@@ -458,7 +480,7 @@ with tab2:
         
         if duplicate_paths:
             total_dup_events = sum(image_counts[p] for p in duplicate_paths)
-            st.error(f"🚨 ALERT: Trovate **{len(duplicate_paths)}** immagini usate in più eventi (totale **{total_dup_events}** eventi duplicati)!")
+            st.error(f"🚨 AVVISO: Trovate **{len(duplicate_paths)}** immagini usate in più eventi (totale **{total_dup_events}** eventi duplicati)!")
             with st.expander("📖 Legenda Duplicati Immagine"):
                 for path in duplicate_paths:
                     titles = [ev.get('title', 'Senza Titolo') for ev in events_list if ev.get('image_path', '').strip() == path]
@@ -472,35 +494,29 @@ with tab2:
         
         with col_m2:
             if st.button("🏷️ Rinomina Auto"):
-                import dateparser
-                import locale
-                try:
-                    locale.setlocale(locale.LC_TIME, 'it_IT.utf8')
-                except:
-                    pass
-
                 for event in events_list:
                     raw_date = event.get('date', '').strip()
                     location = event.get('location', '').strip()
                     
                     if raw_date:
-                        dt = dateparser.parse(raw_date, languages=['it'])
+                        clean_date = normalize_date_to_italian(raw_date)
+                        event['date'] = clean_date
+                        
+                        # Calcolo Giorno della settimana
+                        import dateparser
+                        dt = dateparser.parse(clean_date, languages=['it'])
                         if dt:
-                            clean_date = dt.strftime("%d %B %Y").upper()
-                            event['date'] = clean_date
-                            
                             day_map_safe = {
                                 0: "LUNEDI'", 1: "MARTEDI'", 2: "MERCOLEDI'", 
-                                3: "GIOVEDI'", 4: "VENERDI'", 5: "SABATO'", 6: "DOMENICA"
+                                3: "GIOVEDI'", 4: "VENERDI'", 5: "SABATO", 6: "DOMENICA"
                             }
                             weekday = day_map_safe.get(dt.weekday(), "")
                             full_date_string = f"{weekday} {clean_date}"
-                            
                             event['title'] = f"{full_date_string} - {location}" if location else full_date_string
                 
                 with open(DATA_FILE, 'w', encoding='utf-8') as f:
                     json.dump(events_list, f, ensure_ascii=False, indent=2)
-                st.success("Date pulite e Titoli rinominati!")
+                st.success("Date pulite (in Italiano) e Titoli rinominati!")
                 st.rerun()
 
         with col_m3:
@@ -529,7 +545,7 @@ with tab2:
                 is_expired = True
 
             dup_icon = "👯 " if event.get('image_path', '').strip() in duplicate_paths else ""
-            exp_icon = "🚫 EXPIRED " if is_expired else ""
+            exp_icon = "🚫 SCADUTO " if is_expired else ""
             title_prefix = f"{dup_icon}{exp_icon}🆕 " if event.get('is_new') else f"{dup_icon}{exp_icon}"
             
             with st.expander(f"{title_prefix}📅 {event.get('title', 'Titolo n/d')}"):
@@ -563,12 +579,25 @@ with tab2:
                     sel_key = f"sel_field_{real_idx}"
                     mic_buffer_key = f"mic_buffer_{real_idx}"
 
-                    # Selettore campo
-                    st.selectbox(
+                    # Selettore campo con etichette in Italiano
+                    field_mapping_ui = {
+                        'description': 'Descrizione',
+                        'title': 'Titolo',
+                        'location': 'Luogo',
+                        'venue': 'Presso',
+                        'address': 'Indirizzo',
+                        'date': 'Data',
+                        'time': 'Orario'
+                    }
+                    
+                    selected_ui_label = st.selectbox(
                         "Campo da compilare con la voce",
-                        options=['description', 'title', 'location', 'venue', 'address', 'date', 'time'],
+                        options=list(field_mapping_ui.values()),
                         key=sel_key
                     )
+                    
+                    # Recupera la chiave tecnica dall'etichetta selezionata
+                    final_field = [k for k, v in field_mapping_ui.items() if v == selected_ui_label][0]
 
                     # Microfono salva SOLO in buffer
                     text_dettato = speech_to_text(
@@ -587,8 +616,7 @@ with tab2:
                         st.info(f"Testo rilevato: {st.session_state[mic_buffer_key]}")
 
                         if st.button("✅ Inserisci nel campo selezionato", key=f"apply_mic_{real_idx}"):
-
-                            final_field = st.session_state.get(sel_key, "description")
+                            # final_field è già calcolato sopra tramite la UI labels
 
                             mapping = {
                                 'title': k_tit,
