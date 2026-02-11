@@ -39,6 +39,29 @@ def normalize_date_to_italian(raw_date):
         return f"{dt.day} {IT_MONTHS[dt.month]} {dt.year}"
     return raw_date
 
+def save_optimized_image(input_source, save_path, max_width=1200):
+    """
+    Ridimensiona e comprime un'immagine per risparmiare spazio e velocizzare il cloud.
+    input_source: può essere un UploadedFile o un percorso (stringa).
+    """
+    try:
+        from PIL import Image
+        img = Image.open(input_source)
+        # Conversione RGB per salvare in JPEG (gestisce PNG/RGBA)
+        if img.mode in ("RGBA", "P"):
+            img = img.convert("RGB")
+            
+        w, h = img.size
+        if w > max_width:
+            new_h = int(h * (max_width / w))
+            img = img.resize((max_width, new_h), Image.Resampling.LANCZOS)
+        
+        # Salva con compressione (qualità 80 è ottima per OCR)
+        img.save(save_path, "JPEG", quality=80, optimize=True)
+        return True
+    except Exception as e:
+        return False
+
 # --- FUNZIONE DI PARSING INTELLIGENTE ---
 def parse_event_text(text):
     """
@@ -381,10 +404,9 @@ with tab1:
         if st.button("🔍 Analizza tutte le locandine (OCR)", type="secondary"):
             with st.spinner("Analisi di tutte le locandine in corso..."):
                 for idx, uploaded_file in enumerate(uploaded_files):
-                    # Salva immagine se non presente
+                    # Salva immagine ottimizzata
                     image_path = os.path.join(UPLOADS_DIR, uploaded_file.name)
-                    with open(image_path, 'wb') as f:
-                        f.write(uploaded_file.getbuffer())
+                    save_optimized_image(uploaded_file, image_path)
                     
                     # Se non è già stato processato
                     if f'temp_data_{idx}' not in st.session_state:
@@ -410,11 +432,9 @@ with tab1:
             with st.expander(f"🖼️ {uploaded_file.name}", expanded=True):
                 col1, col2 = st.columns([1, 2])
                 
-                # Salvataggio e Anteprima Immagine
+                # Salvataggio e Anteprima Immagine (Ottimizzata)
                 image_path = os.path.join(UPLOADS_DIR, uploaded_file.name)
-                # Salva solo se non esiste o aggiorna? Meglio sovrascrivere per sicurezza
-                with open(image_path, 'wb') as f:
-                    f.write(uploaded_file.getbuffer())
+                save_optimized_image(uploaded_file, image_path)
                 
                 # Visualizza immagine
                 col1.image(image_path, **IMG_WIDTH_ARG)
@@ -1052,3 +1072,24 @@ with tab4:
 
         st.divider()
         st.info("💡 I grafici si aggiornano automaticamente ogni volta che modifichi o aggiungi un evento.")
+
+        # --- PULIZIA E OTTIMIZZAZIONE MANUALE ---
+        with st.expander("🛠️ Strumenti Avanzati (Manutenzione)"):
+            st.write("Usa questi strumenti per tenere l'app veloce e leggera.")
+            if st.button("⚡ Ottimizza Archivio Esistente", help="Ridimensiona tutte le immagini caricate in precedenza per occupare meno spazio."):
+                files = [f for f in os.listdir(UPLOADS_DIR) if f.lower().endswith(('.png', '.jpg', '.jpeg'))]
+                if not files:
+                    st.warning("Nessuna immagine trovata da ottimizzare.")
+                else:
+                    processed = 0
+                    errors = 0
+                    pbar = st.progress(0)
+                    for i, filename in enumerate(files):
+                        img_path = os.path.join(UPLOADS_DIR, filename)
+                        if save_optimized_image(img_path, img_path):
+                            processed += 1
+                        else:
+                            errors += 1
+                        pbar.progress((i + 1) / len(files))
+                    st.success(f"✅ Ottimizzazione completata! Processate {processed} immagini. (Fallite: {errors})")
+                    st.info("Nota: Al prossimo salvataggio su GitHub, il backup sarà molto più leggero.")
