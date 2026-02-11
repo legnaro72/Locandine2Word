@@ -577,6 +577,18 @@
     "is_new": false
   },
   {
+    "title": "MARTEDI' 24 FEBBRAIO 2026 - GENOVA",
+    "date": "24 FEBBRAIO 2026",
+    "time": "18:00",
+    "location": "GENOVA",
+    "venue": "Centro Civico",
+    "address": "VIA BOBBIO 21 D, Genova",
+    "description": "",
+    "image_path": "uploads/IMG-20260211-WA0000.jpg",
+    "added_on": "2026-02-11",
+    "is_new": true
+  },
+  {
     "title": "MERCOLEDI' 25 FEBBRAIO 2026 - GENOVA",
     "date": "25 FEBBRAIO 2026",
     "time": "17:00",
@@ -586,6 +598,18 @@
     "description": "",
     "image_path": "uploads/UDI_incontra.jpeg",
     "added_on": "2026-02-10",
+    "is_new": true
+  },
+  {
+    "title": "MERCOLEDI' 25 FEBBRAIO 2026 - GENOVA",
+    "date": "25 FEBBRAIO 2026",
+    "time": "17:00",
+    "location": "GENOVA",
+    "venue": "Ordine Dottori Commercialisti",
+    "address": "Via IV Novembre 6/7 - Genova",
+    "description": "",
+    "image_path": "uploads/Screenshot_20260211_090414_Samsung Notes.jpg",
+    "added_on": "2026-02-11",
     "is_new": true
   },
   {
@@ -685,7 +709,7 @@
     "title": "LUNEDI' 2 MARZO 2026 - Marinella di Sarzana",
     "date": "2 MARZO 2026",
     "time": "17:30",
-    "location": "Marinella di Sarzana",
+    "location": "MARINELLA DI SARZANA ",
     "venue": "Osteria del Tritone",
     "address": "Viale J.F.Kennedy, 70 - Marinella di Sarzana - La Spezia",
     "description": "",
@@ -738,6 +762,18 @@
     "image_path": "uploads/locandina_12.png",
     "added_on": "2026-02-06",
     "is_new": false
+  },
+  {
+    "title": "VENERDI' 6 MARZO 2026 - RECCO",
+    "date": "6 MARZO 2026",
+    "time": "18:00",
+    "location": "RECCO",
+    "venue": "Sala polivalente Franco Lavoratori",
+    "address": "Via Ippolito D'Aste, 2b - Recco - Genova",
+    "description": "",
+    "image_path": "uploads/Recco.jpeg",
+    "added_on": "2026-02-11",
+    "is_new": true
   },
   {
     "title": "LUNEDI' 9 MARZO 2026 - BOGLIASCO",
@@ -808,29 +844,5 @@
     "image_path": "uploads/GherardoColombo.jpg",
     "added_on": "2026-02-06",
     "is_new": false
-  },
-  {
-    "title": "MARTEDI' 24 FEBBRAIO 2026 - GENOVA",
-    "date": "24 FEBBRAIO 2026",
-    "time": "18:00",
-    "location": "GENOVA",
-    "venue": "Centro Civico",
-    "address": "VIA BOBBIO 21 D, Genova",
-    "description": "",
-    "image_path": "uploads/IMG-20260211-WA0000.jpg",
-    "added_on": "2026-02-11",
-    "is_new": true
-  },
-  {
-    "title": "MERCOLEDI' 25 FEBBRAIO 2026 - GENOVA",
-    "date": "25 FEBBRAIO 2026",
-    "time": "17:00",
-    "location": "GENOVA",
-    "venue": "Ordine Dottori Commercialisti",
-    "address": "Via IV Novembre 6/7 - Genova",
-    "description": "",
-    "image_path": "uploads/Screenshot_20260211_090414_Samsung Notes.jpg",
-    "added_on": "2026-02-11",
-    "is_new": true
   }
 ]

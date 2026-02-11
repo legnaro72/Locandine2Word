@@ -377,6 +377,35 @@ with tab1:
     uploaded_files = st.file_uploader("Trascina qui le immagini", type=['png', 'jpg', 'jpeg'], accept_multiple_files=True)
     
     if uploaded_files:
+        # --- PROCESSO MASSIVO ---
+        if st.button("🔍 Analizza tutte le locandine (OCR)", type="secondary"):
+            with st.spinner("Analisi di tutte le locandine in corso..."):
+                for idx, uploaded_file in enumerate(uploaded_files):
+                    # Salva immagine se non presente
+                    image_path = os.path.join(UPLOADS_DIR, uploaded_file.name)
+                    with open(image_path, 'wb') as f:
+                        f.write(uploaded_file.getbuffer())
+                    
+                    # Se non è già stato processato
+                    if f'temp_data_{idx}' not in st.session_state:
+                        json_match = prefill_map.get(uploaded_file.name)
+                        if json_match:
+                            raw_text_json = json_match.get('text', '')
+                            if raw_text_json:
+                                parsed = parse_event_text(raw_text_json)
+                                for field in ['title', 'date', 'time', 'location', 'venue', 'address', 'description']:
+                                    if json_match.get(field): parsed[field] = json_match[field]
+                            else:
+                                parsed = {k: json_match.get(k, '') for k in ['title', 'date', 'time', 'location', 'venue', 'address', 'description']}
+                        else:
+                            raw_ocr = st.session_state.ocr_engine.analyze_poster(image_path)
+                            parsed = parse_event_text(raw_ocr.get('full_text', ''))
+                        
+                        parsed['image_path'] = f"{UPLOADS_DIR}/{uploaded_file.name}"
+                        st.session_state[f'temp_data_{idx}'] = parsed
+                st.success("Tutte le immagini sono state analizzate! Controlla i moduli sotto.")
+                st.rerun()
+
         for idx, uploaded_file in enumerate(uploaded_files):
             with st.expander(f"🖼️ {uploaded_file.name}", expanded=True):
                 col1, col2 = st.columns([1, 2])
@@ -504,43 +533,47 @@ with tab2:
                 key="mgr_geo_filter"
             )
         
+        search_query = st.text_input("📝 Cerca nel testo (Titolo, Luogo, Descrizione...)", "").strip().lower()
+        
         # Logica di filtraggio combinata
         now = datetime.now()
-        filtered_events = []
         
-        # Mappatura Province -> Regioni per il filtro
+        # Mappatura Province -> Regioni per il filtro (già presente ma definita qui per sicurezza)
         PROV_TO_REG = {
             'GENOVA': 'LIGURIA', 'LA SPEZIA': 'LIGURIA', 'SAVONA': 'LIGURIA', 'IMPERIA': 'LIGURIA',
             'MASSA': 'TOSCANA'
         }
 
-        for ev in events_list:
+        # Ri-indicizzazione degli eventi filtrati per la visualizzazione corretta
+        # Manteniamo l'indice originale per permettere l'aggiornamento corretto
+        indexed_view_events = []
+        for i, ev in enumerate(st.session_state.events):
             # A. Controllo Stato
-            match_status = True
-            if status_filter == "Solo i NEW":
-                match_status = ev.get('is_new', False)
-            elif status_filter == "Attivi (Futuri + NEW)":
-                match_status = WordGenerator.get_sort_date(ev).date() >= now.date() or ev.get('is_new', False)
-            elif status_filter == "Solo Scaduti":
-                match_status = WordGenerator.get_sort_date(ev).date() < now.date() and not ev.get('is_new', False)
+            m_s = True
+            if status_filter == "Solo i NEW": m_s = ev.get('is_new', False)
+            elif status_filter == "Attivi (Futuri + NEW)": m_s = WordGenerator.get_sort_date(ev).date() >= now.date() or ev.get('is_new', False)
+            elif status_filter == "Solo Scaduti": m_s = WordGenerator.get_sort_date(ev).date() < now.date() and not ev.get('is_new', False)
             
             # B. Controllo Luogo
-            match_geo = True
+            m_g = True
             if geo_filter != "Tutti":
                 prov = WordGenerator.get_province(ev)
                 if geo_filter in ["LIGURIA", "TOSCANA"]:
-                    # Filtro per Regione
-                    event_reg = PROV_TO_REG.get(prov, "ALTRO")
-                    match_geo = (event_reg == geo_filter)
+                    m_g = (PROV_TO_REG.get(prov, "ALTRO") == geo_filter)
                 else:
-                    # Filtro per Provincia specifica
-                    match_geo = (prov == geo_filter)
+                    m_g = (prov == geo_filter)
             
-            if match_status and match_geo:
-                filtered_events.append(ev)
-        
-        # Sovrascriviamo l'elenco locale per la visualizzazione sotto
-        events_list_view = filtered_events
+            # C. Controllo Ricerca Testuale
+            m_t = True
+            if search_query:
+                content = (ev.get('title', '') + ev.get('description', '') + ev.get('location', '') + ev.get('venue', '')).lower()
+                m_t = search_query in content
+            
+            if m_s and m_g and m_t:
+                indexed_view_events.append((i, ev))
+
+        sorted_view_events = sorted(indexed_view_events, key=lambda x: WordGenerator.get_sort_date(x[1]))
+        events_list_view = [e[1] for e in sorted_view_events]
         
         if not events_list_view:
             st.warning(f"Nessun evento trovato con i filtri selezionati.")
@@ -618,21 +651,26 @@ with tab2:
         # Manteniamo l'indice originale per permettere l'aggiornamento corretto
         indexed_view_events = []
         for i, ev in enumerate(st.session_state.events):
-            # Applichiamo i filtri di nuovo o usiamo un riferimento
-            # Per semplicità ricalcoliamo il filtraggio mantenendo l'indice originale reale_idx
-            # Stato
+            # A. Stato
             m_s = True
             if status_filter == "Solo i NEW": m_s = ev.get('is_new', False)
             elif status_filter == "Attivi (Futuri + NEW)": m_s = WordGenerator.get_sort_date(ev).date() >= now.date() or ev.get('is_new', False)
             elif status_filter == "Solo Scaduti": m_s = WordGenerator.get_sort_date(ev).date() < now.date() and not ev.get('is_new', False)
-            # Luogo
+            
+            # B. Luogo
             m_g = True
             if geo_filter != "Tutti":
                 prov = WordGenerator.get_province(ev)
                 if geo_filter in ["LIGURIA", "TOSCANA"]: m_g = (PROV_TO_REG.get(prov, "ALTRO") == geo_filter)
                 else: m_g = (prov == geo_filter)
             
-            if m_s and m_g:
+            # C. Ricerca Testuale
+            m_t = True
+            if search_query:
+                content = (ev.get('title', '') + ev.get('description', '') + ev.get('location', '') + ev.get('venue', '')).lower()
+                m_t = search_query in content
+            
+            if m_s and m_g and m_t:
                 indexed_view_events.append((i, ev))
 
         sorted_view_events = sorted(indexed_view_events, key=lambda x: WordGenerator.get_sort_date(x[1]))
