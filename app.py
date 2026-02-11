@@ -475,62 +475,126 @@ with tab2:
     if not events_list:
         st.info("Nessun evento in archivio.")
     else:
+        # --- SISTEMA DI FILTRAGGIO AVANZATO ---
+        col_f1, col_f2 = st.columns(2)
+        
+        with col_f1:
+            status_filter = st.selectbox(
+                "🔍 1. Filtra per Stato",
+                ["Tutto (All)", "Solo i NEW", "Attivi (Futuri + NEW)", "Solo Scaduti"],
+                key="mgr_status_filter"
+            )
+        
+        with col_f2:
+            geo_filter = st.selectbox(
+                "📍 2. Filtra per Luogo",
+                ["Tutti", "LIGURIA", "TOSCANA", "GENOVA", "LA SPEZIA", "SAVONA", "IMPERIA", "MASSA"],
+                key="mgr_geo_filter"
+            )
+        
+        # Logica di filtraggio combinata
+        now = datetime.now()
+        filtered_events = []
+        
+        # Mappatura Province -> Regioni per il filtro
+        PROV_TO_REG = {
+            'GENOVA': 'LIGURIA', 'LA SPEZIA': 'LIGURIA', 'SAVONA': 'LIGURIA', 'IMPERIA': 'LIGURIA',
+            'MASSA': 'TOSCANA'
+        }
+
+        for ev in events_list:
+            # A. Controllo Stato
+            match_status = True
+            if status_filter == "Solo i NEW":
+                match_status = ev.get('is_new', False)
+            elif status_filter == "Attivi (Futuri + NEW)":
+                match_status = WordGenerator.get_sort_date(ev).date() >= now.date() or ev.get('is_new', False)
+            elif status_filter == "Solo Scaduti":
+                match_status = WordGenerator.get_sort_date(ev).date() < now.date() and not ev.get('is_new', False)
+            
+            # B. Controllo Luogo
+            match_geo = True
+            if geo_filter != "Tutti":
+                prov = WordGenerator.get_province(ev)
+                if geo_filter in ["LIGURIA", "TOSCANA"]:
+                    # Filtro per Regione
+                    event_reg = PROV_TO_REG.get(prov, "ALTRO")
+                    match_geo = (event_reg == geo_filter)
+                else:
+                    # Filtro per Provincia specifica
+                    match_geo = (prov == geo_filter)
+            
+            if match_status and match_geo:
+                filtered_events.append(ev)
+        
+        # Sovrascriviamo l'elenco locale per la visualizzazione sotto
+        events_list_view = filtered_events
+        
+        if not events_list_view:
+            st.warning(f"Nessun evento trovato con i filtri selezionati.")
+        
         # --- STATISTICHE E CONTROLLI ---
-        total_ev = len(events_list)
-        st.write(f"📊 Totale Eventi in Archivio: **{total_ev}**")
+        total_ev = len(events_list_view)
+        st.write(f"📊 Eventi visualizzati: **{total_ev}** (su {len(events_list)} totali)")
 
         # Controllo Duplicati (Basato esclusivamente sul Percorso Immagine)
+        # ... (rest of the duplicate logic) ...
         image_counts = {}
-        for ev in events_list:
+        for ev in events_list_view:
             img_path = ev.get('image_path', '').strip()
             if img_path:
                 image_counts[img_path] = image_counts.get(img_path, 0) + 1
         
-        # Percorsi che appaiono più di una volta
         duplicate_paths = {path for path, count in image_counts.items() if count > 1}
         
         if duplicate_paths:
             total_dup_events = sum(image_counts[p] for p in duplicate_paths)
-            st.error(f"🚨 AVVISO: Trovate **{len(duplicate_paths)}** immagini usate in più eventi (totale **{total_dup_events}** eventi duplicati)!")
-            with st.expander("📖 Legenda Duplicati Immagine"):
-                for path in duplicate_paths:
-                    titles = [ev.get('title', 'Senza Titolo') for ev in events_list if ev.get('image_path', '').strip() == path]
-                    st.write(f"🖼️ `{path}`")
-                    for t in titles:
-                        st.write(f"  - {t}")
+            st.error(f"🚨 AVVISO: Trovate **{len(duplicate_paths)}** immagini usate in più eventi!")
         else:
-            st.success("✅ Nessun duplicato di immagine rilevato.")
+            st.success("✅ Nessun duplicato rilevato nei risultati correnti.")
 
-        col_m1, col_m2, col_m3 = st.columns([2, 1, 1])
+        # --- BOTTONI DI AZIONE ---
+        col_m1, col_m2, col_m3, col_m4 = st.columns([1.5, 1, 1, 1])
         
         with col_m2:
             if st.button("🏷️ Rinomina Auto"):
-                for event in events_list:
+                for event in events_list: # Azione globale sul database reale
                     raw_date = event.get('date', '').strip()
                     location = event.get('location', '').strip()
-                    
                     if raw_date:
                         clean_date = normalize_date_to_italian(raw_date)
                         event['date'] = clean_date
-                        
-                        # Calcolo Giorno della settimana
                         import dateparser
                         dt = dateparser.parse(clean_date, languages=['it'])
                         if dt:
-                            day_map_safe = {
-                                0: "LUNEDI'", 1: "MARTEDI'", 2: "MERCOLEDI'", 
-                                3: "GIOVEDI'", 4: "VENERDI'", 5: "SABATO", 6: "DOMENICA"
-                            }
+                            day_map_safe = {0: "LUNEDI'", 1: "MARTEDI'", 2: "MERCOLEDI'", 3: "GIOVEDI'", 4: "VENERDI'", 5: "SABATO", 6: "DOMENICA"}
                             weekday = day_map_safe.get(dt.weekday(), "")
-                            full_date_string = f"{weekday} {clean_date}"
-                            event['title'] = f"{full_date_string} - {location}" if location else full_date_string
-                
+                            event['title'] = f"{weekday} {clean_date} - {location}" if location else f"{weekday} {clean_date}"
                 with open(DATA_FILE, 'w', encoding='utf-8') as f:
                     json.dump(events_list, f, ensure_ascii=False, indent=2)
-                st.success("Date pulite (in Italiano) e Titoli rinominati!")
+                st.success("Titoli aggiornati!")
                 st.rerun()
 
         with col_m3:
+            if st.button("✨ Rimuovi NEW"):
+                st.session_state.confirm_clear_new = True
+            
+            if st.session_state.get('confirm_clear_new'):
+                st.warning("⚠️ Confermi di voler rimuovere l'etichetta NEW da TUTTI gli eventi?")
+                c_y, c_n = st.columns(2)
+                if c_y.button("✅ Confermo", key="y_clear_new"):
+                    for ev in events_list:
+                        ev['is_new'] = False
+                    with open(DATA_FILE, 'w', encoding='utf-8') as f:
+                        json.dump(events_list, f, ensure_ascii=False, indent=2)
+                    st.session_state.confirm_clear_new = False
+                    st.success("Etichette NEW rimosse!")
+                    st.rerun()
+                if c_n.button("❌ Annulla", key="n_clear_new"):
+                    st.session_state.confirm_clear_new = False
+                    st.rerun()
+
+        with col_m4:
             if st.button("🔄 Riordina Date"):
                 events_list.sort(key=WordGenerator.get_sort_date)
                 with open(DATA_FILE, 'w', encoding='utf-8') as f:
@@ -538,17 +602,34 @@ with tab2:
                 st.success("Eventi riordinati!")
                 st.rerun()
 
-        indexed_events = list(enumerate(events_list))
-        sorted_indexed_events = sorted(
-            indexed_events, 
-            key=lambda x: WordGenerator.get_sort_date(x[1])
-        )
+        # Ri-indicizzazione degli eventi filtrati per la visualizzazione corretta
+        # Manteniamo l'indice originale per permettere l'aggiornamento corretto
+        indexed_view_events = []
+        for i, ev in enumerate(st.session_state.events):
+            # Applichiamo i filtri di nuovo o usiamo un riferimento
+            # Per semplicità ricalcoliamo il filtraggio mantenendo l'indice originale reale_idx
+            # Stato
+            m_s = True
+            if status_filter == "Solo i NEW": m_s = ev.get('is_new', False)
+            elif status_filter == "Attivi (Futuri + NEW)": m_s = WordGenerator.get_sort_date(ev).date() >= now.date() or ev.get('is_new', False)
+            elif status_filter == "Solo Scaduti": m_s = WordGenerator.get_sort_date(ev).date() < now.date() and not ev.get('is_new', False)
+            # Luogo
+            m_g = True
+            if geo_filter != "Tutti":
+                prov = WordGenerator.get_province(ev)
+                if geo_filter in ["LIGURIA", "TOSCANA"]: m_g = (PROV_TO_REG.get(prov, "ALTRO") == geo_filter)
+                else: m_g = (prov == geo_filter)
+            
+            if m_s and m_g:
+                indexed_view_events.append((i, ev))
+
+        sorted_view_events = sorted(indexed_view_events, key=lambda x: WordGenerator.get_sort_date(x[1]))
 
         st.info("ℹ️ Gli eventi sono ordinati cronologicamente.")
 
         # -------- LOOP EVENTI --------
         now = datetime.now()
-        for real_idx, event in sorted_indexed_events:
+        for real_idx, event in sorted_view_events:
             # Calcolo scadenza
             is_expired = False
             ev_date = WordGenerator.get_sort_date(event)
@@ -726,7 +807,7 @@ with tab3:
     st.markdown("#### 🔍 1. Filtra Eventi")
     filter_choice = st.radio(
         "Scegli quali eventi includere nell'export:",
-        ["Tutti gli eventi", "Solo attivi (non scaduti)", "Solo i NEW"],
+        ["Tutti gli eventi", "Solo attivi (non scaduti)", "Solo i NEW", "Solo Provincia di Genova", "Solo Provincia di La Spezia"],
         horizontal=True
     )
     
@@ -735,6 +816,10 @@ with tab3:
         events_list_exp = [ev for ev in events_list_all if WordGenerator.get_sort_date(ev).date() >= now.date()]
     elif filter_choice == "Solo i NEW":
         events_list_exp = [ev for ev in events_list_all if ev.get('is_new')]
+    elif filter_choice == "Solo Provincia di Genova":
+        events_list_exp = [ev for ev in events_list_all if WordGenerator.get_province(ev) == "GENOVA"]
+    elif filter_choice == "Solo Provincia di La Spezia":
+        events_list_exp = [ev for ev in events_list_all if WordGenerator.get_province(ev) == "LA SPEZIA"]
     else:
         events_list_exp = events_list_all
 

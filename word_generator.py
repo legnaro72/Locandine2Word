@@ -151,6 +151,49 @@ class WordGenerator:
             pass
         return datetime.max # Fallback in fondo
 
+    @staticmethod
+    def get_province(event: Dict) -> str:
+        """Determina la provincia di un evento in base a indirizzo e location."""
+        PROV_TO_REG = {
+            'GENOVA': 'LIGURIA', 'GE': 'LIGURIA',
+            'LA SPEZIA': 'LIGURIA', 'SP': 'LIGURIA',
+            'SAVONA': 'LIGURIA', 'SV': 'LIGURIA',
+            'IMPERIA': 'LIGURIA', 'IM': 'LIGURIA',
+            'MASSA': 'TOSCANA', 'MS': 'TOSCANA', 'MASSA CARRARA': 'TOSCANA', 'CARRARA': 'TOSCANA'
+        }
+        PROV_NORM = {
+            'GE': 'GENOVA', 'SP': 'LA SPEZIA', 'SV': 'SAVONA', 'IM': 'IMPERIA', 
+            'MS': 'MASSA', 'MASSA CARRARA': 'MASSA', 'CARRARA': 'MASSA'
+        }
+        CITY_FALLBACK = {
+            'PEGLI': 'GENOVA', 'BOLZANETO': 'GENOVA', 'VOLTRI': 'GENOVA', 'NERVI': 'GENOVA',
+            'SARZANA': 'LA SPEZIA', 'FOLLO': 'LA SPEZIA', 'LERICI': 'LA SPEZIA',
+            'BRUGNATO': 'LA SPEZIA', 'PIGNONE': 'LA SPEZIA',
+            'CEPARANA': 'LA SPEZIA', 'VEZZANO LIGURE': 'LA SPEZIA', 'VEZZANO': 'LA SPEZIA',
+            'MARINELLA DI SARZANA': 'LA SPEZIA', 'MARINELLA': 'LA SPEZIA',
+            'CARCARE': 'SAVONA', 'VARAZZE': 'SAVONA',
+            'AULLA': 'MASSA', 'CARRARA': 'MASSA'
+        }
+
+        addr = event.get('address', '').strip().upper()
+        loc = event.get('location', '').strip().upper()
+        
+        prov_found = None
+        if addr:
+            parts = re.split(r'[\s\-,(]+', addr)
+            last_part = parts[-1].strip(' )')
+            if last_part in PROV_TO_REG:
+                prov_found = PROV_NORM.get(last_part, last_part)
+        
+        if not prov_found:
+            prov_found = CITY_FALLBACK.get(loc)
+
+        if not prov_found:
+             if loc in PROV_TO_REG:
+                 prov_found = PROV_NORM.get(loc, loc)
+        
+        return prov_found or "ALTRO"
+
     def generate_from_data(self, events: List[Dict], output_path: str, mode: str = "standard", show_borders: bool = False):
         """
         Genera il documento Word completo:
@@ -188,19 +231,9 @@ class WordGenerator:
         self.doc.add_paragraph(f"Totale Locandine caricate: {total_ev}", style='List Bullet')
         
         # --- STATISTICHE GEOGRAFICHE ---
-        # Mappatura Province/Regioni
         PROV_TO_REG = {
-            'GENOVA': 'LIGURIA', 'GE': 'LIGURIA',
-            'LA SPEZIA': 'LIGURIA', 'SP': 'LIGURIA',
-            'SAVONA': 'LIGURIA', 'SV': 'LIGURIA',
-            'IMPERIA': 'LIGURIA', 'IM': 'LIGURIA',
-            'MASSA': 'TOSCANA', 'MS': 'TOSCANA', 'MASSA CARRARA': 'TOSCANA', 'CARRARA': 'TOSCANA'
-        }
-        
-        # Mappatura nomi per uniformità (Tutto sotto MASSA)
-        PROV_NORM = {
-            'GE': 'GENOVA', 'SP': 'LA SPEZIA', 'SV': 'SAVONA', 'IM': 'IMPERIA', 
-            'MS': 'MASSA', 'MASSA CARRARA': 'MASSA', 'CARRARA': 'MASSA'
+            'GENOVA': 'LIGURIA', 'LA SPEZIA': 'LIGURIA', 'SAVONA': 'LIGURIA', 'IMPERIA': 'LIGURIA',
+            'MASSA': 'TOSCANA'
         }
 
         stats = {
@@ -210,44 +243,17 @@ class WordGenerator:
         }
 
         for ev in sorted_events:
-            addr = ev.get('address', '').strip().upper()
-            loc = ev.get('location', '').strip().upper()
+            prov_found = self.get_province(ev)
+            loc = ev.get('location', 'N/D').strip().upper()
             
-            # 1. Tenta di estrarre la provincia dall'ultima parte dell'indirizzo
-            prov_found = None
-            if addr:
-                # Cerca pattern tipo "... - GE" o "... GENOVA" o "... (SP)"
-                parts = re.split(r'[\s\-,(]+', addr)
-                last_part = parts[-1].strip(' )')
-                if last_part in PROV_TO_REG:
-                    prov_found = PROV_NORM.get(last_part, last_part)
-            
-            # 2. Fallback: mappatura manuale per città se l'indirizzo non ha aiutato
-            if not prov_found:
-                # (Manteniamo una piccola lista di fallback per sicurezza)
-                CITY_FALLBACK = {
-                    'PEGLI': 'GENOVA', 'BOLZANETO': 'GENOVA', 'VOLTRI': 'GENOVA', 'NERVI': 'GENOVA',
-                    'SARZANA': 'LA SPEZIA', 'FOLLO': 'LA SPEZIA', 'LERICI': 'LA SPEZIA',
-                    'BRUGNATO': 'LA SPEZIA', 'PIGNONE': 'LA SPEZIA',
-                    'CEPARANA': 'LA SPEZIA', 'VEZZANO LIGURE': 'LA SPEZIA', 'VEZZANO': 'LA SPEZIA',
-                    'MARINELLA DI SARZANA': 'LA SPEZIA', 'MARINELLA': 'LA SPEZIA',
-                    'CARCARE': 'SAVONA', 'VARAZZE': 'SAVONA',
-                    'AULLA': 'MASSA', 'CARRARA': 'MASSA'
-                }
-                prov_found = CITY_FALLBACK.get(loc)
-
-            # 3. Assegnazione
-            if prov_found:
-                reg = PROV_TO_REG.get(prov_found) or PROV_TO_REG.get(next((k for k in PROV_NORM if PROV_NORM[k]==prov_found), ''))
-                if reg in stats:
-                    stats[reg]['total'] += 1
-                    if prov_found in stats[reg]['provinces']:
-                        stats[reg]['provinces'][prov_found] += 1
-                else:
-                    stats['ALTRO']['total'] += 1
-                    stats['ALTRO']['cities'][loc] = stats['ALTRO']['cities'].get(loc, 0) + 1
+            reg = PROV_TO_REG.get(prov_found)
+            if reg:
+                stats[reg]['total'] += 1
+                if prov_found in stats[reg]['provinces']:
+                    stats[reg]['provinces'][prov_found] += 1
             else:
-                # Se proprio non troviamo nulla, proviamo a vedere se la location stessa è una provincia
+                stats['ALTRO']['total'] += 1
+                stats['ALTRO']['cities'][loc] = stats['ALTRO']['cities'].get(loc, 0) + 1
                 if loc in PROV_TO_REG:
                     prov = PROV_NORM.get(loc, loc)
                     reg = PROV_TO_REG[loc]

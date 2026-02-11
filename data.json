@@ -1,19 +1,139 @@
 [
   {
-    "title": "SABATO' 07 FEBBRAIO 2026 - GENOVA",
-    "date": "07 FEBBRAIO 2026",
+    "title": "VENERDI' 30 GENNAIO 2026 - GENOVA PRA’",
+    "date": "30 GENNAIO 2026",
+    "time": "16:30",
+    "location": "GENOVA PRA’",
+    "venue": "Palamare di Prà",
+    "address": "Prà - Genova",
+    "description": "incontro sulla riforma della Giustizia",
+    "image_path": "uploads/oldlocandina_1.png",
+    "added_on": "2026-02-10",
+    "is_new": false
+  },
+  {
+    "title": "VENERDI' 30 GENNAIO 2026 - GENOVA",
+    "date": "30 GENNAIO 2026",
+    "time": "17:30",
+    "location": "GENOVA",
+    "venue": "Brigata Alice ",
+    "address": "Vico Superiore di Pelliceria 1 - Genova",
+    "description": "incontro sulla riforma della Giustizia",
+    "image_path": "uploads/oldlocandina_2.png",
+    "added_on": "2026-02-10",
+    "is_new": false
+  },
+  {
+    "title": "LUNEDI' 2 FEBBRAIO 2026 - CHIAVARI",
+    "date": "2 FEBBRAIO 2026",
+    "time": "18:00",
+    "location": "CHIAVARI",
+    "venue": "Circolo Pd - Sala Gramsci",
+    "address": "Chaivari . Genova",
+    "description": "incontro sulla riforma della Giustizia",
+    "image_path": "uploads/oldlocandina_3.png",
+    "added_on": "2026-02-10",
+    "is_new": false
+  },
+  {
+    "title": "LUNEDI' 2 FEBBRAIO 2026 - GENOVA",
+    "date": "2 FEBBRAIO 2026",
+    "time": "19:30",
+    "location": "GENOVA  ",
+    "venue": "Cena delle Buone Idee ",
+    "address": " Via Petrarca 1 – Genova",
+    "description": "incontro sulla riforma della Giustizia",
+    "image_path": "uploads/oldlocandina_4.png",
+    "added_on": "2026-02-10",
+    "is_new": false
+  },
+  {
+    "title": "MARTEDI' 3 FEBBRAIO 2026 - GENOVA",
+    "date": "3 FEBBRAIO 2026",
+    "time": "17:30",
+    "location": "GENOVA",
+    "venue": "Circolo Arci Zenzero  ",
+    "address": "Via Torti 35 – Genova",
+    "description": " incontro sulla riforma della Giustizia",
+    "image_path": "uploads/oldlocandina_5.png",
+    "added_on": "2026-02-10",
+    "is_new": false
+  },
+  {
+    "title": "MERCOLEDI' 4 FEBBRAIO 2026 - PIETRA LIGURE",
+    "date": "4 FEBBRAIO 2026",
+    "time": "16:00",
+    "location": "PIETRA LIGURE",
+    "venue": "Sala Consiliare Comune ",
+    "address": "piazza Martiri della Libertà 30 - Pietra Ligure - Savona",
+    "description": "incontro sulla riforma della Giustizia",
+    "image_path": "uploads/oldlocandina_7.png",
+    "added_on": "2026-02-10",
+    "is_new": false
+  },
+  {
+    "title": "MERCOLEDI' 4 FEBBRAIO 2026 - CEPARANA",
+    "date": "4 FEBBRAIO 2026",
+    "time": "17:30",
+    "location": "CEPARANA",
+    "venue": "Centro Sociale POLIS",
+    "address": "Via Enrico Fermi 7 – Ceparana – La Spezia ",
+    "description": "",
+    "image_path": "uploads/oldlocandina_6.png",
+    "added_on": "2026-02-10",
+    "is_new": false
+  },
+  {
+    "title": "MERCOLEDI' 4 FEBBRAIO 2026 - GENOVA",
+    "date": "4 FEBBRAIO 2026",
+    "time": "17:30",
+    "location": "GENOVA",
+    "venue": "Amici del Chiaravagna",
+    "address": "Via Travi 70 - Sestri Ponente _Genova",
+    "description": "incontro sulla riforma della Giustizia",
+    "image_path": "uploads/oldlocandina_8.png",
+    "added_on": "2026-02-10",
+    "is_new": false
+  },
+  {
+    "title": "GIOVEDI' 5 FEBBRAIO 2026 - ALBENGA",
+    "date": "5 FEBBRAIO 2026",
+    "time": "21:00",
+    "location": "ALBENGA",
+    "venue": "Auditorium San Carlo",
+    "address": "Via Roma 70 - Albenga - Savona",
+    "description": "incontro sulla riforma della Giustizia",
+    "image_path": "uploads/oldlocandina_9.png",
+    "added_on": "2026-02-10",
+    "is_new": false
+  },
+  {
+    "title": "GIOVEDI' 5 FEBBRAIO 2026 - GENOVA",
+    "date": "5 FEBBRAIO 2026",
+    "time": "17:30",
+    "location": "GENOVA",
+    "venue": "AVS -  Sinistra Iataliana",
+    "address": "Piazza dell Olmo 3, Genova",
+    "description": "",
+    "image_path": "uploads/oldlocandina_11.png",
+    "added_on": "2026-02-10",
+    "is_new": false
+  },
+  {
+    "title": "SABATO 7 FEBBRAIO 2026 - GENOVA",
+    "date": "7 FEBBRAIO 2026",
     "time": "16:30",
     "location": "GENOVA",
     "venue": "Circolo Zenzero",
     "address": "Via Torti 35 - Genova",
-    "description": "Referendum Perchè votare NO",
+    "description": "pigli è tanto cattiva",
     "image_path": "uploads/locandina_1.png",
     "added_on": "2026-02-06",
     "is_new": false
   },
   {
-    "title": "SABATO' 07 FEBBRAIO 2026 - PEGLI",
-    "date": "07 FEBBRAIO 2026",
+    "title": "SABATO 7 FEBBRAIO 2026 - PEGLI",
+    "date": "7 FEBBRAIO 2026",
     "time": "10:00",
     "location": "PEGLI",
     "venue": "A.N.P.I. Pegli ",
@@ -24,8 +144,8 @@
     "is_new": false
   },
   {
-    "title": "DOMENICA 08 FEBBRAIO 2026 - MASSA CARRARA",
-    "date": "08 FEBBRAIO 2026",
+    "title": "DOMENICA 8 FEBBRAIO 2026 - MASSA CARRARA",
+    "date": "8 FEBBRAIO 2026",
     "time": "17:15",
     "location": "MASSA CARRARA",
     "venue": " Sala Autorità Portuale",
@@ -36,8 +156,8 @@
     "is_new": false
   },
   {
-    "title": "LUNEDI' 09 FEBBRAIO 2026 - GENOVA",
-    "date": "09 FEBBRAIO 2026",
+    "title": "LUNEDI' 9 FEBBRAIO 2026 - GENOVA",
+    "date": "9 FEBBRAIO 2026",
     "time": "17:30",
     "location": "GENOVA",
     "venue": "Circolo PD San Fruttuoso",
@@ -225,7 +345,7 @@
     "is_new": false
   },
   {
-    "title": "SABATO' 14 FEBBRAIO 2026 - SANREMO",
+    "title": "SABATO 14 FEBBRAIO 2026 - SANREMO",
     "date": "14 FEBBRAIO 2026",
     "time": "17:00",
     "location": "SANREMO",
@@ -269,6 +389,18 @@
     "added_on": "2026-02-05"
   },
   {
+    "title": "LUNEDI' 16 FEBBRAIO 2026 - IMPERIA",
+    "date": "16 FEBBRAIO 2026",
+    "time": "18:30",
+    "location": "IMPERIA",
+    "venue": " sede provinciale ACLI",
+    "address": "via Don Abbo 24, Imperia",
+    "description": "Incontro di Approfondimento sul Prossimo Quesito ",
+    "image_path": "uploads/IMG-20260210-WA0009.jpg",
+    "added_on": "2026-02-10",
+    "is_new": true
+  },
+  {
     "title": "MARTEDI' 17 FEBBRAIO 2026 - GENOVA",
     "date": "17 FEBBRAIO 2026",
     "location": "GENOVA",
@@ -290,6 +422,18 @@
     "image_path": "uploads/banchiResidenza.jpg",
     "added_on": "2026-02-06",
     "is_new": false
+  },
+  {
+    "title": "MARTEDI' 17 FEBBRAIO 2026 - BORGIO VEREZZI",
+    "date": "17 FEBBRAIO 2026",
+    "time": "17:00",
+    "location": "BORGIO VEREZZI",
+    "venue": "SALA CONSIGLIARE DEL COMUNE DI BORGIO VEREZZI ",
+    "address": "Borgio Verezzi -  Savona",
+    "description": "",
+    "image_path": "uploads/borgio Verezzi.jpg",
+    "added_on": "2026-02-10",
+    "is_new": true
   },
   {
     "title": "MERCOLEDI' 18 FEBBRAIO 2026 - BRUGNATO",
@@ -339,7 +483,7 @@
     "is_new": false
   },
   {
-    "title": "VENERDI' 20 FEBBRAIO 2026 - GENOVA TRASTA",
+    "title": "VENERDI' 20 FEBBRAIO 2026 - GENOVA",
     "date": "20 FEBBRAIO 2026",
     "time": "20:30",
     "location": "GENOVA",
@@ -351,7 +495,7 @@
     "is_new": false
   },
   {
-    "title": "SABATO' 21 FEBBRAIO 2026 - CASOLA IN LUNIGIANA",
+    "title": "SABATO 21 FEBBRAIO 2026 - CASOLA IN LUNIGIANA",
     "date": "21 FEBBRAIO 2026",
     "time": "10:30",
     "location": "CASOLA IN LUNIGIANA",
@@ -360,6 +504,18 @@
     "description": "incontro sulla riforma della Giustizia",
     "image_path": "uploads/WhatsApp Image 13.jpeg",
     "added_on": "2026-02-05"
+  },
+  {
+    "title": "SABATO 21 FEBBRAIO 2026 - GENOVA",
+    "date": "21 FEBBRAIO 2026",
+    "time": "16:30",
+    "location": "GENOVA",
+    "venue": "Anpi Valpocevera ",
+    "address": "Via Boggiano,11 - Bolzaneto - Genova",
+    "description": " Evento organizzato dalle ANPI Valpocevera e Libera Genova",
+    "image_path": "uploads/valpolcevera.jpg",
+    "added_on": "2026-02-10",
+    "is_new": true
   },
   {
     "title": "LUNEDI' 23 FEBBRAIO 2026 - SARZANA",
@@ -385,6 +541,30 @@
     "is_new": false
   },
   {
+    "title": "LUNEDI' 23 FEBBRAIO 2026 - MILLESIMO",
+    "date": "23 FEBBRAIO 2026",
+    "time": "18:00",
+    "location": "MILLESIMO",
+    "venue": "Sala Consiglio - Palazzo Comunale",
+    "address": "Piazza Italia - Millesimo - Savona",
+    "description": "",
+    "image_path": "uploads/IMG-20260210-WA0011.jpg",
+    "added_on": "2026-02-10",
+    "is_new": true
+  },
+  {
+    "title": "LUNEDI' 23 FEBBRAIO 2026 - VADO LIGURE",
+    "date": "23 FEBBRAIO 2026",
+    "time": "18:00",
+    "location": "VADO LIGURE",
+    "venue": "Centro Nautico Vadese",
+    "address": "Lungomare Matteotti -  Vado Ligure - Savona",
+    "description": "",
+    "image_path": "uploads/IMG-20260210-WA0012.jpg",
+    "added_on": "2026-02-10",
+    "is_new": true
+  },
+  {
     "title": "MARTEDI' 24 FEBBRAIO 2026 - SAVONA",
     "date": "24 FEBBRAIO 2026",
     "time": "18:00",
@@ -395,6 +575,18 @@
     "image_path": "uploads/PietroGrasso.jpg",
     "added_on": "2026-02-06",
     "is_new": false
+  },
+  {
+    "title": "MERCOLEDI' 25 FEBBRAIO 2026 - GENOVA",
+    "date": "25 FEBBRAIO 2026",
+    "time": "17:00",
+    "location": "GENOVA",
+    "venue": "Biblioteca UDI (Unione Donne Italiane)",
+    "address": "Via Cairoli 14/6 - Genova",
+    "description": "",
+    "image_path": "uploads/UDI_incontra.jpeg",
+    "added_on": "2026-02-10",
+    "is_new": true
   },
   {
     "title": "VENERDI' 27 FEBBRAIO 2026 - VARAZZE",
@@ -420,7 +612,19 @@
     "is_new": false
   },
   {
-    "title": "SABATO' 28 FEBBRAIO 2026 - LA SPEZIA",
+    "title": "VENERDI' 27 FEBBRAIO 2026 - VEZZANO LIGURE",
+    "date": "27 FEBBRAIO 2026",
+    "time": "21:00",
+    "location": "VEZZANO LIGURE",
+    "venue": "CENTRO SOCIALE A REVERE - COMITATO DI QUARTIERE SARCIARA",
+    "address": " Via G.Verdi 31 - Prati di Vezzano Ligure  - La Spezia",
+    "description": "",
+    "image_path": "uploads/VezzanoLigure.jpeg",
+    "added_on": "2026-02-10",
+    "is_new": true
+  },
+  {
+    "title": "SABATO 28 FEBBRAIO 2026 - LA SPEZIA",
     "date": "28 FEBBRAIO 2026",
     "time": "17:30",
     "location": "LA SPEZIA",
@@ -431,7 +635,7 @@
     "added_on": "2026-02-05"
   },
   {
-    "title": "SABATO' 28 FEBBRAIO 2026 - CHIAVARI",
+    "title": "SABATO 28 FEBBRAIO 2026 - CHIAVARI",
     "date": "28 FEBBRAIO 2026",
     "time": "17:00",
     "location": "CHIAVARI",
@@ -443,8 +647,32 @@
     "is_new": false
   },
   {
-    "title": "DOMENICA 01 MARZO 2026 - SARZANA",
-    "date": "01 MARZO 2026",
+    "title": "SABATO 28 FEBBRAIO 2026 - FINALE LIGURE",
+    "date": "28 FEBBRAIO 2026",
+    "time": "17:00",
+    "location": "FINALE LIGURE ",
+    "venue": "SALA GALLESIO",
+    "address": "Via Pertica - Finale Ligure - Savona",
+    "description": "",
+    "image_path": "uploads/finale ligure.jpg",
+    "added_on": "2026-02-10",
+    "is_new": true
+  },
+  {
+    "title": "SABATO 28 FEBBRAIO 2026 - ROSSIGLIONE",
+    "date": "28 FEBBRAIO 2026",
+    "time": "16:00",
+    "location": "ROSSIGLIONE",
+    "venue": "Sala Polivalente del Comune ",
+    "address": "Rossiglione - Genova",
+    "description": "",
+    "image_path": "uploads/rossiglione.jpg",
+    "added_on": "2026-02-10",
+    "is_new": true
+  },
+  {
+    "title": "DOMENICA 1 MARZO 2026 - SARZANA",
+    "date": "1 MARZO 2026",
     "time": "17:30",
     "location": "SARZANA",
     "venue": "circolo Arci nave",
@@ -454,8 +682,32 @@
     "added_on": "2026-02-05"
   },
   {
-    "title": "MARTEDI' 03 MARZO 2026 - LAVAGNA",
-    "date": "03 MARZO 2026",
+    "title": "LUNEDI' 2 MARZO 2026 - Marinella di Sarzana",
+    "date": "2 MARZO 2026",
+    "time": "17:30",
+    "location": "Marinella di Sarzana",
+    "venue": "Osteria del Tritone",
+    "address": "Viale J.F.Kennedy, 70 - Marinella di Sarzana - La Spezia",
+    "description": "",
+    "image_path": "uploads/MarinellaDiSarzana.jpeg",
+    "added_on": "2026-02-10",
+    "is_new": true
+  },
+  {
+    "title": "LUNEDI' 2 MARZO 2026 - ALBISOLA SUP",
+    "date": "2 MARZO 2026",
+    "time": "17:30",
+    "location": "ALBISOLA SUP",
+    "venue": "Auditorium Comunale",
+    "address": "Albisola - Savona",
+    "description": "",
+    "image_path": "uploads/IMG-20260210-WA0010.jpg",
+    "added_on": "2026-02-10",
+    "is_new": true
+  },
+  {
+    "title": "MARTEDI' 3 MARZO 2026 - LAVAGNA",
+    "date": "3 MARZO 2026",
     "time": "14:30",
     "location": "LAVAGNA",
     "venue": "Auditorium G.B. Campodonico",
@@ -465,8 +717,8 @@
     "added_on": "2026-02-05"
   },
   {
-    "title": "VENERDI' 06 MARZO 2026 - ISOLA DEL CANTONE",
-    "date": "06 MARZO 2026",
+    "title": "VENERDI' 6 MARZO 2026 - ISOLA DEL CANTONE",
+    "date": "6 MARZO 2026",
     "time": "20:30",
     "location": "ISOLA DEL CANTONE",
     "venue": "ex palestra",
@@ -476,8 +728,8 @@
     "added_on": "2026-02-05"
   },
   {
-    "title": "VENERDI' 06 MARZO 2026 - DIANO MARINA",
-    "date": "06 MARZO 2026",
+    "title": "VENERDI' 6 MARZO 2026 - DIANO MARINA",
+    "date": "6 MARZO 2026",
     "time": "17:30",
     "location": "DIANO MARINA",
     "venue": "Sala Polifunzionale Don Piana",
@@ -488,8 +740,8 @@
     "is_new": false
   },
   {
-    "title": "LUNEDI' 09 MARZO 2026 - BOGLIASCO",
-    "date": "09 MARZO 2026",
+    "title": "LUNEDI' 9 MARZO 2026 - BOGLIASCO",
+    "date": "9 MARZO 2026",
     "time": "20.30 ",
     "location": "BOGLIASCO",
     "venue": "sala comunale Berto Ferrari",
@@ -556,5 +808,29 @@
     "image_path": "uploads/GherardoColombo.jpg",
     "added_on": "2026-02-06",
     "is_new": false
+  },
+  {
+    "title": "MARTEDI' 24 FEBBRAIO 2026 - GENOVA",
+    "date": "24 FEBBRAIO 2026",
+    "time": "18:00",
+    "location": "GENOVA",
+    "venue": "Centro Civico",
+    "address": "VIA BOBBIO 21 D, Genova",
+    "description": "",
+    "image_path": "uploads/IMG-20260211-WA0000.jpg",
+    "added_on": "2026-02-11",
+    "is_new": true
+  },
+  {
+    "title": "MERCOLEDI' 25 FEBBRAIO 2026 - GENOVA",
+    "date": "25 FEBBRAIO 2026",
+    "time": "17:00",
+    "location": "GENOVA",
+    "venue": "Ordine Dottori Commercialisti",
+    "address": "Via IV Novembre 6/7 - Genova",
+    "description": "",
+    "image_path": "uploads/Screenshot_20260211_090414_Samsung Notes.jpg",
+    "added_on": "2026-02-11",
+    "is_new": true
   }
 ]
