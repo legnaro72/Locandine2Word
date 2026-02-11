@@ -332,7 +332,7 @@ with st.sidebar:
             del st.session_state['events']
         st.rerun()
 
-tab1, tab2, tab3 = st.tabs(["📤 Carica & Analizza", "📋 Modifica Dati", "📖 Export Word"])
+tab4, tab1, tab2, tab3 = st.tabs(["📊 Statistiche", "📤 Carica & Analizza", "📋 Modifica Dati", "📖 Export Word"])
 
 # --- TAB 1: CARICAMENTO ---
 with tab1:
@@ -860,3 +860,145 @@ with tab3:
                         mime="application/vnd.openxmlformats-officedocument.wordprocessingml.document"
                     )
                 st.success("Documento pronto!")
+
+# --- TAB 4: STATISTICHE ---
+with tab4:
+    st.subheader("📊 Analisi e Distribuzione Eventi")
+    
+    events_list_stats = st.session_state.get('events', [])
+    
+    if not events_list_stats:
+        st.info("Nessun dato disponibile per le statistiche. Carica degli eventi per iniziare.")
+    else:
+        # Calcoli di base
+        total_ev = len(events_list_stats)
+        now = datetime.now()
+        
+        expired_count = 0
+        new_count = 0
+        active_count = 0
+        
+        for ev in events_list_stats:
+            ev_date = WordGenerator.get_sort_date(ev)
+            if ev.get('is_new'):
+                new_count += 1
+            
+            if ev_date != datetime.max and ev_date.date() < now.date():
+                expired_count += 1
+            else:
+                active_count += 1
+
+        # Metriche principali
+        m1, m2, m3, m4 = st.columns(4)
+        m1.metric("Totale Eventi", total_ev)
+        m2.metric("Attivi (Futuri)", active_count)
+        m3.metric("Scaduti", expired_count)
+        m4.metric("Nuovi (NEW)", new_count)
+        
+        st.divider()
+        
+        # Mappatura Province/Regioni (Stessa logica del WordGenerator)
+        PROV_TO_REG = {
+            'GENOVA': 'LIGURIA', 'LA SPEZIA': 'LIGURIA', 'SAVONA': 'LIGURIA', 
+            'IMPERIA': 'LIGURIA', 'MASSA': 'TOSCANA'
+        }
+        
+        stats_geo = {
+            'LIGURIA': {'total': 0, 'provinces': {'GENOVA': 0, 'LA SPEZIA': 0, 'SAVONA': 0, 'IMPERIA': 0}},
+            'TOSCANA': {'total': 0, 'provinces': {'MASSA': 0}},
+            'ALTRO': {'total': 0, 'cities': {}}
+        }
+
+        # Elaborazione Geografica
+        for ev in events_list_stats:
+            prov_found = WordGenerator.get_province(ev)
+            loc = ev.get('location', 'N/D').strip().upper()
+            
+            reg = PROV_TO_REG.get(prov_found)
+            if reg:
+                stats_geo[reg]['total'] += 1
+                if prov_found in stats_geo[reg]['provinces']:
+                    stats_geo[reg]['provinces'][prov_found] += 1
+            else:
+                stats_geo['ALTRO']['total'] += 1
+                stats_geo['ALTRO']['cities'][loc] = stats_geo['ALTRO']['cities'].get(loc, 0) + 1
+
+        # --- GRAFICI INTERATTIVI ---
+        import pandas as pd
+        import altair as alt
+
+        col_g1, col_g2 = st.columns(2)
+        
+        with col_g1:
+            st.markdown("#### 🌍 Distribuzione Regionale")
+            reg_df = pd.DataFrame({
+                "Regione": ["LIGURIA", "TOSCANA", "ALTRO"],
+                "Eventi": [stats_geo['LIGURIA']['total'], stats_geo['TOSCANA']['total'], stats_geo['ALTRO']['total']]
+            })
+            # Rimuoviamo righe con 0 eventi per pulizia grafico
+            reg_df = reg_df[reg_df["Eventi"] > 0]
+            if not reg_df.empty:
+                # Creazione Grafico a Torta (Donut) con Altair
+                pie_chart = alt.Chart(reg_df).mark_arc(innerRadius=50).encode(
+                    theta=alt.Theta(field="Eventi", type="quantitative"),
+                    color=alt.Color(field="Regione", type="nominal", scale=alt.Scale(range=['#667eea', '#764ba2', '#ff9a9e'])),
+                    tooltip=['Regione', 'Eventi']
+                ).properties(height=300)
+                
+                st.altair_chart(pie_chart, use_container_width=True)
+            else:
+                st.write("Nessun dato regionale.")
+
+        with col_g2:
+            st.markdown("#### 🗺️ Dettaglio Province")
+            prov_data = []
+            for reg in ['LIGURIA', 'TOSCANA']:
+                for p, count in stats_geo[reg]['provinces'].items():
+                    if count > 0:
+                        prov_data.append({"Provincia": p, "Eventi": count})
+            
+            if prov_data:
+                prov_df = pd.DataFrame(prov_data).sort_values(by="Eventi", ascending=False)
+                st.bar_chart(prov_df, x="Provincia", y="Eventi", color="#764ba2")
+            else:
+                st.write("Nessun dato provinciale.")
+
+        st.divider()
+        
+        # --- SECONDA RIGA GRAFICI ---
+        col_g3, col_g4 = st.columns([2, 1])
+        
+        with col_g3:
+            st.markdown("#### 📍 Top 10 Località")
+            all_locations = {}
+            for ev in events_list_stats:
+                loc = ev.get('location', 'N/D').strip().upper()
+                all_locations[loc] = all_locations.get(loc, 0) + 1
+            
+            loc_df = pd.DataFrame([{"Località": k, "Eventi": v} for k, v in all_locations.items()])
+            loc_df = loc_df.sort_values(by="Eventi", ascending=False).head(10)
+            
+            if not loc_df.empty:
+                st.bar_chart(loc_df, x="Località", y="Eventi", horizontal=True, color="#667eea")
+            else:
+                st.write("Dati non sufficienti.")
+
+        with col_g4:
+            st.markdown("#### 📊 Stato Archivio")
+            status_df = pd.DataFrame({
+                "Stato": ["Attivi", "Scaduti", "NEW"],
+                "Conteggio": [active_count, expired_count, new_count]
+            })
+            st.data_editor(
+                status_df,
+                column_config={
+                    "Conteggio": st.column_config.NumberColumn(
+                        format="%d 🎭",
+                    ),
+                },
+                hide_index=True,
+                use_container_width=True
+            )
+
+        st.divider()
+        st.info("💡 I grafici si aggiornano automaticamente ogni volta che modifichi o aggiungi un evento.")
