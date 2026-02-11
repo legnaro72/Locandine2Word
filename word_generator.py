@@ -73,6 +73,15 @@ class WordGenerator:
                 run_comp = p_comp.add_run()
                 # Dimensione leggermente ridotta per stare sotto il testo
                 run_comp.add_picture(completed_img, width=Inches(1.5))
+        
+        # LOGICA NEW: Se l'evento è contrassegnato come NEW, aggiungi l'immagine 'new.jpg'
+        if event_data.get('is_new'):
+            new_img_path = "new.jpg"
+            if os.path.exists(new_img_path):
+                p_new = right_cell.add_paragraph()
+                p_new.alignment = WD_ALIGN_PARAGRAPH.CENTER
+                run_new = p_new.add_run()
+                run_new.add_picture(new_img_path, width=Inches(1.5))
 
         # Aggiungi spazio dopo la tabella
         self.doc.add_paragraph()
