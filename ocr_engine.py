@@ -9,11 +9,17 @@ from typing import Dict, Optional, List
 import numpy as np
 
 
+import streamlit as st
+
 class LocandineOCR:
     def __init__(self):
-        """Inizializza il reader OCR per italiano"""
-        # Usiamo solo 'it' per evitare che interpreti testi italiani come parole inglesi simili
-        self.reader = easyocr.Reader(['it'], gpu=False)
+        """Inizializza il reader OCR tramite cache"""
+        self.reader = self._get_reader()
+    
+    @st.cache_resource
+    def _get_reader(_self):
+        """Carica il modello OCR e lo tiene in cache (risparmia RAM su Cloud)"""
+        return easyocr.Reader(['it'], gpu=False)
     
     def extract_text(self, image_path: str) -> str:
         """Estrae tutto il testo dall'immagine"""

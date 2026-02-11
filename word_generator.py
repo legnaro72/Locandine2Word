@@ -220,6 +220,8 @@ class WordGenerator:
                     'PEGLI': 'GENOVA', 'BOLZANETO': 'GENOVA', 'VOLTRI': 'GENOVA', 'NERVI': 'GENOVA',
                     'SARZANA': 'LA SPEZIA', 'FOLLO': 'LA SPEZIA', 'LERICI': 'LA SPEZIA',
                     'BRUGNATO': 'LA SPEZIA', 'PIGNONE': 'LA SPEZIA',
+                    'CEPARANA': 'LA SPEZIA', 'VEZZANO LIGURE': 'LA SPEZIA', 'VEZZANO': 'LA SPEZIA',
+                    'MARINELLA DI SARZANA': 'LA SPEZIA', 'MARINELLA': 'LA SPEZIA',
                     'CARCARE': 'SAVONA', 'VARAZZE': 'SAVONA',
                     'AULLA': 'MASSA', 'CARRARA': 'MASSA'
                 }
