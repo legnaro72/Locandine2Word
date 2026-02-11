@@ -38,6 +38,7 @@ class WordGenerator:
         """
         Aggiunge una singola entry evento al documento
         Formato: Tabella 1x2 (immagine a sinistra, testo o immagine a destra)
+        Se l'evento è scaduto, aggiunge 'completed.jpg' nella colonna di destra.
         """
         # Crea tabella 1 riga x 2 colonne
         table = self.doc.add_table(rows=1, cols=2)
@@ -46,25 +47,33 @@ class WordGenerator:
         if show_borders:
             table.style = 'Table Grid'
         else:
-            # Rimuove bordi se non è settato 'Table Grid' di default, 
-            # o usa uno stile senza bordi. 
-            # In python-docx 'Normal Table' di solito non ha bordi visibili.
             table.style = 'Normal Table'
         
         # Imposta larghezza colonne (40% immagine, 60% testo/immagine)
-        # Nota: In modalità minimal, potremmo volerle uguali, ma manteniamo la struttura per ora
         table.columns[0].width = Inches(3.25)
         table.columns[1].width = Inches(3.25)
         
         # Cella Sinistra (Sempre Immagine)
         left_cell = table.rows[0].cells[0]
-        # Immagine leggermente più grande per armonia (2.8 invece di 2.5)
         self._insert_image(left_cell, image_path, width=Inches(2.8))
 
         # Cella Destra (Testo descrittivo)
         right_cell = table.rows[0].cells[1]
         self._insert_text_details(right_cell, event_data)
         
+        # LOGICA SCADUTI: Se l'evento è scaduto, aggiungi l'immagine 'completed.jpg'
+        now = datetime.now()
+        ev_date = self.get_sort_date(event_data)
+        if ev_date != datetime.max and ev_date.date() < now.date():
+            completed_img = "completed.jpg"
+            if os.path.exists(completed_img):
+                # Aggiungi un nuovo paragrafo per l'immagine completata
+                p_comp = right_cell.add_paragraph()
+                p_comp.alignment = WD_ALIGN_PARAGRAPH.CENTER
+                run_comp = p_comp.add_run()
+                # Dimensione leggermente ridotta per stare sotto il testo
+                run_comp.add_picture(completed_img, width=Inches(1.5))
+
         # Aggiungi spazio dopo la tabella
         self.doc.add_paragraph()
 
@@ -399,6 +408,14 @@ class WordGenerator:
         
         # Immagine (Sotto il titolo)
         img_path = event_data.get('image_path', '')
+        
+        # LOGICA SCADUTI MINIMAL: Se scaduto, mostra completed.jpg invece della locandina
+        now = datetime.now()
+        ev_date = WordGenerator.get_sort_date(event_data)
+        if ev_date != datetime.max and ev_date.date() < now.date():
+            if os.path.exists("completed.jpg"):
+                img_path = "completed.jpg"
+
         if img_path and os.path.exists(img_path):
             p_img = cell.add_paragraph()
             p_img.alignment = WD_ALIGN_PARAGRAPH.CENTER
