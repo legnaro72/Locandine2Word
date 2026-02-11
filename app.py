@@ -162,6 +162,20 @@ GITHUB_REPO = "legnaro72/Locandine2Word"
 if 'github_manager' not in st.session_state and GITHUB_TOKEN:
     st.session_state.github_manager = GithubManager(GITHUB_TOKEN, GITHUB_REPO)
 
+# --- AUTO-SYNC CLOUD ALL'AVVIO ---
+if GITHUB_TOKEN and 'data_initialized' not in st.session_state:
+    with st.spinner("Sincronizzazione dati dal cloud..."):
+        try:
+            # Tenta di scaricare l'ultimo stato da GitHub
+            zip_content = st.session_state.github_manager.download_backup()
+            st.session_state.github_manager.restore_from_zip(zip_content)
+            st.toast("✅ Dati sincronizzati dal cloud!", icon="☁️")
+        except Exception as e:
+            # Se è il primo avvio assoluto o il backup non esiste, ignoriamo l'errore
+            if "404" not in str(e):
+                st.info("Avviso: Nessun backup cloud trovato o sincronizzazione non riuscita. Caricamento dati locali.")
+    st.session_state.data_initialized = True
+
 if 'events' not in st.session_state:
     st.session_state.events = []
     if os.path.exists(DATA_FILE):
@@ -171,10 +185,8 @@ if 'events' not in st.session_state:
                 if isinstance(content, list):
                     # Normalizzazione automatica al caricamento
                     for ev in content:
-                        # 1. Normalizzazione percorsi (\ -> /)
                         if 'image_path' in ev:
                             ev['image_path'] = ev['image_path'].replace('\\', '/')
-                        # 2. Normalizzazione DATE (Forza Italiano se erano in inglese)
                         if 'date' in ev:
                             ev['date'] = normalize_date_to_italian(ev['date'])
                     st.session_state.events = content
