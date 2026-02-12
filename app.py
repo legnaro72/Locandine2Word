@@ -324,40 +324,40 @@ st.markdown('<h1 class="main-header">🎭 Locandine2Word</h1>', unsafe_allow_htm
 if 'audio_enabled' not in st.session_state:
     st.session_state.audio_enabled = True
 
-# --- AUDIO DI BACKGROUND ---
-# Implementazione Base64 "Stealth" (Visibile al browser ma invisibile all'occhio)
-# Questo aggira il blocco che i browser applicano agli elementi "display: none"
-if st.session_state.audio_enabled:
-    if os.path.exists("audio.mp3"):
-        # Controllo dimensione file (Max 10MB consigliato per Base64)
-        file_size_mb = os.path.getsize("audio.mp3") / (1024 * 1024)
-        
-        if file_size_mb > 10:
-            st.warning(f"⚠️ Il file audio è grande ({file_size_mb:.1f} MB). Su Cloud potrebbe non caricarsi. Consigliato < 5 MB.")
-        
-        # Carica e converti
-        with open("audio.mp3", "rb") as f:
-            audio_bytes = f.read()
-            audio_base64 = base64.b64encode(audio_bytes).decode()
-            
-        # Player HTML MINIMALE (Esattamente come nell'esempio funzionante)
-        # Nota: Senza l'attributo 'controls', il player è invisibile di default ma l'audio suona.
-        # NON usare display:none perché blocca l'autoplay su Cloud/Mobile.
-        audio_html = f"""
-            <audio autoplay loop>
-                <source src="data:audio/mp3;base64,{audio_base64}" type="audio/mp3">
-            </audio>
-        """
-        st.markdown(audio_html, unsafe_allow_html=True)
-    else:
-        st.error("⚠️ File 'audio.mp3' non trovato! Assicurati di averlo caricato nel repository.")
+
 
 with st.sidebar:
     st.header("⚙️ Opzioni")
     
-    # --- AUDIO DI BACKGROUND ---
-    # La checkbox controlla direttamente lo stato 'audio_enabled' definito sopra
-    st.checkbox("🎵 Musica di sottofondo", key="audio_enabled")
+    # --- AUDIO DI BACKGROUND (Replica Fedele Esempio) ---
+    st.markdown(f"<h3 style='text-align:center;'>🎵 MUSIC PLAYER</h3>", unsafe_allow_html=True)
+    
+    # Usa st.checkbox come richiesto (l'esempio usava st.toggle ma checkbox va bene uguale)
+    audio_on = st.checkbox("🔊 Musica di sottofondo", value=True, key="audio_control")
+    
+    if audio_on:
+        if os.path.exists("audio.mp3"):
+            try:
+                # 1. Caricamento Base64 (Come nell'esempio)
+                with open("audio.mp3", "rb") as f:
+                    audio_bytes = f.read()
+                    audio_base64 = base64.b64encode(audio_bytes).decode()
+                
+                # 2. Player HTML Semplice (Senza CSS, Invisibile perché no controls)
+                audio_html = f"""
+                    <audio autoplay loop>
+                    <source src="data:audio/mp3;base64,{audio_base64}" type="audio/mp3">
+                    Your browser does not support the audio element.
+                    </audio>
+                """
+                st.markdown(audio_html, unsafe_allow_html=True)
+                st.caption("� Musica attiva")
+            except Exception as e:
+                st.error(f"Errore caricamento audio: {e}")
+        else:
+            st.error("⚠️ File 'audio.mp3' non trovato!")
+    else:
+        st.caption("🔇 Musica disattivata")
     
     st.divider()
     doc_name = st.text_input("Nome file Word", "Eventi.docx")
