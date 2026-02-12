@@ -325,20 +325,21 @@ if 'audio_enabled' not in st.session_state:
     st.session_state.audio_enabled = True
 
 # --- AUDIO DI BACKGROUND ---
-# Implementazione semplice e robusta (Posizionata in alto come nell'esempio)
+# Implementazione nativa Streamlit (Più efficiente per Cloud)
 if st.session_state.audio_enabled:
     if os.path.exists("audio.mp3"):
-        with open("audio.mp3", "rb") as f:
-            audio_bytes = f.read()
-            audio_base64 = base64.b64encode(audio_bytes).decode()
-            
-        audio_html = f"""
-            <audio autoplay loop style="display:none">
-            <source src="data:audio/mp3;base64,{audio_base64}" type="audio/mp3">
-            Your browser does not support the audio element.
-            </audio>
-        """
-        st.markdown(audio_html, unsafe_allow_html=True)
+        # CSS per nascondere il player audio nativo
+        st.markdown("""
+            <style>
+                /* Nasconde il player audio di Streamlit */
+                [data-testid="stAudio"] {
+                    display: none;
+                }
+            </style>
+        """, unsafe_allow_html=True)
+        
+        # Usa il componente nativo che gestisce meglio lo streaming
+        st.audio("audio.mp3", format="audio/mp3", loop=True, autoplay=True)
     else:
         st.error("⚠️ File 'audio.mp3' non trovato! Assicurati di averlo caricato nel repository.")
 
