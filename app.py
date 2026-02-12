@@ -259,46 +259,22 @@ audio_base64 = get_audio_base64("audio.mp3")
 if "audio_enabled" not in st.session_state:
     st.session_state.audio_enabled = True
 
-# Parte subito, visibile in sidebar
+# --- AUDIO PLAYER (VERSIONE STABILE) ---
 if audio_base64:
     with st.sidebar:
         st.markdown(f"<h3 style='text-align:center;'>🎵 MUSIC PLAYER</h3>", unsafe_allow_html=True)
-        # Toggle semplice
         audio_on = st.toggle("🔊 Musica di sottofondo", value=True)
         
         if audio_on:
-            # HTML Audio con JAVASCRIPT RETRY
-            # Se il file è grosso, l'autoplay fallisce subito. Questo script riprova ogni secondo.
             import time
-            audio_id = f"audio-{int(time.time())}"
+            # HTML Puro con Timestamp:
+            # - Il timestamp forza il browser a trattare questo come un NUOVO elemento audio dopo il click "ENTRA"
+            # - Autoplay funziona perché c'è stata interazione (il click su ENTRA)
             audio_html = f"""
-                <audio id="{audio_id}" loop>
+                <audio autoplay loop>
                     <source src="data:audio/mp3;base64,{audio_base64}" type="audio/mp3">
+                    <!-- Refresh ID: {time.time()} -->
                 </audio>
-                
-                <script>
-                    (function() {{
-                        var audio = document.getElementById("{audio_id}");
-                        var attempts = 0;
-                        var maxAttempts = 20; // Riprova per 20 secondi
-                        
-                        var playAttempt = setInterval(function() {{
-                            audio.play()
-                            .then(() => {{
-                                console.log("Audio started successfully!");
-                                clearInterval(playAttempt);
-                            }})
-                            .catch(error => {{
-                                console.log("Audio play failed, retrying...", error);
-                                attempts++;
-                                if (attempts >= maxAttempts) {{
-                                    clearInterval(playAttempt);
-                                    console.log("Audio autoplay gave up.");
-                                }}
-                            }});
-                        }}, 1000); 
-                    }})();
-                </script>
             """
             st.markdown(audio_html, unsafe_allow_html=True)
             st.caption("🎶 Musica attiva")
