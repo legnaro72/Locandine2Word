@@ -62,15 +62,16 @@ def save_optimized_image(input_source, save_path, max_width=1200):
     except Exception as e:
         return False
 
-# --- FUNZIONE DI PARSING INTELLIGENTE ---
+# --- FUNZIONE DI PARSING INTELLIGENTE MIGLIORATA ---
 def parse_event_text(text):
     """
-    Analizza il testo OCR e lo suddivide nei campi specifici richiesti secondo le regole:
-    1. Data: dopo il giorno della settimana (Lunedì ecc) + anno 2026.
-    2. Ora: dopo "Ore".
-    3. Luogo: dopo la data (separato da trattino).
-    4. Descrizione: contenuto tra data/luogo e presso.
-    5. Presso: tra "presso" e "Ore".
+    Analizza il testo OCR e lo suddivide nei campi specifici con le seguenti regole:
+    1. Data: cerca pattern tipo "gg mese yyyy" (es: 15 GENNAIO 2026)
+    2. Ora: cerca pattern tipo "hh:mm" o "hh.mm" (es: 18:30 o 18.30)
+    3. Indirizzo: tutto ciò che segue "via", "piazza", "corso", etc.
+    4. Presso: tutto ciò che segue la parola "presso"
+    5. Descrizione: SEMPRE il testo OCR completo come backup
+    6. Luogo: la città/zona (dopo il trattino nella prima riga)
     """
     data = {
         'title': '', 'date': '', 'location': '', 'description': '',
@@ -80,57 +81,116 @@ def parse_event_text(text):
     if not text:
         return data
 
+    # ===== SALVA SEMPRE IL TESTO COMPLETO COME BACKUP =====
+    data['description'] = text.strip()
+
     # Pulizia preliminare
-    text = text.replace('\r', '')
-    lines = [l.strip() for l in text.split('\n') if l.strip()]
+    text_clean = text.replace('\r', '')
+    lines = [l.strip() for l in text_clean.split('\n') if l.strip()]
     if not lines:
         return data
 
-    # --- 1 & 3. DATA E LUOGO (Dalla prima riga) ---
+    # --- 1. ESTRAZIONE DATA (Pattern: gg mese yyyy) ---
+    # Cerca pattern come: "15 GENNAIO 2026", "15 gennaio 2026", "15/01/2026"
+    date_patterns = [
+        r'\b(\d{1,2}\s+(?:GENNAIO|FEBBRAIO|MARZO|APRILE|MAGGIO|GIUGNO|LUGLIO|AGOSTO|SETTEMBRE|OTTOBRE|NOVEMBRE|DICEMBRE)\s+\d{4})\b',
+        r'\b(\d{1,2}\s+(?:gennaio|febbraio|marzo|aprile|maggio|giugno|luglio|agosto|settembre|ottobre|novembre|dicembre)\s+\d{4})\b',
+        r'\b(\d{1,2}[\/\.\-]\d{1,2}[\/\.\-]\d{4})\b',
+    ]
+    
+    for pattern in date_patterns:
+        date_match = re.search(pattern, text, re.IGNORECASE)
+        if date_match:
+            raw_date = date_match.group(1).strip()
+            data['date'] = normalize_date_to_italian(raw_date)
+            break
+    
+    # Se non troviamo l'anno, aggiungi 2026 di default
+    if not data['date']:
+        # Cerca almeno giorno + mese
+        date_partial = re.search(r'\b(\d{1,2}\s+(?:GENNAIO|FEBBRAIO|MARZO|APRILE|MAGGIO|GIUGNO|LUGLIO|AGOSTO|SETTEMBRE|OTTOBRE|NOVEMBRE|DICEMBRE))\b', text, re.IGNORECASE)
+        if date_partial:
+            raw_date = date_partial.group(1).strip() + " 2026"
+            data['date'] = normalize_date_to_italian(raw_date)
+
+    # --- 2. ESTRAZIONE ORA (Pattern: hh:mm o hh.mm) ---
+    # Cerca pattern come: "18:30", "18.30", "Ore 18:30", "h 18.30"
+    time_patterns = [
+        r'\b(?:Ore|ore|h|H)\s*(\d{1,2}[:\.]\d{2})\b',
+        r'\b(\d{1,2}[:\.]\d{2})\s*(?:Ore|ore|h|H)?\b',
+    ]
+    
+    for pattern in time_patterns:
+        time_match = re.search(pattern, text)
+        if time_match:
+            time_str = time_match.group(1).replace('.', ':')
+            data['time'] = time_str
+            break
+
+    # --- 3. ESTRAZIONE LUOGO (Dalla prima riga dopo eventuale data) ---
+    # Di solito è: "LUNEDÌ 15 GENNAIO 2026 - GENOVA"
     first_line = lines[0]
-    # Rimuove giorno della settimana (es: LUNEDÌ, MARTEDÌ...)
+    # Rimuove giorno settimana
     clean_first = re.sub(r'^(?:LUNED[ÌI]|MARTED[ÌI]|MERCOLED[ÌI]|GIOVED[ÌI]|VENERD[ÌI]|SABATO|DOMENICA)\s*', '', first_line, flags=re.IGNORECASE).strip()
     
-    # Split per trovare il Luogo (solitamente dopo un trattino '–' o '-')
-    parts = re.split(r'\s*[–-]\s*', clean_first, maxsplit=1)
-    
-    raw_date = parts[0].strip()
-    data['date'] = normalize_date_to_italian(raw_date)
-    
+    # Cerca il trattino che separa data da luogo
+    parts = re.split(r'\s*[–\-]\s*', clean_first, maxsplit=1)
     if len(parts) > 1:
         data['location'] = parts[1].strip()
 
-    # --- 2, 4 & 5. DESCRIZIONE, PRESSO, ORA (Dal resto del testo) ---
-    full_rest = "\n".join(lines[1:])
+    # --- 4. ESTRAZIONE INDIRIZZO (tutto dopo via/piazza/corso) ---
+    # Cerca tutto ciò che segue "Via", "Piazza", "Corso", "Vico", "Largo", "Strada"
+    address_patterns = [
+        r'(?:Via|Vico|Piazza|Corso|Largo|Strada)\s+[^\n]+',
+    ]
     
-    # Estrazione Ora (Ore 18.00 -> 18:00)
-    time_match = re.search(r'(?:Ore|ore)\s*(\d{1,2}[:.,]\d{2})', full_rest)
-    if time_match:
-        data['time'] = time_match.group(1).replace('.', ':').replace(',', ':')
+    for pattern in address_patterns:
+        addr_match = re.search(pattern, text, re.IGNORECASE)
+        if addr_match:
+            # Estrai la riga completa
+            addr_full = addr_match.group(0).strip()
+            # Pulisci eventuale "- Ore" o altri separatori alla fine
+            addr_full = re.sub(r'\s*[-–]\s*(?:Ore|ore).*$', '', addr_full).strip()
+            data['address'] = addr_full
+            break
+
+    # --- 5. ESTRAZIONE PRESSO/VENUE (parole chiave comuni) ---
+    # Cerca "presso" oppure parole chiave come: sala, circolo, teatro, auditorium, centro, biblioteca, etc.
+    venue_patterns = [
+        # Con "presso"
+        r'presso\s+([^\n]+?)(?:\s*[-–]\s*(?:Ore|ore|h|H)|$)',
+        r'presso\s+([^\n]+)',
+        # Senza "presso" - cerca parole chiave comuni e continua fino a newline o fermati prima di Via/Ore
+        r'\b(Sala\s+[^\n]+?)(?=\s*$|\s*\n|(?:\s+(?:Via|Piazza|Corso|Vico|Ore|ore|h|H)\s))',
+        r'\b(Circolo\s+[^\n]+?)(?=\s*$|\s*\n|(?:\s+(?:Via|Piazza|Corso|Vico|Ore|ore|h|H)\s))',
+        r'\b(Teatro\s+[^\n]+?)(?=\s*$|\s*\n|(?:\s+(?:Via|Piazza|Corso|Vico|Ore|ore|h|H)\s))',
+        r'\b(Auditorium\s+[^\n]+?)(?=\s*$|\s*\n|(?:\s+(?:Via|Piazza|Corso|Vico|Ore|ore|h|H)\s))',
+        r'\b(Centro\s+[^\n]+?)(?=\s*$|\s*\n|(?:\s+(?:Via|Piazza|Corso|Vico|Ore|ore|h|H)\s))',
+        r'\b(Biblioteca\s+[^\n]+?)(?=\s*$|\s*\n|(?:\s+(?:Via|Piazza|Corso|Vico|Ore|ore|h|H)\s))',
+        r'\b(Cinema\s+[^\n]+?)(?=\s*$|\s*\n|(?:\s+(?:Via|Piazza|Corso|Vico|Ore|ore|h|H)\s))',
+        r'\b(Palazzo\s+[^\n]+?)(?=\s*$|\s*\n|(?:\s+(?:Via|Piazza|Corso|Vico|Ore|ore|h|H)\s))',
+        r'\b(Aula\s+[^\n]+?)(?=\s*$|\s*\n|(?:\s+(?:Via|Piazza|Corso|Vico|Ore|ore|h|H)\s))',
+        r'\b(Salone\s+[^\n]+?)(?=\s*$|\s*\n|(?:\s+(?:Via|Piazza|Corso|Vico|Ore|ore|h|H)\s))',
+    ]
     
-    # Estrazione Presso (Tra 'presso' e '- Ore' o 'Ore')
-    presso_match = re.search(r'presso\s+(.*?)\s*(?:[-]\s*Ore|Ore)', full_rest, re.IGNORECASE | re.DOTALL)
-    if presso_match:
-        data['venue'] = presso_match.group(1).strip().replace('\n', ' ')
-        # La Descrizione è tutto ciò che sta tra la prima riga e l'inizio di "presso"
-        data['description'] = full_rest[:presso_match.start()].strip()
-    else:
-        # Fallback se non c'è "presso"
-        if time_match:
-            data['description'] = full_rest[:time_match.start()].strip()
-        else:
-            data['description'] = full_rest
+    for pattern in venue_patterns:
+        presso_match = re.search(pattern, text, re.IGNORECASE)
+        if presso_match:
+            venue_text = presso_match.group(1).strip()
+            # Pulisci eventuale "- Ore" o orari alla fine
+            venue_text = re.sub(r'\s*[-–]\s*(?:Ore|ore|h|H).*$', '', venue_text).strip()
+            venue_text = re.sub(r'\s*\d{1,2}[:\.]\\d{2}.*$', '', venue_text).strip()
+            # Rimuovi anche "Via"/"Piazza" se catturati per errore
+            venue_text = re.sub(r'\s*[-–]?\s*(?:Via|Piazza|Corso|Vico)\s+.*$', '', venue_text, flags=re.IGNORECASE).strip()
+            data['venue'] = venue_text
+            break
 
-    # --- INDIRIZZO (Pattern residui Via/Piazza) ---
-    address_match = re.search(r'(?:Via|Vico|Piazza|Corso|Largo|Strada)\s+[A-Z][a-z]+.*?\d+', text, re.IGNORECASE)
-    if address_match:
-        data['address'] = address_match.group(0)
-
-    # --- TITOLO AUTOMATICO ---
+    # --- 6. TITOLO AUTOMATICO ---
     if data['date'] and data['location']:
         data['title'] = f"{data['date']} – {data['location']}"
     else:
-        data['title'] = data['description'][:50].replace('\n', ' ') + "..." if data['description'] else "Nuovo Evento"
+        # Fallback: primi 50 caratteri del testo
+        data['title'] = text[:50].replace('\n', ' ').strip() + "..." if text else "Nuovo Evento"
     
     return data
 

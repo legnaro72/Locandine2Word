@@ -706,7 +706,7 @@
     "added_on": "2026-02-05"
   },
   {
-    "title": "LUNEDI' 2 MARZO 2026 - Marinella di Sarzana",
+    "title": "LUNEDI' 2 MARZO 2026 - MARINELLA DI SARZANA",
     "date": "2 MARZO 2026",
     "time": "17:30",
     "location": "MARINELLA DI SARZANA ",
@@ -844,5 +844,29 @@
     "image_path": "uploads/GherardoColombo.jpg",
     "added_on": "2026-02-06",
     "is_new": false
+  },
+  {
+    "title": "VENERDI' 27 FEBBRAIO 2026 - BOLANO",
+    "date": "27 FEBBRAIO 2026",
+    "time": "21:00",
+    "location": "BOLANO",
+    "venue": "SALA ARCHIVIO STORICO PALAZZO COMUNALE",
+    "address": "Bolano - La Spezia",
+    "description": "",
+    "image_path": "uploads/Bolano27Febbraio.jpeg",
+    "added_on": "2026-02-12",
+    "is_new": true
+  },
+  {
+    "title": "SABATO 14 MARZO 2026 - SARZANA",
+    "date": "14 MARZO 2026",
+    "time": "21:00",
+    "location": "SARZANA",
+    "venue": "\"SALA CONVEGNI\" - SANTA CATERINA PARK HOTEL",
+    "address": "Via CISA III TRAVERSA - Sarzana - La Spezia",
+    "description": "",
+    "image_path": "uploads/Sarzana14Marzo.jpeg",
+    "added_on": "2026-02-12",
+    "is_new": true
   }
 ]
