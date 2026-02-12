@@ -245,33 +245,24 @@ def parse_json_event(json_entry, image_base_path="uploads"):
 # --- CONFIGURAZIONE PAGINA ---
 st.set_page_config(page_title="Locandine2Word", page_icon="🎭", layout="wide")
 
-# --- AUDIO PLAYER (CARICAMENTO DIRETTO COME ESEMPIO) ---
-# Nessuna cache complessa, lettura diretta del file
-audio_base64 = get_base64_file("audio.mp3")
+# --- AUDIO PLAYER (STREAMLIT NATIVO - PIÙ ROBUSTO PER FILE GRANDI) ---
+audio_file_path = "audio.mp3"
 
 if "audio_enabled" not in st.session_state:
     st.session_state.audio_enabled = True
 
 # Parte subito, visibile in sidebar
-if audio_base64:
+if os.path.exists(audio_file_path):
     with st.sidebar:
         st.markdown(f"<h3 style='text-align:center;'>🎵 MUSIC PLAYER</h3>", unsafe_allow_html=True)
         # Toggle semplice
         audio_on = st.toggle("🔊 Musica di sottofondo", value=True)
         
         if audio_on:
-            import time
-            # Il commento con il timestamp FORZA Streamlit a ricreare il player nel DOM ogni volta
-            # Questo garantisce che l'autoplay parta dopo il click "ENTRA"
-            audio_html = f"""
-                <audio autoplay loop>
-                <source src="data:audio/mp3;base64,{audio_base64}" type="audio/mp3">
-                <!-- Force Refresh: {time.time()} -->
-                Your browser does not support the audio element.
-                </audio>
-            """
-            st.markdown(audio_html, unsafe_allow_html=True)
-            st.caption("🎶 Musica attiva")
+            # Componente nativo Streamlit: Gestisce file grandi (streaming), autoplay e loop
+            # Molto più affidabile su Cloud rispetto all'iniezione Base64 di 20MB
+            st.audio(audio_file_path, format="audio/mp3", loop=True, autoplay=True)
+            st.caption("🎶 Musica attiva (Player nativo)")
         else:
             st.caption("🔇 Musica disattivata")
 
