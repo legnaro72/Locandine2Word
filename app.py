@@ -274,10 +274,13 @@ if audio_base64:
         audio_on = st.toggle("🔊 Musica di sottofondo", value=True)
         
         if audio_on:
-            # HTML Audio PURO - Identico all'esempio
+            import time
+            # HTML Audio PURO - Identico all'esempio ma con Refresh forzato
+            # Il timestamp è NECESSARIO affinché Streamlit ricarichi il player dopo il click "ENTRA"
             audio_html = f"""
                 <audio autoplay loop>
                 <source src="data:audio/mp3;base64,{audio_base64}" type="audio/mp3">
+                <!-- Force Refresh: {time.time()} -->
                 Your browser does not support the audio element.
                 </audio>
             """
