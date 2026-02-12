@@ -325,21 +325,41 @@ if 'audio_enabled' not in st.session_state:
     st.session_state.audio_enabled = True
 
 # --- AUDIO DI BACKGROUND ---
-# Implementazione nativa Streamlit (Più efficiente per Cloud)
+# Implementazione Base64 "Stealth" (Visibile al browser ma invisibile all'occhio)
+# Questo aggira il blocco che i browser applicano agli elementi "display: none"
 if st.session_state.audio_enabled:
     if os.path.exists("audio.mp3"):
-        # CSS per nascondere il player audio nativo
-        st.markdown("""
-            <style>
-                /* Nasconde il player audio di Streamlit */
-                [data-testid="stAudio"] {
-                    display: none;
-                }
-            </style>
-        """, unsafe_allow_html=True)
+        # Controllo dimensione file (Max 10MB consigliato per Base64)
+        file_size_mb = os.path.getsize("audio.mp3") / (1024 * 1024)
         
-        # Usa il componente nativo che gestisce meglio lo streaming
-        st.audio("audio.mp3", format="audio/mp3", loop=True, autoplay=True)
+        if file_size_mb > 10:
+            st.warning(f"⚠️ Il file audio è grande ({file_size_mb:.1f} MB). Su Cloud potrebbe non caricarsi. Consigliato < 5 MB.")
+        
+        # Carica e converti
+        with open("audio.mp3", "rb") as f:
+            audio_bytes = f.read()
+            audio_base64 = base64.b64encode(audio_bytes).decode()
+            
+        # CSS per rendere il player "invisibile" ma attivo
+        # Usiamo opacity: 0 invece di display: none
+        audio_html = f"""
+            <audio autoplay loop class="stAudioBackground">
+                <source src="data:audio/mp3;base64,{audio_base64}" type="audio/mp3">
+                Your browser does not support the audio element.
+            </audio>
+            <style>
+                .stAudioBackground {{
+                    width: 1px;
+                    height: 1px;
+                    opacity: 0;
+                    position: fixed;
+                    top: -100px;
+                    left: 0;
+                    z-index: -1;
+                }}
+            </style>
+        """
+        st.markdown(audio_html, unsafe_allow_html=True)
     else:
         st.error("⚠️ File 'audio.mp3' non trovato! Assicurati di averlo caricato nel repository.")
 
