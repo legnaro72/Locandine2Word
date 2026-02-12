@@ -340,24 +340,13 @@ if st.session_state.audio_enabled:
             audio_bytes = f.read()
             audio_base64 = base64.b64encode(audio_bytes).decode()
             
-        # CSS per rendere il player "invisibile" ma attivo
-        # Usiamo opacity: 0 invece di display: none
+        # Player HTML MINIMALE (Esattamente come nell'esempio funzionante)
+        # Nota: Senza l'attributo 'controls', il player è invisibile di default ma l'audio suona.
+        # NON usare display:none perché blocca l'autoplay su Cloud/Mobile.
         audio_html = f"""
-            <audio autoplay loop class="stAudioBackground">
+            <audio autoplay loop>
                 <source src="data:audio/mp3;base64,{audio_base64}" type="audio/mp3">
-                Your browser does not support the audio element.
             </audio>
-            <style>
-                .stAudioBackground {{
-                    width: 1px;
-                    height: 1px;
-                    opacity: 0;
-                    position: fixed;
-                    top: -100px;
-                    left: 0;
-                    z-index: -1;
-                }}
-            </style>
         """
         st.markdown(audio_html, unsafe_allow_html=True)
     else:
