@@ -245,85 +245,69 @@ def parse_json_event(json_entry, image_base_path="uploads"):
 # --- CONFIGURAZIONE PAGINA ---
 st.set_page_config(page_title="Locandine2Word", page_icon="🎭", layout="wide")
 
-# --- AUDIO OTTIMIZZATO (UNA SOLA ISTANZA) ---
-
-@st.cache_data(show_spinner=False)
-def load_audio():
-    return get_base64_file("audio.mp3")
-
-audio_base64 = load_audio()
+# --- AUDIO PLAYER (CARICAMENTO DIRETTO COME ESEMPIO) ---
+# Nessuna cache complessa, lettura diretta del file
+audio_base64 = get_base64_file("audio.mp3")
 
 if "audio_enabled" not in st.session_state:
     st.session_state.audio_enabled = True
 
+# Parte subito, visibile in sidebar
+if audio_base64:
+    with st.sidebar:
+        st.markdown(f"<h3 style='text-align:center;'>🎵 MUSIC PLAYER</h3>", unsafe_allow_html=True)
+        # Toggle semplice
+        audio_on = st.toggle("🔊 Musica di sottofondo", value=True)
+        
+        if audio_on:
+            import time
+            # Il commento con il timestamp FORZA Streamlit a ricreare il player nel DOM ogni volta
+            # Questo garantisce che l'autoplay parta dopo il click "ENTRA"
+            audio_html = f"""
+                <audio autoplay loop>
+                <source src="data:audio/mp3;base64,{audio_base64}" type="audio/mp3">
+                <!-- Force Refresh: {time.time()} -->
+                Your browser does not support the audio element.
+                </audio>
+            """
+            st.markdown(audio_html, unsafe_allow_html=True)
+            st.caption("🎶 Musica attiva")
+        else:
+            st.caption("🔇 Musica disattivata")
 
-st.markdown("""
-<style>
-    .main-header { font-size: 2.5rem; background: linear-gradient(90deg, #667eea, #764ba2); -webkit-background-clip: text; -webkit-text-fill-color: transparent; font-weight: bold; }
-    .stButton>button { width: 100%; border-radius: 5px; font-weight: bold; }
-    .splash-container { text-align: center; margin-top: 100px; }
-    .splash-title { font-size: 3rem; font-weight: bold; color: #667eea; margin-bottom: 20px; }
-    .splash-text { font-size: 1.2rem; color: #555; margin-bottom: 40px; }
-</style>
-""", unsafe_allow_html=True)
-
-# --- SPLASH SCREEN (Per sbloccare Audio) ---
+# --- SPLASH SCREEN INIZIALE (NECESSARIA PER SBLOCCO AUDIO BROWSER) ---
 if 'app_entered' not in st.session_state:
     st.session_state.app_entered = False
 
 if not st.session_state.app_entered:
+    st.markdown("""
+    <style>
+        .splash-container { text-align: center; margin-top: 50px; }
+        .splash-title { font-size: 3rem; font-weight: bold; color: #667eea; margin-bottom: 20px; }
+        .splash-text { font-size: 1.2rem; color: #555; margin-bottom: 40px; }
+    </style>
+    """, unsafe_allow_html=True)
+    
     col1, col2, col3 = st.columns([1, 2, 1])
     with col2:
         st.markdown('<div class="splash-container">', unsafe_allow_html=True)
         
-        # Logo Iniziale - Ridimensionato
         if os.path.exists("LogoNOConfiniTrasparente.png"):
-            # Centra l'immagine usando colonne
-            c_sx, c_cent, c_dx = st.columns([1, 2, 1])
-            with c_cent:
-                st.image("LogoNOConfiniTrasparente.png", width=300)
+             st.image("LogoNOConfiniTrasparente.png", width=300)
         else:
             st.markdown('<div class="splash-title">🎭 Locandine2Word</div>', unsafe_allow_html=True)
             
-        st.markdown('<div class="splash-text">Il tuo assistente intelligente per la gestione eventi.<br>Clicca qui sotto per iniziare.</div>', unsafe_allow_html=True)
+        st.markdown('<div class="splash-text">Il tuo assistente intelligente per la gestione eventi.<br>Clicca qui sotto per entrare e attivare l\'audio.</div>', unsafe_allow_html=True)
         
+        # QUESTO BOTTONE È LA CHIAVE: L'interazione sblocca l'audio al rerun
         if st.button("🚀 ENTRA NELL'APPLICAZIONE", type="primary"):
             st.session_state.app_entered = True
-            st.session_state.audio_enabled = True # Assicura audio ON
             st.rerun()
         
         st.markdown('</div>', unsafe_allow_html=True)
-    st.stop() # Ferma tutto il resto finché non si entra
-
-
-
-# --- AUDIO AUTOPLAY DOPO CLICK SPLASH ---
-
-if 'audio_enabled' not in st.session_state:
-    st.session_state.audio_enabled = True
-
-with st.sidebar:
-    # ===== MUSIC PLAYER =====
-    st.markdown("### 🎵 Music Player")
-
-    audio_on = st.toggle(
-        "🔊 Musica di sottofondo",
-        value=st.session_state.audio_enabled,
-        key="audio_toggle_main"
-    )
-
-    st.session_state.audio_enabled = audio_on
-
-    if audio_on and audio_base64:
-        st.markdown(f"""
-            <audio id="bg-music" autoplay loop>
-                <source src="data:audio/mp3;base64,{audio_base64}" type="audio/mp3">
-            </audio>
-        """, unsafe_allow_html=True)
-
-
-
-
+    
+    # Blocca esecuzione qui finché non si clicca il bottone
+    st.stop()
 
 # --- INIZIALIZZAZIONE DATI ---
 LOCANDINE_FILE = "locandine.json"
@@ -375,8 +359,7 @@ if 'events' not in st.session_state:
 if 'ocr_engine' not in st.session_state:
     st.session_state.ocr_engine = LocandineOCR()
 
-
-# --- UI PRINCIPALE ---
+# --- UI PRINCIPALE (CARICATA SOLO DOPO ENTRATA) ---
 st.markdown('<h1 class="main-header">🎭 Locandine2Word</h1>', unsafe_allow_html=True)
 
 with st.sidebar:
@@ -1176,7 +1159,7 @@ with tab4:
                     tooltip=['Regione', 'Eventi']
                 ).properties(height=300)
                 
-                st.altair_chart(pie_chart, use_container_width=True)
+                st.altair_chart(pie_chart, width="stretch")
             else:
                 st.write("Nessun dato regionale.")
 
@@ -1204,7 +1187,7 @@ with tab4:
                     tooltip=['Provincia', 'Regione', 'Eventi']
                 ).properties(height=300)
                 
-                st.altair_chart(prov_chart, use_container_width=True)
+                st.altair_chart(prov_chart, width="stretch")
             else:
                 st.write("Nessun dato provinciale.")
 
@@ -1231,7 +1214,7 @@ with tab4:
                     tooltip=['Località', 'Eventi']
                 ).properties(height=300)
                 
-                st.altair_chart(loc_chart, use_container_width=True)
+                st.altair_chart(loc_chart, width="stretch")
             else:
                 st.write("Dati non sufficienti.")
 
@@ -1249,7 +1232,7 @@ with tab4:
                     ),
                 },
                 hide_index=True,
-                use_container_width=True
+                width="stretch"
             )
 
         st.divider()
