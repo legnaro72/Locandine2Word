@@ -324,19 +324,23 @@ st.markdown('<h1 class="main-header">🎭 Locandine2Word</h1>', unsafe_allow_htm
 if 'audio_enabled' not in st.session_state:
     st.session_state.audio_enabled = True
 
+# --- AUDIO DI BACKGROUND ---
 # Implementazione semplice e robusta (Posizionata in alto come nell'esempio)
-if st.session_state.audio_enabled and os.path.exists("audio.mp3"):
-    with open("audio.mp3", "rb") as f:
-        audio_bytes = f.read()
-        audio_base64 = base64.b64encode(audio_bytes).decode()
-        
-    audio_html = f"""
-        <audio autoplay loop style="display:none">
-        <source src="data:audio/mp3;base64,{audio_base64}" type="audio/mp3">
-        Your browser does not support the audio element.
-        </audio>
-    """
-    st.markdown(audio_html, unsafe_allow_html=True)
+if st.session_state.audio_enabled:
+    if os.path.exists("audio.mp3"):
+        with open("audio.mp3", "rb") as f:
+            audio_bytes = f.read()
+            audio_base64 = base64.b64encode(audio_bytes).decode()
+            
+        audio_html = f"""
+            <audio autoplay loop style="display:none">
+            <source src="data:audio/mp3;base64,{audio_base64}" type="audio/mp3">
+            Your browser does not support the audio element.
+            </audio>
+        """
+        st.markdown(audio_html, unsafe_allow_html=True)
+    else:
+        st.error("⚠️ File 'audio.mp3' non trovato! Assicurati di averlo caricato nel repository.")
 
 with st.sidebar:
     st.header("⚙️ Opzioni")
