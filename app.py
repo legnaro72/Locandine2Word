@@ -267,57 +267,29 @@ audio_base64 = get_audio_base64_robust()
 if "audio_enabled" not in st.session_state:
     st.session_state.audio_enabled = True
 
-# --- AUDIO PLAYER (VERSIONE STABILE & ROBUSTA) ---
+# --- AUDIO PLAYER (REPLICA ESEMPIO "EMAIL EXTRACTOR") ---
 if audio_base64:
     with st.sidebar:
         st.markdown(f"<h3 style='text-align:center;'>🎵 MUSIC PLAYER</h3>", unsafe_allow_html=True)
         audio_on = st.toggle("🔊 Musica di sottofondo", value=True)
         
         if audio_on:
-            import time
+            # HTML Audio PURO - Identico all'esempio
             audio_html = f"""
                 <audio autoplay loop>
-                    <source src="data:audio/mp3;base64,{audio_base64}" type="audio/mp3">
-                    <!-- Refresh ID: {time.time()} -->
+                <source src="data:audio/mp3;base64,{audio_base64}" type="audio/mp3">
+                Your browser does not support the audio element.
                 </audio>
             """
             st.markdown(audio_html, unsafe_allow_html=True)
             st.caption("🎶 Musica attiva")
         else:
             st.caption("🔇 Musica disattivata")
-        
-        # --- DEBUG VISIBILE SU CLOUD ---
-        with st.expander("🛠️ Debug Audio Info"):
-            st.write(f"📂 CWD: `{os.getcwd()}`")
-            base_d = os.path.dirname(os.path.abspath(__file__))
-            
-            # Stampa dimensioni dei file MP3
-            mp3_files = [f for f in os.listdir(base_d) if f.endswith(".mp3")]
-            st.write("🎵 Files MP3 trovati e dimensioni:")
-            for mp3 in mp3_files:
-                size = os.path.getsize(os.path.join(base_d, mp3))
-                st.write(f"- `{mp3}`: {size} bytes")
-                
-            if audio_base64:
-                st.success(f"✅ Audio caricato! Len: {len(audio_base64)}")
-            else:
-                st.error("❌ Audio Base64 è None")
 
 else:
-    # Mostra errore esplicito se audio_base64 è None
+    # Se proprio non carichiamo il file, lo diciamo
     with st.sidebar:
-        st.markdown(f"<h3 style='text-align:center;'>🎵 MUSIC PLAYER</h3>", unsafe_allow_html=True)
-        st.error("⚠️ File audio non trovati o vuoti!")
-        
-        # DEBUG ANCHE QUI
-        base_d = os.path.dirname(os.path.abspath(__file__))
-        mp3_files = [f for f in os.listdir(base_d) if f.endswith(".mp3")]
-        st.write("🎵 Analisi File MP3 su Cloud:")
-        for mp3 in mp3_files:
-            size = os.path.getsize(os.path.join(base_d, mp3))
-            st.write(f"- `{mp3}`: {size} bytes")
-        
-        st.caption("Se i file sono < 1000 bytes, Git LFS non li ha scaricati o sono corrotti.")
+        st.error("⚠️ Audio non caricato (File mancante o vuoto)")
 
 # --- SPLASH SCREEN INIZIALE (NECESSARIA PER SBLOCCO AUDIO BROWSER) ---
 if 'app_entered' not in st.session_state:
