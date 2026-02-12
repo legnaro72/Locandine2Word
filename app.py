@@ -265,6 +265,8 @@ def get_audio_base64_robust():
 # --- CARICAMENTO AUDIO CON SPINNER ---
 with st.spinner("Caricamento audio di sottofondo..."):
     audio_base64 = get_audio_base64_robust()
+    if audio_base64 and not st.session_state.get('app_entered'):
+        st.toast("✅ Audio Pronto!", icon="🎵")
 
 if "audio_enabled" not in st.session_state:
     st.session_state.audio_enabled = True
@@ -305,7 +307,6 @@ if not st.session_state.app_entered:
         .splash-container { text-align: center; margin-top: 50px; }
         .splash-title { font-size: 3rem; font-weight: bold; color: #667eea; margin-bottom: 20px; }
         .splash-text { font-size: 1.2rem; color: #555; margin-bottom: 40px; }
-        .audio-status { font-size: 1rem; color: #28a745; font-weight: bold; margin-bottom: 20px; }
     </style>
     """, unsafe_allow_html=True)
     
@@ -320,12 +321,6 @@ if not st.session_state.app_entered:
             
         st.markdown('<div class="splash-text">Il tuo assistente intelligente per la gestione eventi.</div>', unsafe_allow_html=True)
         
-        # Feedback Audio Pronto
-        if audio_base64:
-            st.markdown('<div class="audio-status">✅ Audio Pronto!</div>', unsafe_allow_html=True)
-        else:
-             st.markdown('<div class="audio-status" style="color:red">⚠️ Audio non disponibile</div>', unsafe_allow_html=True)
-
         if st.button("🚀 ENTRA E AVVIA APPLICAZIONE", type="primary"):
             st.session_state.app_entered = True
             st.rerun()
