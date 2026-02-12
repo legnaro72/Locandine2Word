@@ -228,8 +228,43 @@ st.markdown("""
 <style>
     .main-header { font-size: 2.5rem; background: linear-gradient(90deg, #667eea, #764ba2); -webkit-background-clip: text; -webkit-text-fill-color: transparent; font-weight: bold; }
     .stButton>button { width: 100%; border-radius: 5px; font-weight: bold; }
+    .splash-container { text-align: center; margin-top: 100px; }
+    .splash-title { font-size: 3rem; font-weight: bold; color: #667eea; margin-bottom: 20px; }
+    .splash-text { font-size: 1.2rem; color: #555; margin-bottom: 40px; }
 </style>
 """, unsafe_allow_html=True)
+
+# --- SPLASH SCREEN (Per sbloccare Audio) ---
+if 'app_entered' not in st.session_state:
+    st.session_state.app_entered = False
+
+if not st.session_state.app_entered:
+    col1, col2, col3 = st.columns([1, 2, 1])
+    with col2:
+        st.markdown('<div class="splash-container">', unsafe_allow_html=True)
+        
+        # Logo Iniziale - Ridimensionato
+        if os.path.exists("LogoNOConfiniTrasparente.png"):
+            # Centra l'immagine usando colonne
+            c_sx, c_cent, c_dx = st.columns([1, 2, 1])
+            with c_cent:
+                st.image("LogoNOConfiniTrasparente.png", width=300)
+        else:
+            st.markdown('<div class="splash-title">🎭 Locandine2Word</div>', unsafe_allow_html=True)
+            
+        st.markdown('<div class="splash-text">Il tuo assistente intelligente per la gestione eventi.<br>Clicca qui sotto per iniziare.</div>', unsafe_allow_html=True)
+        
+        if st.button("🚀 ENTRA NELL'APPLICAZIONE", type="primary"):
+            st.session_state.app_entered = True
+            st.session_state.audio_enabled = True # Assicura audio ON
+            st.rerun()
+        
+        st.markdown('</div>', unsafe_allow_html=True)
+    st.stop() # Ferma tutto il resto finché non si entra
+
+# --- SEZIONE AUDIO ---
+# (Il codice audio esistente funzionerà ora perfettamente perché siamo POST-click)
+
 
 # --- INIZIALIZZAZIONE DATI ---
 LOCANDINE_FILE = "locandine.json"
@@ -284,15 +319,31 @@ if 'ocr_engine' not in st.session_state:
 # --- UI PRINCIPALE ---
 st.markdown('<h1 class="main-header">🎭 Locandine2Word</h1>', unsafe_allow_html=True)
 
+# --- AUDIO DI BACKGROUND ---
+# Inizializzazione Stato
+if 'audio_enabled' not in st.session_state:
+    st.session_state.audio_enabled = True
+
+# Implementazione semplice e robusta (Posizionata in alto come nell'esempio)
+if st.session_state.audio_enabled and os.path.exists("audio.mp3"):
+    with open("audio.mp3", "rb") as f:
+        audio_bytes = f.read()
+        audio_base64 = base64.b64encode(audio_bytes).decode()
+        
+    audio_html = f"""
+        <audio autoplay loop style="display:none">
+        <source src="data:audio/mp3;base64,{audio_base64}" type="audio/mp3">
+        Your browser does not support the audio element.
+        </audio>
+    """
+    st.markdown(audio_html, unsafe_allow_html=True)
+
 with st.sidebar:
     st.header("⚙️ Opzioni")
     
     # --- AUDIO DI BACKGROUND ---
-    if 'audio_enabled' not in st.session_state:
-        st.session_state.audio_enabled = True  # Partire ON
-    
-    audio_enabled = st.checkbox("🎵 Musica di sottofondo", value=st.session_state.audio_enabled, key="audio_toggle")
-    st.session_state.audio_enabled = audio_enabled
+    # La checkbox controlla direttamente lo stato 'audio_enabled' definito sopra
+    st.checkbox("🎵 Musica di sottofondo", key="audio_enabled")
     
     st.divider()
     doc_name = st.text_input("Nome file Word", "Eventi.docx")
@@ -437,20 +488,8 @@ with st.sidebar:
             del st.session_state['events']
         st.rerun()
 
-# --- AUDIO DI BACKGROUND PLAYER ---
-if st.session_state.audio_enabled and os.path.exists("audio.mp3"):
-    # Leggi il file audio e convertilo in base64 per l'embedding
-    with open("audio.mp3", "rb") as audio_file:
-        audio_bytes = audio_file.read()
-        audio_base64 = base64.b64encode(audio_bytes).decode()
-    
-    # Player HTML invisibile con autoplay e loop
-    audio_html = f"""
-    <audio autoplay loop style="display: none;">
-        <source src="data:audio/mp3;base64,{audio_base64}" type="audio/mp3">
-    </audio>
-    """
-    st.markdown(audio_html, unsafe_allow_html=True)
+
+
 
 tab4, tab1, tab2, tab3 = st.tabs(["📊 Statistiche", "📤 Carica & Analizza", "📋 Modifica Dati", "📖 Export Word"])
 
