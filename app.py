@@ -245,21 +245,29 @@ def parse_json_event(json_entry, image_base_path="uploads"):
 # --- CONFIGURAZIONE PAGINA ---
 st.set_page_config(page_title="Locandine2Word", page_icon="🎭", layout="wide")
 
-# --- FUNZIONE HELPER AUDIO (Base64) ---
-# Necessaria per iniettare audio direttamente nell'HTML
+# --- FUNZIONE HELPER AUDIO (Base64 Robust) ---
 @st.cache_data(show_spinner=False)
-def get_audio_base64(file_path):
-    if os.path.exists(file_path):
-        with open(file_path, "rb") as f:
-            return base64.b64encode(f.read()).decode()
+def get_audio_base64_robust():
+    # Ottieni la cartella dove si trova questo script app.py
+    # Questo risolve problemi di path relativi su Cloud
+    base_dir = os.path.dirname(os.path.abspath(__file__))
+    
+    # Cerca varianti di nome (Linux è case-sensitive!)
+    possible_names = ["audio.mp3", "Audio.mp3", "AUDIO.MP3"]
+    
+    for name in possible_names:
+        file_path = os.path.join(base_dir, name)
+        if os.path.exists(file_path):
+            with open(file_path, "rb") as f:
+                return base64.b64encode(f.read()).decode()
     return None
 
-audio_base64 = get_audio_base64("audio.mp3")
+audio_base64 = get_audio_base64_robust()
 
 if "audio_enabled" not in st.session_state:
     st.session_state.audio_enabled = True
 
-# --- AUDIO PLAYER (VERSIONE STABILE) ---
+# --- AUDIO PLAYER (VERSIONE STABILE & ROBUSTA) ---
 if audio_base64:
     with st.sidebar:
         st.markdown(f"<h3 style='text-align:center;'>🎵 MUSIC PLAYER</h3>", unsafe_allow_html=True)
@@ -267,9 +275,7 @@ if audio_base64:
         
         if audio_on:
             import time
-            # HTML Puro con Timestamp:
-            # - Il timestamp forza il browser a trattare questo come un NUOVO elemento audio dopo il click "ENTRA"
-            # - Autoplay funziona perché c'è stata interazione (il click su ENTRA)
+            # HTML Puro con Timestamp per forzare refresh
             audio_html = f"""
                 <audio autoplay loop>
                     <source src="data:audio/mp3;base64,{audio_base64}" type="audio/mp3">
@@ -280,6 +286,12 @@ if audio_base64:
             st.caption("🎶 Musica attiva")
         else:
             st.caption("🔇 Musica disattivata")
+else:
+    # Mostra errore esplicito se audio_base64 è None
+    with st.sidebar:
+        st.markdown(f"<h3 style='text-align:center;'>🎵 MUSIC PLAYER</h3>", unsafe_allow_html=True)
+        st.error("⚠️ File audio.mp3 non trovato!")
+        st.caption(f"Cercato in: {os.path.dirname(os.path.abspath(__file__))}")
 
 # --- SPLASH SCREEN INIZIALE (NECESSARIA PER SBLOCCO AUDIO BROWSER) ---
 if 'app_entered' not in st.session_state:
