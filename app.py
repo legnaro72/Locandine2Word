@@ -270,7 +270,8 @@ if "audio_enabled" not in st.session_state:
     st.session_state.audio_enabled = True
 
 # --- AUDIO PLAYER (REPLICA ESEMPIO "EMAIL EXTRACTOR") ---
-if audio_base64:
+# --- AUDIO DISATTIVATO QUI (SPOSTATO DOPO) ---
+if False: # audio_base64:
     with st.sidebar:
         st.markdown(f"<h3 style='text-align:center;'>🎵 MUSIC PLAYER</h3>", unsafe_allow_html=True)
         audio_on = st.toggle("🔊 Musica di sottofondo", value=True)
@@ -336,6 +337,30 @@ if not st.session_state.app_entered:
     
     # Blocca esecuzione qui finché non si clicca il bottone
     st.stop()
+
+
+# --- AUDIO PLAYER (AUTOPLAY SICURO) ---
+# Eseguito solo dopo Entra
+if audio_base64:
+    with st.sidebar:
+        st.markdown(f"<h3 style='text-align:center;'>🎵 MUSIC PLAYER</h3>", unsafe_allow_html=True)
+        # Toggle semplice (identico a esempio)
+        audio_on = st.toggle("🔊 Musica di sottofondo", value=True)
+        
+        if audio_on:
+            # HTML Audio PURO - Identico all'esempio
+            audio_html = f"""
+                <audio autoplay loop>
+                    <source src="data:audio/mp3;base64,{audio_base64}" type="audio/mp3">
+                    Your browser does not support the audio element.
+                </audio>
+            """
+            st.markdown(audio_html, unsafe_allow_html=True)
+            st.caption("🎶 Musica attiva")
+        else:
+            st.caption("🔇 Musica disattivata")
+
+
 
 # --- INIZIALIZZAZIONE DATI ---
 LOCANDINE_FILE = "locandine.json"
