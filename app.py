@@ -31,24 +31,34 @@ IMG_WIDTH_ARG = {"width": "stretch"}
 
 # --- FUNZIONI DI SUPPORTO ---
 def normalize_date_to_italian(raw_date):
-    """Converte una stringa data (anche in inglese) in formato italiano standard."""
-    import dateparser
-    IT_MONTHS = {
-        1: "GENNAIO", 2: "FEBBRAIO", 3: "MARZO", 4: "APRILE",
-        5: "MAGGIO", 6: "GIUGNO", 7: "LUGLIO", 8: "AGOSTO",
-        9: "SETTEMBRE", 10: "OTTOBRE", 11: "NOVEMBRE", 12: "DICEMBRE"
-    }
+    """Normalizza date tipo 15/01/2026 o 15 GENNAIO 2026"""
     if not raw_date:
         return ""
-    
-    # Pulizia anno se assente
-    if not re.search(r'\d{4}', raw_date) and len(raw_date) > 3:
-        raw_date += " 2026"
-        
-    dt = dateparser.parse(raw_date, languages=['it', 'en'])
-    if dt:
-        return f"{dt.day} {IT_MONTHS[dt.month]} {dt.year}"
+
+    IT_MONTHS = {
+        "GENNAIO": "01", "FEBBRAIO": "02", "MARZO": "03",
+        "APRILE": "04", "MAGGIO": "05", "GIUGNO": "06",
+        "LUGLIO": "07", "AGOSTO": "08", "SETTEMBRE": "09",
+        "OTTOBRE": "10", "NOVEMBRE": "11", "DICEMBRE": "12"
+    }
+
+    raw_date = raw_date.upper().strip()
+
+    # Caso 15/01/2026
+    m = re.match(r"(\d{1,2})[\/\.\-](\d{1,2})[\/\.\-](\d{4})", raw_date)
+    if m:
+        d, mth, y = m.groups()
+        return f"{int(d)} {list(IT_MONTHS.keys())[int(mth)-1]} {y}"
+
+    # Caso 15 GENNAIO 2026
+    for month_name in IT_MONTHS:
+        if month_name in raw_date:
+            parts = raw_date.split()
+            if len(parts) >= 3:
+                return f"{parts[0]} {month_name} {parts[-1]}"
+
     return raw_date
+
 
 def save_optimized_image(input_source, save_path, max_width=1200):
     """
@@ -65,7 +75,8 @@ def save_optimized_image(input_source, save_path, max_width=1200):
         w, h = img.size
         if w > max_width:
             new_h = int(h * (max_width / w))
-            img = img.resize((max_width, new_h), Image.Resampling.LANCZOS)
+            img = img.resize((max_width, new_h), Image.LANCZOS)
+
         
         # Salva con compressione (qualità 80 è ottima per OCR)
         img.save(save_path, "JPEG", quality=80, optimize=True)
@@ -190,7 +201,7 @@ def parse_event_text(text):
             venue_text = presso_match.group(1).strip()
             # Pulisci eventuale "- Ore" o orari alla fine
             venue_text = re.sub(r'\s*[-–]\s*(?:Ore|ore|h|H).*$', '', venue_text).strip()
-            venue_text = re.sub(r'\s*\d{1,2}[:\.]\\d{2}.*$', '', venue_text).strip()
+            venue_text = re.sub(r'\s*\d{1,2}[:\.]\d{2}.*$', '', venue_text).strip()
             # Rimuovi anche "Via"/"Piazza" se catturati per errore
             venue_text = re.sub(r'\s*[-–]?\s*(?:Via|Piazza|Corso|Vico)\s+.*$', '', venue_text, flags=re.IGNORECASE).strip()
             data['venue'] = venue_text
@@ -272,8 +283,9 @@ if not st.session_state.app_entered:
         st.markdown('</div>', unsafe_allow_html=True)
     st.stop() # Ferma tutto il resto finché non si entra
 
-# --- SEZIONE AUDIO ---
-# --- SEZIONE AUDIO STABILE ---
+
+
+# --- AUDIO AUTOPLAY DOPO CLICK SPLASH ---
 
 if 'audio_enabled' not in st.session_state:
     st.session_state.audio_enabled = True
@@ -286,21 +298,21 @@ with st.sidebar:
 
     if audio_on and audio_base64:
         st.markdown(f"""
-            <audio autoplay loop id="bg-music">
+            <audio id="bg-music" autoplay loop>
                 <source src="data:audio/mp3;base64,{audio_base64}" type="audio/mp3">
             </audio>
 
             <script>
-            document.addEventListener('click', function() {{
-                var audio = document.getElementById("bg-music");
-                if (audio) {{
-                    audio.play().catch(e => console.log(e));
-                }}
-            }}, {{ once: true }});
+            var audio = document.getElementById("bg-music");
+            if (audio) {{
+                audio.play().catch(function(e) {{
+                    console.log("Autoplay bloccato:", e);
+                }});
+            }}
             </script>
         """, unsafe_allow_html=True)
 
-# (Il codice audio esistente funzionerà ora perfettamente perché siamo POST-click)
+
 
 
 # --- INIZIALIZZAZIONE DATI ---
