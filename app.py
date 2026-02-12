@@ -1085,16 +1085,22 @@ with tab4:
             for reg in ['LIGURIA', 'TOSCANA']:
                 for p, count in stats_geo[reg]['provinces'].items():
                     if count > 0:
-                        prov_data.append({"Provincia": p, "Eventi": count})
+                        prov_data.append({"Provincia": p, "Eventi": count, "Regione": reg})
             
             if prov_data:
                 prov_df = pd.DataFrame(prov_data).sort_values(by="Eventi", ascending=False)
                 
-                # Usa Altair per mantenere l'ordinamento corretto
-                prov_chart = alt.Chart(prov_df).mark_bar(color='#764ba2').encode(
+                # Usa Altair con colori differenziati per regione
+                prov_chart = alt.Chart(prov_df).mark_bar().encode(
                     x=alt.X('Provincia:N', sort='-y', title='Provincia'),
                     y=alt.Y('Eventi:Q', title='Numero Eventi'),
-                    tooltip=['Provincia', 'Eventi']
+                    color=alt.Color('Regione:N', 
+                                   scale=alt.Scale(
+                                       domain=['LIGURIA', 'TOSCANA'],
+                                       range=['#667eea', '#ff9a9e']  # Viola per LIGURIA, Rosa per TOSCANA
+                                   ),
+                                   legend=alt.Legend(title="Regione")),
+                    tooltip=['Provincia', 'Regione', 'Eventi']
                 ).properties(height=300)
                 
                 st.altair_chart(prov_chart, use_container_width=True)
