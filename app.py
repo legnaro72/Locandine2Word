@@ -273,6 +273,33 @@ if not st.session_state.app_entered:
     st.stop() # Ferma tutto il resto finché non si entra
 
 # --- SEZIONE AUDIO ---
+# --- SEZIONE AUDIO STABILE ---
+
+if 'audio_enabled' not in st.session_state:
+    st.session_state.audio_enabled = True
+
+with st.sidebar:
+    st.markdown("### 🎵 Music Player")
+
+    audio_on = st.toggle("🔊 Musica di sottofondo", value=st.session_state.audio_enabled)
+    st.session_state.audio_enabled = audio_on
+
+    if audio_on and audio_base64:
+        st.markdown(f"""
+            <audio autoplay loop id="bg-music">
+                <source src="data:audio/mp3;base64,{audio_base64}" type="audio/mp3">
+            </audio>
+
+            <script>
+            document.addEventListener('click', function() {{
+                var audio = document.getElementById("bg-music");
+                if (audio) {{
+                    audio.play().catch(e => console.log(e));
+                }}
+            }}, {{ once: true }});
+            </script>
+        """, unsafe_allow_html=True)
+
 # (Il codice audio esistente funzionerà ora perfettamente perché siamo POST-click)
 
 
@@ -332,25 +359,6 @@ st.markdown('<h1 class="main-header">🎭 Locandine2Word</h1>', unsafe_allow_htm
 
 with st.sidebar:
     st.header("⚙️ Opzioni")
-    
-    # --- AUDIO PLAYER (IDENTICO ALL'ESEMPIO FUNZIONANTE) ---
-    if audio_base64:
-        st.markdown(f"<h3 style='text-align:center;'>🎵 MUSIC PLAYER</h3>", unsafe_allow_html=True)
-        audio_on = st.toggle("🔊 Musica di sottofondo", value=True)
-        
-        if audio_on:
-            audio_html = f"""
-                <audio autoplay loop>
-                <source src="data:audio/mp3;base64,{audio_base64}" type="audio/mp3">
-                Your browser does not support the audio element.
-                </audio>
-            """
-            st.markdown(audio_html, unsafe_allow_html=True)
-            st.caption("🎶 Musica attiva")
-        else:
-            st.caption("🔇 Musica disattivata")
-    else:
-        st.error("⚠️ File audio.mp3 non trovato")
     
     st.divider()
     doc_name = st.text_input("Nome file Word", "Eventi.docx")
