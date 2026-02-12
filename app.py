@@ -248,18 +248,18 @@ st.set_page_config(page_title="Locandine2Word", page_icon="🎭", layout="wide")
 # --- FUNZIONE HELPER AUDIO (Base64 Robust) ---
 @st.cache_data(show_spinner=False)
 def get_audio_base64_robust():
-    # Ottieni la cartella dove si trova questo script app.py
-    # Questo risolve problemi di path relativi su Cloud
     base_dir = os.path.dirname(os.path.abspath(__file__))
     
-    # Cerca varianti di nome (Linux è case-sensitive!)
-    possible_names = ["audio.mp3", "Audio.mp3", "AUDIO.MP3"]
+    # Provo prima i file alternativi che vedo nella tua lista
+    possible_names = ["audioGuns.mp3", "audioAltamenteMia.mp3", "audio.mp3", "Audio.mp3"]
     
     for name in possible_names:
         file_path = os.path.join(base_dir, name)
         if os.path.exists(file_path):
-            with open(file_path, "rb") as f:
-                return base64.b64encode(f.read()).decode()
+            # Controllo che il file NON sia vuoto ( > 1KB )
+            if os.path.getsize(file_path) > 1024:
+                with open(file_path, "rb") as f:
+                    return base64.b64encode(f.read()).decode()
     return None
 
 audio_base64 = get_audio_base64_robust()
