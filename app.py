@@ -1089,7 +1089,15 @@ with tab4:
             
             if prov_data:
                 prov_df = pd.DataFrame(prov_data).sort_values(by="Eventi", ascending=False)
-                st.bar_chart(prov_df, x="Provincia", y="Eventi", color="#764ba2")
+                
+                # Usa Altair per mantenere l'ordinamento corretto
+                prov_chart = alt.Chart(prov_df).mark_bar(color='#764ba2').encode(
+                    x=alt.X('Provincia:N', sort='-y', title='Provincia'),
+                    y=alt.Y('Eventi:Q', title='Numero Eventi'),
+                    tooltip=['Provincia', 'Eventi']
+                ).properties(height=300)
+                
+                st.altair_chart(prov_chart, use_container_width=True)
             else:
                 st.write("Nessun dato provinciale.")
 
@@ -1109,7 +1117,14 @@ with tab4:
             loc_df = loc_df.sort_values(by="Eventi", ascending=False).head(10)
             
             if not loc_df.empty:
-                st.bar_chart(loc_df, x="Località", y="Eventi", horizontal=True, color="#667eea")
+                # Usa Altair per mantenere l'ordinamento corretto
+                loc_chart = alt.Chart(loc_df).mark_bar(color='#667eea').encode(
+                    x=alt.X('Eventi:Q', title='Numero Eventi'),
+                    y=alt.Y('Località:N', sort='-x', title='Località'),
+                    tooltip=['Località', 'Eventi']
+                ).properties(height=300)
+                
+                st.altair_chart(loc_chart, use_container_width=True)
             else:
                 st.write("Dati non sufficienti.")
 
