@@ -245,24 +245,63 @@ def parse_json_event(json_entry, image_base_path="uploads"):
 # --- CONFIGURAZIONE PAGINA ---
 st.set_page_config(page_title="Locandine2Word", page_icon="🎭", layout="wide")
 
-# --- AUDIO PLAYER (STREAMLIT NATIVO - PIÙ ROBUSTO PER FILE GRANDI) ---
-audio_file_path = "audio.mp3"
+# --- FUNZIONE HELPER AUDIO (Base64) ---
+# Necessaria per iniettare audio direttamente nell'HTML
+@st.cache_data(show_spinner=False)
+def get_audio_base64(file_path):
+    if os.path.exists(file_path):
+        with open(file_path, "rb") as f:
+            return base64.b64encode(f.read()).decode()
+    return None
+
+audio_base64 = get_audio_base64("audio.mp3")
 
 if "audio_enabled" not in st.session_state:
     st.session_state.audio_enabled = True
 
 # Parte subito, visibile in sidebar
-if os.path.exists(audio_file_path):
+if audio_base64:
     with st.sidebar:
         st.markdown(f"<h3 style='text-align:center;'>🎵 MUSIC PLAYER</h3>", unsafe_allow_html=True)
         # Toggle semplice
         audio_on = st.toggle("🔊 Musica di sottofondo", value=True)
         
         if audio_on:
-            # Componente nativo Streamlit: Gestisce file grandi (streaming), autoplay e loop
-            # Molto più affidabile su Cloud rispetto all'iniezione Base64 di 20MB
-            st.audio(audio_file_path, format="audio/mp3", loop=True, autoplay=True)
-            st.caption("🎶 Musica attiva (Player nativo)")
+            # HTML Audio con JAVASCRIPT RETRY
+            # Se il file è grosso, l'autoplay fallisce subito. Questo script riprova ogni secondo.
+            import time
+            audio_id = f"audio-{int(time.time())}"
+            audio_html = f"""
+                <audio id="{audio_id}" loop>
+                    <source src="data:audio/mp3;base64,{audio_base64}" type="audio/mp3">
+                </audio>
+                
+                <script>
+                    (function() {{
+                        var audio = document.getElementById("{audio_id}");
+                        var attempts = 0;
+                        var maxAttempts = 20; // Riprova per 20 secondi
+                        
+                        var playAttempt = setInterval(function() {{
+                            audio.play()
+                            .then(() => {{
+                                console.log("Audio started successfully!");
+                                clearInterval(playAttempt);
+                            }})
+                            .catch(error => {{
+                                console.log("Audio play failed, retrying...", error);
+                                attempts++;
+                                if (attempts >= maxAttempts) {{
+                                    clearInterval(playAttempt);
+                                    console.log("Audio autoplay gave up.");
+                                }}
+                            }});
+                        }}, 1000); 
+                    }})();
+                </script>
+            """
+            st.markdown(audio_html, unsafe_allow_html=True)
+            st.caption("🎶 Musica attiva")
         else:
             st.caption("🔇 Musica disattivata")
 
