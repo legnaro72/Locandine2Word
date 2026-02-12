@@ -286,12 +286,28 @@ if audio_base64:
             st.caption("🎶 Musica attiva")
         else:
             st.caption("🔇 Musica disattivata")
+        
+        # --- DEBUG VISIBILE SU CLOUD ---
+        with st.expander("🛠️ Debug Audio Info"):
+            st.write(f"📂 CWD: `{os.getcwd()}`")
+            st.write(f"📄 File Path usato: `{os.path.join(os.path.dirname(os.path.abspath(__file__)), 'audio.mp3')}`")
+            if audio_base64:
+                st.success(f"✅ Audio caricato! Lunghezza Base64: {len(audio_base64)} caratteri")
+                st.text(f"Anteprima: {audio_base64[:50]}...")
+            else:
+                st.error("❌ Audio Base64 è vuoto/None")
+            
+            st.write("📂 File nella directory:")
+            st.write(os.listdir(os.path.dirname(os.path.abspath(__file__))))
+
 else:
     # Mostra errore esplicito se audio_base64 è None
     with st.sidebar:
         st.markdown(f"<h3 style='text-align:center;'>🎵 MUSIC PLAYER</h3>", unsafe_allow_html=True)
         st.error("⚠️ File audio.mp3 non trovato!")
         st.caption(f"Cercato in: {os.path.dirname(os.path.abspath(__file__))}")
+        st.write("📂 File presenti:")
+        st.write(os.listdir(os.path.dirname(os.path.abspath(__file__))))
 
 # --- SPLASH SCREEN INIZIALE (NECESSARIA PER SBLOCCO AUDIO BROWSER) ---
 if 'app_entered' not in st.session_state:
