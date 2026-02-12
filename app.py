@@ -4,6 +4,7 @@ import json
 import re
 import zipfile
 import io
+import base64
 from github_manager import GithubManager
 from datetime import datetime
 from PIL import Image
@@ -285,6 +286,15 @@ st.markdown('<h1 class="main-header">🎭 Locandine2Word</h1>', unsafe_allow_htm
 
 with st.sidebar:
     st.header("⚙️ Opzioni")
+    
+    # --- AUDIO DI BACKGROUND ---
+    if 'audio_enabled' not in st.session_state:
+        st.session_state.audio_enabled = True  # Partire ON
+    
+    audio_enabled = st.checkbox("🎵 Musica di sottofondo", value=st.session_state.audio_enabled, key="audio_toggle")
+    st.session_state.audio_enabled = audio_enabled
+    
+    st.divider()
     doc_name = st.text_input("Nome file Word", "Eventi.docx")
     st.divider()
     
@@ -426,6 +436,21 @@ with st.sidebar:
         if 'events' in st.session_state:
             del st.session_state['events']
         st.rerun()
+
+# --- AUDIO DI BACKGROUND PLAYER ---
+if st.session_state.audio_enabled and os.path.exists("audio.mp3"):
+    # Leggi il file audio e convertilo in base64 per l'embedding
+    with open("audio.mp3", "rb") as audio_file:
+        audio_bytes = audio_file.read()
+        audio_base64 = base64.b64encode(audio_bytes).decode()
+    
+    # Player HTML invisibile con autoplay e loop
+    audio_html = f"""
+    <audio autoplay loop style="display: none;">
+        <source src="data:audio/mp3;base64,{audio_base64}" type="audio/mp3">
+    </audio>
+    """
+    st.markdown(audio_html, unsafe_allow_html=True)
 
 tab4, tab1, tab2, tab3 = st.tabs(["📊 Statistiche", "📤 Carica & Analizza", "📋 Modifica Dati", "📖 Export Word"])
 
