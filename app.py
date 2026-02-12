@@ -275,11 +275,14 @@ if audio_base64:
         st.markdown(f"<h3 style='text-align:center;'>🎵 MUSIC PLAYER</h3>", unsafe_allow_html=True)
         audio_on = st.toggle("🔊 Musica di sottofondo", value=True)
         
+
         if audio_on:
-            # HTML Audio ROBUSTO con eventi di caricamento
-            # oncanplay e onloadeddata forzano il play appena il file grosso è pronto
+            # STATUS DINAMICO: Cambia quando entri nell'app.
+            # Questo garantisce che Streamlit RICREI il player dopo il click "ENTRA", sbloccando l'autoplay.
+            status = "active" if st.session_state.get("app_entered") else "waiting"
+            
             audio_html = f"""
-                <audio autoplay loop oncanplay="this.play()" onloadeddata="this.play()">
+                <audio autoplay loop data-status="{status}">
                     <source src="data:audio/mp3;base64,{audio_base64}" type="audio/mp3">
                     Your browser does not support the audio element.
                 </audio>
