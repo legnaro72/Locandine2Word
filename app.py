@@ -243,7 +243,7 @@ def parse_json_event(json_entry, image_base_path="uploads"):
     return data
 
 # --- CONFIGURAZIONE PAGINA ---
-st.set_page_config(page_title="Locandine2Word", page_icon="🎭", layout="wide")
+st.set_page_config(page_title="Locandine2Word", page_icon="🎭", layout="wide", initial_sidebar_state="collapsed")
 
 # --- FUNZIONE HELPER AUDIO (Base64 Robust) ---
 @st.cache_data(show_spinner=False)
@@ -293,10 +293,7 @@ if False: # audio_base64:
         else:
             st.caption("🔇 Musica disattivata")
 
-else:
-    # Se proprio non carichiamo il file, lo diciamo
-    with st.sidebar:
-        st.error("⚠️ Audio non caricato (File mancante o vuoto)")
+# (Blocco else rimosso)
 
 # --- SPLASH SCREEN INIZIALE (NECESSARIA PER SBLOCCO AUDIO BROWSER) ---
 if 'app_entered' not in st.session_state:
