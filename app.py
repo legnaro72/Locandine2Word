@@ -245,6 +245,18 @@ def parse_json_event(json_entry, image_base_path="uploads"):
 # --- CONFIGURAZIONE PAGINA ---
 st.set_page_config(page_title="Locandine2Word", page_icon="🎭", layout="wide")
 
+# --- AUDIO OTTIMIZZATO (UNA SOLA ISTANZA) ---
+
+@st.cache_data(show_spinner=False)
+def load_audio():
+    return get_base64_file("audio.mp3")
+
+audio_base64 = load_audio()
+
+if "audio_enabled" not in st.session_state:
+    st.session_state.audio_enabled = True
+
+
 st.markdown("""
 <style>
     .main-header { font-size: 2.5rem; background: linear-gradient(90deg, #667eea, #764ba2); -webkit-background-clip: text; -webkit-text-fill-color: transparent; font-weight: bold; }
@@ -291,9 +303,15 @@ if 'audio_enabled' not in st.session_state:
     st.session_state.audio_enabled = True
 
 with st.sidebar:
+    # ===== MUSIC PLAYER =====
     st.markdown("### 🎵 Music Player")
 
-    audio_on = st.toggle("🔊 Musica di sottofondo", value=st.session_state.audio_enabled)
+    audio_on = st.toggle(
+        "🔊 Musica di sottofondo",
+        value=st.session_state.audio_enabled,
+        key="audio_toggle_main"
+    )
+
     st.session_state.audio_enabled = audio_on
 
     if audio_on and audio_base64:
@@ -301,16 +319,8 @@ with st.sidebar:
             <audio id="bg-music" autoplay loop>
                 <source src="data:audio/mp3;base64,{audio_base64}" type="audio/mp3">
             </audio>
-
-            <script>
-            var audio = document.getElementById("bg-music");
-            if (audio) {{
-                audio.play().catch(function(e) {{
-                    console.log("Autoplay bloccato:", e);
-                }});
-            }}
-            </script>
         """, unsafe_allow_html=True)
+
 
 
 
