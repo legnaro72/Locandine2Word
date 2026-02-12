@@ -262,7 +262,9 @@ def get_audio_base64_robust():
                     return base64.b64encode(f.read()).decode()
     return None
 
-audio_base64 = get_audio_base64_robust()
+# --- CARICAMENTO AUDIO CON SPINNER ---
+with st.spinner("Caricamento audio di sottofondo..."):
+    audio_base64 = get_audio_base64_robust()
 
 if "audio_enabled" not in st.session_state:
     st.session_state.audio_enabled = True
@@ -274,14 +276,12 @@ if audio_base64:
         audio_on = st.toggle("🔊 Musica di sottofondo", value=True)
         
         if audio_on:
-            import time
-            # HTML Audio PURO - Identico all'esempio ma con Refresh forzato
-            # Il timestamp è NECESSARIO affinché Streamlit ricarichi il player dopo il click "ENTRA"
+            # HTML Audio ROBUSTO con eventi di caricamento
+            # oncanplay e onloadeddata forzano il play appena il file grosso è pronto
             audio_html = f"""
-                <audio autoplay loop>
-                <source src="data:audio/mp3;base64,{audio_base64}" type="audio/mp3">
-                <!-- Force Refresh: {time.time()} -->
-                Your browser does not support the audio element.
+                <audio autoplay loop oncanplay="this.play()" onloadeddata="this.play()">
+                    <source src="data:audio/mp3;base64,{audio_base64}" type="audio/mp3">
+                    Your browser does not support the audio element.
                 </audio>
             """
             st.markdown(audio_html, unsafe_allow_html=True)
@@ -304,6 +304,7 @@ if not st.session_state.app_entered:
         .splash-container { text-align: center; margin-top: 50px; }
         .splash-title { font-size: 3rem; font-weight: bold; color: #667eea; margin-bottom: 20px; }
         .splash-text { font-size: 1.2rem; color: #555; margin-bottom: 40px; }
+        .audio-status { font-size: 1rem; color: #28a745; font-weight: bold; margin-bottom: 20px; }
     </style>
     """, unsafe_allow_html=True)
     
@@ -316,10 +317,15 @@ if not st.session_state.app_entered:
         else:
             st.markdown('<div class="splash-title">🎭 Locandine2Word</div>', unsafe_allow_html=True)
             
-        st.markdown('<div class="splash-text">Il tuo assistente intelligente per la gestione eventi.<br>Clicca qui sotto per entrare e attivare l\'audio.</div>', unsafe_allow_html=True)
+        st.markdown('<div class="splash-text">Il tuo assistente intelligente per la gestione eventi.</div>', unsafe_allow_html=True)
         
-        # QUESTO BOTTONE È LA CHIAVE: L'interazione sblocca l'audio al rerun
-        if st.button("🚀 ENTRA NELL'APPLICAZIONE", type="primary"):
+        # Feedback Audio Pronto
+        if audio_base64:
+            st.markdown('<div class="audio-status">✅ Audio Pronto!</div>', unsafe_allow_html=True)
+        else:
+             st.markdown('<div class="audio-status" style="color:red">⚠️ Audio non disponibile</div>', unsafe_allow_html=True)
+
+        if st.button("🚀 ENTRA E AVVIA APPLICAZIONE", type="primary"):
             st.session_state.app_entered = True
             st.rerun()
         
