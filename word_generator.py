@@ -181,10 +181,10 @@ class WordGenerator:
         
         return WordGenerator._city_fallback_cache
 
-    @staticmethod
-    def reset_city_cache():
+    @classmethod
+    def reset_city_cache(cls):
         """Forza il ricaricamento della cache delle città (da chiamare dopo modifiche al JSON)"""
-        WordGenerator._city_fallback_cache = None
+        cls._city_fallback_cache = None
 
     @staticmethod
     def get_province(event: Dict) -> str:
@@ -213,17 +213,12 @@ class WordGenerator:
         prov_found = None
         
         # 1. Cerca Province note nell'indirizzo (check suffisso robusto)
-        # Ordiniamo per lunghezza decrescente per matchare "LA SPEZIA" prima di "SPEZIA" (se ci fosse)
-        # o "MASSA CARRARA" prima di "MASSA"
         sorted_provs = sorted(PROV_TO_REG.keys(), key=len, reverse=True)
         
         if addr:
             # Pulisce l'indirizzo da caratteri non alfanumerici finali
             addr_clean = re.sub(r'[^A-Z0-9]+$', '', addr)
             for p in sorted_provs:
-                # Controlla se finisce con la provincia (es. "- LA SPEZIA" o " LA SPEZIA")
-                # Aggiungiamo un separatore o inizio stringa per evitare falsi positivi (es. "ALASSIO" finisce con "IO")
-                # Ma per "LA SPEZIA", controlliamo stringa intera
                 if addr_clean.endswith(p):
                     # Verifica che prima ci sia un separatore o spazio
                     suffix_start = len(addr_clean) - len(p)
@@ -326,7 +321,6 @@ class WordGenerator:
 
         # Provinciale
         prov_parts = []
-        all_provs = {'GENOVA': 'GE', 'LA SPEZIA': 'SP', 'SAVONA': 'SV', 'IMPERIA': 'IM', 'MASSA': 'MS'}
         for r in ['LIGURIA', 'TOSCANA']:
             for p, count in stats[r]['provinces'].items():
                 if count > 0:

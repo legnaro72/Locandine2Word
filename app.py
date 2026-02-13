@@ -11,6 +11,14 @@ from datetime import datetime
 from PIL import Image
 from ocr_engine import LocandineOCR
 from word_generator import WordGenerator
+# Versione: 1.0.1 (Forza reload per reset_city_cache)
+
+def safe_reset_city_cache():
+    """Chiama reset_city_cache se disponibile, altrimenti logga errore."""
+    if hasattr(WordGenerator, 'reset_city_cache'):
+        WordGenerator.reset_city_cache()
+    else:
+        st.warning("⚠️ Avviso: Modulo WordGenerator non aggiornato. Riavviare l'applicazione Streamlit se il problema persiste.")
 import dateparser
 import pandas as pd
 import altair as alt
@@ -508,7 +516,7 @@ with st.sidebar:
                 try:
                     zip_content = st.session_state.github_manager.download_backup()
                     st.session_state.github_manager.restore_from_zip(zip_content)
-                    WordGenerator.reset_city_cache()
+                    safe_reset_city_cache()
                     st.success("Dati ripristinati da GitHub correttamente! Ricarico...")
                     # Rimuoviamo la chiave per forzare la rilettura dal nuovo data.json su disco al rerun
                     if 'events' in st.session_state:
@@ -536,7 +544,7 @@ with st.sidebar:
                         # Estrai tutto nella cartella corrente (sovrascrive data.json e uploads/)
                         z.extractall(".")
                     
-                    WordGenerator.reset_city_cache()
+                    safe_reset_city_cache()
                     
                     # Forza ricaricamento totale
                     if 'events' in st.session_state:
@@ -633,7 +641,7 @@ with st.sidebar:
                     json.dump(new_fb_dict, f, ensure_ascii=False, indent=4)
                 
                 # Reset Cache
-                WordGenerator.reset_city_cache()
+                safe_reset_city_cache()
                 st.success(f"✅ Mappatura salvata! ({len(new_fb_dict)} voci)")
                 # st.rerun()
             except Exception as e:
