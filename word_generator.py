@@ -160,6 +160,32 @@ class WordGenerator:
             pass
         return datetime.max # Fallback in fondo
 
+    
+    _city_fallback_cache = None
+
+    @staticmethod
+    def _get_city_fallback_dict():
+        """Carica il dizionario fallback da JSON se esiste, altrimenti usa quello vuoto."""
+        if WordGenerator._city_fallback_cache is not None:
+            return WordGenerator._city_fallback_cache
+        
+        json_path = "CITY_FALLBACK.json"
+        if os.path.exists(json_path):
+            try:
+                with open(json_path, 'r', encoding='utf-8') as f:
+                    WordGenerator._city_fallback_cache = json.load(f)
+            except:
+                WordGenerator._city_fallback_cache = {}
+        else:
+            WordGenerator._city_fallback_cache = {}
+        
+        return WordGenerator._city_fallback_cache
+
+    @staticmethod
+    def reset_city_cache():
+        """Forza il ricaricamento della cache delle città (da chiamare dopo modifiche al JSON)"""
+        WordGenerator._city_fallback_cache = None
+
     @staticmethod
     def get_province(event: Dict) -> str:
         """Determina la provincia di un evento in base a indirizzo e location."""
@@ -174,33 +200,42 @@ class WordGenerator:
             'GE': 'GENOVA', 'SP': 'LA SPEZIA', 'SV': 'SAVONA', 'IM': 'IMPERIA', 
             'MS': 'MASSA', 'MASSA CARRARA': 'MASSA', 'CARRARA': 'MASSA'
         }
-        CITY_FALLBACK = {
-            'PEGLI': 'GENOVA', 'BOLZANETO': 'GENOVA', 'VOLTRI': 'GENOVA', 'NERVI': 'GENOVA',
-            'SARZANA': 'LA SPEZIA', 'FOLLO': 'LA SPEZIA', 'LERICI': 'LA SPEZIA',
-            'BRUGNATO': 'LA SPEZIA', 'PIGNONE': 'LA SPEZIA',
-            'CEPARANA': 'LA SPEZIA', 'VEZZANO LIGURE': 'LA SPEZIA', 'VEZZANO': 'LA SPEZIA',
-            'MARINELLA DI SARZANA': 'LA SPEZIA', 'MARINELLA': 'LA SPEZIA',
-            'BOLANO': 'LA SPEZIA', 'ARCOLA': 'LA SPEZIA', 'SANTO STEFANO MAGRA': 'LA SPEZIA',
-            'SANTO STEFANO DI MAGRA': 'LA SPEZIA', 'AMEGLIA': 'LA SPEZIA', 'CASTELNUOVO MAGRA': 'LA SPEZIA',
-            'DEIVA MARINA': 'LA SPEZIA', 'FRAMURA': 'LA SPEZIA', 'LEVANTO': 'LA SPEZIA',
-            'MONTEROSSO': 'LA SPEZIA', 'ORTONOVO': 'LA SPEZIA', 'PORTOVENERE': 'LA SPEZIA',
-            'CARCARE': 'SAVONA', 'VARAZZE': 'SAVONA',
-            'AULLA': 'MASSA', 'CARRARA': 'MASSA'
-        }
+        
+        # Carica il dizionario dinamico dal file JSON
+        CITY_FALLBACK = WordGenerator._get_city_fallback_dict()
 
+        # Normalizzazione avanzata: rimuove spazi multipli
+        raw_loc = event.get('location', '').strip().upper()
+        loc = " ".join(raw_loc.split())
+        
         addr = event.get('address', '').strip().upper()
-        loc = event.get('location', '').strip().upper()
         
         prov_found = None
-        if addr:
-            parts = re.split(r'[\s\-,(]+', addr)
-            last_part = parts[-1].strip(' )')
-            if last_part in PROV_TO_REG:
-                prov_found = PROV_NORM.get(last_part, last_part)
         
+        # 1. Cerca Province note nell'indirizzo (check suffisso robusto)
+        # Ordiniamo per lunghezza decrescente per matchare "LA SPEZIA" prima di "SPEZIA" (se ci fosse)
+        # o "MASSA CARRARA" prima di "MASSA"
+        sorted_provs = sorted(PROV_TO_REG.keys(), key=len, reverse=True)
+        
+        if addr:
+            # Pulisce l'indirizzo da caratteri non alfanumerici finali
+            addr_clean = re.sub(r'[^A-Z0-9]+$', '', addr)
+            for p in sorted_provs:
+                # Controlla se finisce con la provincia (es. "- LA SPEZIA" o " LA SPEZIA")
+                # Aggiungiamo un separatore o inizio stringa per evitare falsi positivi (es. "ALASSIO" finisce con "IO")
+                # Ma per "LA SPEZIA", controlliamo stringa intera
+                if addr_clean.endswith(p):
+                    # Verifica che prima ci sia un separatore o spazio
+                    suffix_start = len(addr_clean) - len(p)
+                    if suffix_start == 0 or not addr_clean[suffix_start-1].isalnum():
+                        prov_found = PROV_NORM.get(p, p)
+                        break
+        
+        # 2. Cerca nel dizionario fallback (con location normalizzata)
         if not prov_found:
             prov_found = CITY_FALLBACK.get(loc)
 
+        # 3. Cerca se la location stessa è una provincia
         if not prov_found:
              if loc in PROV_TO_REG:
                  prov_found = PROV_NORM.get(loc, loc)

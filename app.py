@@ -439,6 +439,9 @@ with st.sidebar:
                     if os.path.exists(DATA_FILE):
                         zf.write(DATA_FILE, arcname='data.json')
                     
+                    if os.path.exists("CITY_FALLBACK.json"):
+                        zf.write("CITY_FALLBACK.json", arcname='CITY_FALLBACK.json')
+                    
                     # 2. Aggiungi la cartella uploads
                     if os.path.exists(UPLOADS_DIR):
                         for root, _, files in os.walk(UPLOADS_DIR):
@@ -505,6 +508,7 @@ with st.sidebar:
                 try:
                     zip_content = st.session_state.github_manager.download_backup()
                     st.session_state.github_manager.restore_from_zip(zip_content)
+                    WordGenerator.reset_city_cache()
                     st.success("Dati ripristinati da GitHub correttamente! Ricarico...")
                     # Rimuoviamo la chiave per forzare la rilettura dal nuovo data.json su disco al rerun
                     if 'events' in st.session_state:
@@ -531,6 +535,8 @@ with st.sidebar:
                     with zipfile.ZipFile(uploaded_backup) as z:
                         # Estrai tutto nella cartella corrente (sovrascrive data.json e uploads/)
                         z.extractall(".")
+                    
+                    WordGenerator.reset_city_cache()
                     
                     # Forza ricaricamento totale
                     if 'events' in st.session_state:
@@ -564,6 +570,94 @@ with st.sidebar:
         if 'events' in st.session_state:
             del st.session_state['events']
         st.rerun()
+
+    st.divider()
+
+    # --- PULIZIA E OTTIMIZZAZIONE MANUALE ---
+    with st.expander("🛠️ Strumenti Avanzati (Manutenzione)"):
+        st.write("Usa questi strumenti per tenere l'app veloce e leggera.")
+        
+        # --- GESTIONE LOCALITÀ FALLBACK ---
+        st.divider()
+        st.markdown("#### 📍 Gestione Mappatura Località -> Province")
+        st.info("Qui puoi definire quali località (che non sono capoluogo) appartengono a quali province. Le modifiche avranno effetto immediato su statistiche e grafici.")
+        
+        # Caricamento JSON esistente o creazione default
+        fb_file = "CITY_FALLBACK.json"
+        if not os.path.exists(fb_file):
+            default_fb = {} # Il file dovrebbe esistere grazie alla creazione iniziale
+        else:
+            try:
+                with open(fb_file, "r", encoding="utf-8") as f:
+                    default_fb = json.load(f)
+            except:
+                default_fb = {}
+
+        # Conversione Dict -> DataFrame per editing
+        # Usiamo una lista di dizionari
+        fb_data = [{"Località": k, "Provincia": v} for k, v in default_fb.items()]
+        df_fb = pd.DataFrame(fb_data)
+
+        # Editor (permette aggiunta/rimozione righe)
+        edited_df = st.data_editor(
+            df_fb,
+            num_rows="dynamic",
+            width="stretch",
+            column_config={
+                "Località": st.column_config.TextColumn("Località (Es. PEGLI)", required=True),
+                "Provincia": st.column_config.SelectboxColumn(
+                    "Provincia",
+                    options=["GENOVA", "LA SPEZIA", "SAVONA", "IMPERIA", "MASSA"],
+                    required=True
+                )
+            },
+            key="city_fallback_editor"
+        )
+
+        # Pulsante Salva
+        if st.button("💾 Salva Mappatura Località"):
+            # Riconversione DataFrame -> Dict
+            new_fb_dict = {}
+            # Iteriamo sul dataframe editato
+            # Nota: st.data_editor ritorna un DF pandas modificato
+            if not edited_df.empty:
+                for index, row in edited_df.iterrows():
+                    loc = str(row.get("Località", "")).strip().upper()
+                    prov = str(row.get("Provincia", "")).strip().upper()
+                    if loc and prov:
+                        new_fb_dict[loc] = prov
+            
+            # Salvataggio su disco
+            try:
+                with open(fb_file, "w", encoding="utf-8") as f:
+                    json.dump(new_fb_dict, f, ensure_ascii=False, indent=4)
+                
+                # Reset Cache
+                WordGenerator.reset_city_cache()
+                st.success(f"✅ Mappatura salvata! ({len(new_fb_dict)} voci)")
+                # st.rerun()
+            except Exception as e:
+                st.error(f"Errore salvataggio: {e}")
+
+        st.divider()
+        
+        if st.button("⚡ Ottimizza Archivio Esistente", help="Ridimensiona tutte le immagini caricate in precedenza per occupare meno spazio."):
+            files = [f for f in os.listdir(UPLOADS_DIR) if f.lower().endswith(('.png', '.jpg', '.jpeg'))]
+            if not files:
+                st.warning("Nessuna immagine trovata da ottimizzare.")
+            else:
+                processed = 0
+                errors = 0
+                pbar = st.progress(0)
+                for i, filename in enumerate(files):
+                    img_path = os.path.join(UPLOADS_DIR, filename)
+                    if save_optimized_image(img_path, img_path):
+                        processed += 1
+                    else:
+                        errors += 1
+                    pbar.progress((i + 1) / len(files))
+                st.success(f"✅ Ottimizzazione completata! Processate {processed} immagini. (Fallite: {errors})")
+                st.info("Nota: Al prossimo salvataggio su GitHub, il backup sarà molto più leggero.")
 
 
 
@@ -1202,9 +1296,15 @@ with tab4:
         
         with col_g1:
             st.markdown("#### 🌍 Distribuzione Regionale")
+            # Prepariamo il dettaglio per il tooltip
+            lig_dettaglio = ", ".join([f"{p} ({c})" for p, c in stats_geo['LIGURIA']['provinces'].items() if c > 0])
+            tos_dettaglio = ", ".join([f"{p} ({c})" for p, c in stats_geo['TOSCANA']['provinces'].items() if c > 0])
+            alt_dettaglio = ", ".join([f"{loc} ({count})" for loc, count in sorted(stats_geo['ALTRO']['cities'].items(), key=lambda x: x[1], reverse=True)])
+
             reg_df = pd.DataFrame({
                 "Regione": ["LIGURIA", "TOSCANA", "ALTRO"],
-                "Eventi": [stats_geo['LIGURIA']['total'], stats_geo['TOSCANA']['total'], stats_geo['ALTRO']['total']]
+                "Eventi": [stats_geo['LIGURIA']['total'], stats_geo['TOSCANA']['total'], stats_geo['ALTRO']['total']],
+                "Dettaglio": [lig_dettaglio, tos_dettaglio, alt_dettaglio]
             })
             # Rimuoviamo righe con 0 eventi per pulizia grafico
             reg_df = reg_df[reg_df["Eventi"] > 0]
@@ -1213,10 +1313,14 @@ with tab4:
                 pie_chart = alt.Chart(reg_df).mark_arc(innerRadius=50).encode(
                     theta=alt.Theta(field="Eventi", type="quantitative"),
                     color=alt.Color(field="Regione", type="nominal", scale=alt.Scale(range=['#667eea', '#764ba2', '#ff9a9e'])),
-                    tooltip=['Regione', 'Eventi']
+                    tooltip=['Regione', 'Eventi', 'Dettaglio']
                 ).properties(height=300)
                 
                 st.altair_chart(pie_chart, width="stretch")
+                
+                # Mostra elenco testuale se ci sono località in ALTRO
+                if stats_geo['ALTRO']['total'] > 0:
+                    st.caption(f"**Località 'ALTRO':** {alt_dettaglio}")
             else:
                 st.write("Nessun dato regionale.")
 
@@ -1295,23 +1399,3 @@ with tab4:
         st.divider()
         st.info("💡 I grafici si aggiornano automaticamente ogni volta che modifichi o aggiungi un evento.")
 
-        # --- PULIZIA E OTTIMIZZAZIONE MANUALE ---
-        with st.expander("🛠️ Strumenti Avanzati (Manutenzione)"):
-            st.write("Usa questi strumenti per tenere l'app veloce e leggera.")
-            if st.button("⚡ Ottimizza Archivio Esistente", help="Ridimensiona tutte le immagini caricate in precedenza per occupare meno spazio."):
-                files = [f for f in os.listdir(UPLOADS_DIR) if f.lower().endswith(('.png', '.jpg', '.jpeg'))]
-                if not files:
-                    st.warning("Nessuna immagine trovata da ottimizzare.")
-                else:
-                    processed = 0
-                    errors = 0
-                    pbar = st.progress(0)
-                    for i, filename in enumerate(files):
-                        img_path = os.path.join(UPLOADS_DIR, filename)
-                        if save_optimized_image(img_path, img_path):
-                            processed += 1
-                        else:
-                            errors += 1
-                        pbar.progress((i + 1) / len(files))
-                    st.success(f"✅ Ottimizzazione completata! Processate {processed} immagini. (Fallite: {errors})")
-                    st.info("Nota: Al prossimo salvataggio su GitHub, il backup sarà molto più leggero.")

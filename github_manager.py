@@ -22,6 +22,10 @@ class GithubManager:
             if os.path.exists(data_file):
                 zf.write(data_file, arcname='data.json')
             
+            # 1b. Aggiungi CITY_FALLBACK.json se esiste
+            if os.path.exists("CITY_FALLBACK.json"):
+                zf.write("CITY_FALLBACK.json", arcname="CITY_FALLBACK.json")
+            
             # 2. Aggiungi la cartella uploads
             if os.path.exists(uploads_dir):
                 for root, _, files in os.walk(uploads_dir):
