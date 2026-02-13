@@ -38,35 +38,43 @@ class WordGenerator:
         """
         Aggiunge una singola entry evento al documento
         Formato: Tabella 1x2 (immagine a sinistra, testo o immagine a destra)
+        Se l'evento è scaduto, aggiunge 'completed.jpg' nella colonna di destra.
         """
+        # Crea tabella 1 riga x 2 colonne
         table = self.doc.add_table(rows=1, cols=2)
         
+        # Gestione bordi
         if show_borders:
             table.style = 'Table Grid'
         else:
             table.style = 'Normal Table'
         
+        # Imposta larghezza colonne (40% immagine, 60% testo/immagine)
         table.columns[0].width = Inches(3.25)
         table.columns[1].width = Inches(3.25)
         
+        # Cella Sinistra (Sempre Immagine)
         left_cell = table.rows[0].cells[0]
         self._insert_image(left_cell, image_path, width=Inches(2.8))
 
+        # Cella Destra (Testo descrittivo)
         right_cell = table.rows[0].cells[1]
         self._insert_text_details(right_cell, event_data)
         
-        # LOGICA SCADUTI
+        # LOGICA SCADUTI: Se l'evento è scaduto, aggiungi l'immagine 'completed.jpg'
         now = datetime.now()
         ev_date = self.get_sort_date(event_data)
         if ev_date != datetime.max and ev_date.date() < now.date():
             completed_img = "completed.jpg"
             if os.path.exists(completed_img):
+                # Aggiungi un nuovo paragrafo per l'immagine completata
                 p_comp = right_cell.add_paragraph()
                 p_comp.alignment = WD_ALIGN_PARAGRAPH.CENTER
                 run_comp = p_comp.add_run()
+                # Dimensione leggermente ridotta per stare sotto il testo
                 run_comp.add_picture(completed_img, width=Inches(1.5))
         
-        # LOGICA NEW
+        # LOGICA NEW: Se l'evento è contrassegnato come NEW, aggiungi l'immagine 'new.jpg'
         if event_data.get('is_new'):
             new_img_path = "new.jpg"
             if os.path.exists(new_img_path):
@@ -75,36 +83,51 @@ class WordGenerator:
                 run_new = p_new.add_run()
                 run_new.add_picture(new_img_path, width=Inches(1.5))
 
+        # Aggiungi spazio dopo la tabella
         self.doc.add_paragraph()
 
     def _insert_image(self, cell, image_path, width=Inches(2.5)):
+        """Helper per inserire un'immagine in una cella"""
         if os.path.exists(image_path):
             paragraph = cell.paragraphs[0]
             run = paragraph.add_run()
+            # Adatta larghezza per stare nella cella
             run.add_picture(image_path, width=width)
             paragraph.alignment = WD_ALIGN_PARAGRAPH.CENTER
 
     def _insert_text_details(self, cell, event_data):
+        """Inserisce i dettagli testuali senza emoji (formato professionale)"""
+        
         p = cell.paragraphs[0]
+
+        # Titolo
         title_run = p.add_run(event_data.get('title', 'Evento') + '\n')
         title_run.bold = True
         title_run.font.size = Pt(14)
         title_run.font.color.rgb = RGBColor(0, 51, 102)
 
+        # Funzione helper per campo etichetta + valore
         def add_field(label, value):
             if value:
                 label_run = p.add_run(f"{label}: ")
                 label_run.bold = True
                 label_run.font.size = Pt(11)
+
                 value_run = p.add_run(f"{value}\n")
                 value_run.font.size = Pt(11)
 
+        # Data formattata
         if event_data.get('date'):
             date_str = event_data['date']
             try:
+                # Supportiamo sia IT che EN per recuperare date in inglese
                 dt = dateparser.parse(date_str, languages=['it', 'en'])
                 if dt:
-                    IT_MONTHS = {1: "Gennaio", 2: "Febbraio", 3: "Marzo", 4: "Aprile", 5: "Maggio", 6: "Giugno", 7: "Luglio", 8: "Agosto", 9: "Settembre", 10: "Ottobre", 11: "Novembre", 12: "Dicembre"}
+                    IT_MONTHS = {
+                        1: "Gennaio", 2: "Febbraio", 3: "Marzo", 4: "Aprile",
+                        5: "Maggio", 6: "Giugno", 7: "Luglio", 8: "Agosto",
+                        9: "Settembre", 10: "Ottobre", 11: "Novembre", 12: "Dicembre"
+                    }
                     date_formatted = f"{dt.day} {IT_MONTHS[dt.month]} {dt.year}"
                 else:
                     date_formatted = date_str
@@ -117,45 +140,40 @@ class WordGenerator:
         add_field("PRESSO", event_data.get('venue'))
         add_field("INDIRIZZO", event_data.get('address'))
 
+        # Descrizione rimosssa su richiesta utente
+        pass
+
+    
     @staticmethod
     def get_sort_date(event: Dict) -> datetime:
+        """Helper statico per ottenere la data datetime da un evento"""
         d_str = event.get('date', '')
         if not d_str:
-            return datetime.max
+            return datetime.max # Metti in fondo se non ha data
+        
+        # Usa dateparser per capire la data (IT e EN)
         try:
             dt = dateparser.parse(d_str, languages=['it', 'en'])
-            return dt if dt else datetime.max
+            if dt:
+                return dt
         except:
-            return datetime.max
+            pass
+        return datetime.max # Fallback in fondo
 
     @staticmethod
     def get_province(event: Dict) -> str:
-        """Determina la provincia di un evento con supporto a mappature personalizzate."""
-        
-        # --- CARICAMENTO MAPPATURE PERSONALIZZATE (Luni, Ospedaletti, ecc.) ---
-        custom_map_file = "city_mappings.json"
-        custom_mappings = {}
-        if os.path.exists(custom_map_file):
-            try:
-                with open(custom_map_file, "r", encoding="utf-8") as f:
-                    custom_mappings = json.load(f)
-            except:
-                pass
-
-        addr = event.get('address', '').strip().upper()
-        loc = event.get('location', '').strip().upper()
-
-        # 1. Controllo prioritario nel dizionario personalizzato
-        for city, prov in custom_mappings.items():
-            if city in loc or city in addr:
-                return prov
-
-        # 2. Logica Standard preesistente
+        """Determina la provincia di un evento in base a indirizzo e location."""
+        PROV_TO_REG = {
+            'GENOVA': 'LIGURIA', 'GE': 'LIGURIA',
+            'LA SPEZIA': 'LIGURIA', 'SP': 'LIGURIA',
+            'SAVONA': 'LIGURIA', 'SV': 'LIGURIA',
+            'IMPERIA': 'LIGURIA', 'IM': 'LIGURIA',
+            'MASSA': 'TOSCANA', 'MS': 'TOSCANA', 'MASSA CARRARA': 'TOSCANA', 'CARRARA': 'TOSCANA'
+        }
         PROV_NORM = {
             'GE': 'GENOVA', 'SP': 'LA SPEZIA', 'SV': 'SAVONA', 'IM': 'IMPERIA', 
-            'MS': 'MASSA', 'MASSA CARRARA': 'MASSA', 'CARRARA': 'MASSA', 'AL': 'ALESSANDRIA'
+            'MS': 'MASSA', 'MASSA CARRARA': 'MASSA', 'CARRARA': 'MASSA'
         }
-        
         CITY_FALLBACK = {
             'PEGLI': 'GENOVA', 'BOLZANETO': 'GENOVA', 'VOLTRI': 'GENOVA', 'NERVI': 'GENOVA',
             'SARZANA': 'LA SPEZIA', 'FOLLO': 'LA SPEZIA', 'LERICI': 'LA SPEZIA',
@@ -170,151 +188,274 @@ class WordGenerator:
             'AULLA': 'MASSA', 'CARRARA': 'MASSA'
         }
 
-        # Prova estrazione da indirizzo
-        parts = re.split(r'[\s\-,(]+', addr)
-        if parts:
+        addr = event.get('address', '').strip().upper()
+        loc = event.get('location', '').strip().upper()
+        
+        prov_found = None
+        if addr:
+            parts = re.split(r'[\s\-,(]+', addr)
             last_part = parts[-1].strip(' )')
-            if last_part in PROV_NORM: return PROV_NORM[last_part]
-            if last_part in ['GENOVA', 'SAVONA', 'IMPERIA', 'MASSA', 'ALESSANDRIA']: return last_part
-            if last_part == 'LA SPEZIA' or last_part == 'SPEZIA': return 'LA SPEZIA'
+            if last_part in PROV_TO_REG:
+                prov_found = PROV_NORM.get(last_part, last_part)
+        
+        if not prov_found:
+            prov_found = CITY_FALLBACK.get(loc)
 
-        # Prova estrazione da location
-        return CITY_FALLBACK.get(loc) or PROV_NORM.get(loc) or "ALTRO"
+        if not prov_found:
+             if loc in PROV_TO_REG:
+                 prov_found = PROV_NORM.get(loc, loc)
+        
+        return prov_found or "ALTRO"
 
     def generate_from_data(self, events: List[Dict], output_path: str, mode: str = "standard", show_borders: bool = False):
+        """
+        Genera il documento Word completo:
+        1. Pagina Statistiche & Titolo
+        2. Eventi (Standard o Minimal)
+        3. Firma (se esiste)
+        """
+        # Creiamo un nuovo documento pulito
         self.doc = Document()
         self._setup_default_styles()
+
+        # Aggiungi ogni evento
         sorted_events = sorted(events, key=self.get_sort_date)
 
-        # TITOLO E STATISTICHE
-        title = self.doc.add_heading("Eventi e Locandine", level=1)
+        # 1. TITOLO E STATISTICHE (Sempre "Eventi e Locandine")
+        title_text = "Eventi e Locandine"
+        title = self.doc.add_heading(title_text, level=1)
         title.alignment = WD_ALIGN_PARAGRAPH.CENTER
         
+        # Data generazione
         date_para = self.doc.add_paragraph()
         date_para.alignment = WD_ALIGN_PARAGRAPH.CENTER
-        run = date_para.add_run(f"Documento generato il: {datetime.now().strftime('%d/%m/%Y %H:%M')}")
-        run.font.size, run.font.italic = Pt(10), True
+        now_str = datetime.now().strftime('%d/%m/%Y %H:%M')
+        run = date_para.add_run(f"Documento generato il: {now_str}")
+        run.font.size = Pt(10)
+        run.font.italic = True
         
-        self.doc.add_paragraph()
-        self.doc.add_paragraph("Riepilogo Dati:").runs[0].bold = True
-        self.doc.add_paragraph(f"Totale Locandine caricate: {len(sorted_events)}", style='List Bullet')
+        self.doc.add_paragraph() # Spazio
+
+        # Statistiche
+        st_h = self.doc.add_paragraph()
+        st_h.add_run("Riepilogo Dati:").bold = True
         
-        # --- STATISTICHE GEOGRAFICHE AGGIORNATE ---
+        total_ev = len(sorted_events)
+        self.doc.add_paragraph(f"Totale Locandine caricate: {total_ev}", style='List Bullet')
+        
+        # --- STATISTICHE GEOGRAFICHE ---
         PROV_TO_REG = {
-            'GENOVA': 'LIGURIA', 'LA SPEZIA': 'LIGURIA', 'SAVONA': 'LIGURIA', 
-            'IMPERIA': 'LIGURIA', 'MASSA': 'TOSCANA', 'ALESSANDRIA': 'PIEMONTE'
+            'GENOVA': 'LIGURIA', 'LA SPEZIA': 'LIGURIA', 'SAVONA': 'LIGURIA', 'IMPERIA': 'LIGURIA',
+            'MASSA': 'TOSCANA'
         }
 
         stats = {
             'LIGURIA': {'total': 0, 'provinces': {'GENOVA': 0, 'LA SPEZIA': 0, 'SAVONA': 0, 'IMPERIA': 0}},
             'TOSCANA': {'total': 0, 'provinces': {'MASSA': 0}},
-            'PIEMONTE': {'total': 0, 'provinces': {'ALESSANDRIA': 0}},
             'ALTRO': {'total': 0, 'cities': {}}
         }
 
         for ev in sorted_events:
-            prov = self.get_province(ev)
-            reg = PROV_TO_REG.get(prov, 'ALTRO')
+            prov_found = self.get_province(ev)
+            loc = ev.get('location', 'N/D').strip().upper()
             
-            if reg != 'ALTRO':
+            reg = PROV_TO_REG.get(prov_found)
+            if reg:
                 stats[reg]['total'] += 1
-                stats[reg]['provinces'][prov] = stats[reg]['provinces'].get(prov, 0) + 1
+                if prov_found in stats[reg]['provinces']:
+                    stats[reg]['provinces'][prov_found] += 1
             else:
                 stats['ALTRO']['total'] += 1
-                loc = ev.get('location', 'N/D').strip().upper()
                 stats['ALTRO']['cities'][loc] = stats['ALTRO']['cities'].get(loc, 0) + 1
+                if loc in PROV_TO_REG:
+                    prov = PROV_NORM.get(loc, loc)
+                    reg = PROV_TO_REG[loc]
+                    stats[reg]['total'] += 1
+                    if prov in stats[reg]['provinces']:
+                        stats[reg]['provinces'][prov] += 1
+                else:
+                    stats['ALTRO']['total'] += 1
+                    # Se non è una provincia, è una città "Altro"
+                    city_key = loc if loc else 'N/D'
+                    stats['ALTRO']['cities'][city_key] = stats['ALTRO']['cities'].get(city_key, 0) + 1
 
-        # Scrittura Statistiche nel Word
-        reg_txt = ", ".join([f"{r} ({stats[r]['total']})" for r in stats if stats[r]['total'] > 0])
-        self.doc.add_paragraph(f"Distribuzione per Regione: {reg_txt}", style='List Bullet')
-
-        prov_list = []
-        for r in stats:
-            if r != 'ALTRO':
-                for p, count in stats[r]['provinces'].items():
-                    if count > 0: prov_list.append(f"{p} ({count})")
-        
+        # Regionale
+        reg_parts = []
+        for r in ['LIGURIA', 'TOSCANA']:
+            if stats[r]['total'] > 0:
+                reg_parts.append(f"{r} ({stats[r]['total']})")
         if stats['ALTRO']['total'] > 0:
-            altro_txt = ", ".join([f"{c}({n})" for c, n in stats['ALTRO']['cities'].items()])
-            prov_list.append(f"ALTRO [{altro_txt}]")
-            
-        self.doc.add_paragraph(f"Distribuzione per Provincia: {', '.join(prov_list)}", style='List Bullet')
+            reg_parts.append(f"ALTRO ({stats['ALTRO']['total']})")
+        
+        self.doc.add_paragraph(f"Distribuzione per Regione: {', '.join(reg_parts)}", style='List Bullet')
+
+        # Provinciale
+        prov_parts = []
+        all_provs = {'GENOVA': 'GE', 'LA SPEZIA': 'SP', 'SAVONA': 'SV', 'IMPERIA': 'IM', 'MASSA': 'MS'}
+        for r in ['LIGURIA', 'TOSCANA']:
+            for p, count in stats[r]['provinces'].items():
+                if count > 0:
+                    prov_parts.append(f"{p} ({count})")
+        
+        # Aggiunta categoria ALTRO con elenco città
+        if stats['ALTRO']['total'] > 0:
+            altro_cities = ", ".join([f"{c} ({n})" for c, n in sorted(stats['ALTRO']['cities'].items())])
+            prov_parts.append(f"ALTRO [{altro_cities}]")
+        
+        if prov_parts:
+            self.doc.add_paragraph(f"Distribuzione per Provincia: {', '.join(prov_parts)}", style='List Bullet')
+
+        # Dettaglio Luoghi
+        locations = {}
+        for ev in sorted_events:
+            loc = ev.get('location', 'N/D').strip().upper()
+            locations[loc] = locations.get(loc, 0) + 1
+        
+        loc_str = ", ".join([f"{loc} ({count})" for loc, count in sorted(locations.items())])
+        self.doc.add_paragraph(f"Dettaglio per Località: {loc_str}", style='List Bullet')
         
         self.doc.add_page_break()
 
-        # ELENCO EVENTI
+        # 2. ELENCO EVENTI
         if mode == "standard":
+            # Modalità Standard: 2 eventi per pagina
             for idx, event in enumerate(sorted_events):
                 self.add_event_entry(event, event.get('image_path', ''), mode=mode, show_borders=show_borders)
+                
+                # Ogni 2 eventi (e se non è l'ultimo), aggiungiamo un salto pagina per armonia
                 if (idx + 1) % 2 == 0 and (idx + 1) < len(sorted_events):
                     self.doc.add_page_break()
                 else:
+                    # Spazio abbondante tra i due eventi nella stessa pagina
                     self.doc.add_paragraph().paragraph_format.space_after = Pt(30)
         else:
             i = 0
             while i < len(sorted_events):
-                ev1 = sorted_events[i]
-                ev2 = sorted_events[i+1] if (i+1) < len(sorted_events) else None
-                self.add_minimal_grid_row(ev1, ev2, show_borders=show_borders)
+                event1 = sorted_events[i]
+                event2 = sorted_events[i+1] if (i + 1) < len(sorted_events) else None
+                self.add_minimal_grid_row(event1, event2, show_borders=show_borders)
                 i += 2
         
-        # FIRMA E LOGO
-        if os.path.exists("firmaComitato.docx"):
-            self.doc.add_paragraph()
-            self._append_external_doc("firmaComitato.docx")
-            if os.path.exists("LogoNOConfiniTrasparente.png"):
+        # 3. FIRMA (Append file e inserimento Logo esplicito se presente)
+        firma_path = "firmaComitato.docx"
+        logo_path = "LogoNOConfiniTrasparente.png"
+        
+        if os.path.exists(firma_path):
+            self.doc.add_paragraph() # Spazio
+            self._append_external_doc(firma_path)
+            
+            # Logo posizionato DOPO la firma
+            if os.path.exists(logo_path):
+                # Assicuriamoci che ci sia un paragrafo di stacco
+                self.doc.add_paragraph()
                 p_logo = self.doc.add_paragraph()
                 p_logo.alignment = WD_ALIGN_PARAGRAPH.CENTER
-                p_logo.add_run().add_picture("LogoNOConfiniTrasparente.png", width=Inches(2.0))
+                run_logo = p_logo.add_run()
+                run_logo.add_picture(logo_path, width=Inches(2.0))
 
+        # Salva documento
         self.doc.save(output_path)
         return output_path
 
     def _append_external_doc(self, file_path):
+        """Tenta di appendere il contenuto di un altro file docx"""
         try:
             external_doc = Document(file_path)
             for element in external_doc.element.body:
                 self.doc.element.body.append(element)
         except Exception as e:
-            self.doc.add_paragraph(f"[Errore firma: {e}]").italic = True
+            # Fallback se l'append diretto fallisce (es. file corrotto)
+            p = self.doc.add_paragraph()
+            p.add_run(f"[Errore caricamento documento esterno {file_path}: {e}]").italic = True
 
     def add_minimal_grid_row(self, event1, event2, show_borders=False):
+        """
+        Aggiunge una riga in modalità minimal:
+        Colonna 1: Titolo + Immagine evento 1
+        Colonna 2: Titolo + Immagine evento 2 (se presente)
+        """
         table = self.doc.add_table(rows=1, cols=2)
-        table.style = 'Table Grid' if show_borders else 'Normal Table'
-        table.rows[0].allow_break_across_pages = False
-        table.columns[0].width = table.columns[1].width = Inches(3.25)
         
-        if event1: self._insert_minimal_content(table.rows[0].cells[0], event1)
-        if event2: self._insert_minimal_content(table.rows[0].cells[1], event2)
-        self.doc.add_paragraph()
+        if show_borders:
+            table.style = 'Table Grid'
+        else:
+            table.style = 'Normal Table'
+            
+        # Impedisce alla riga di spezzarsi tra due pagine
+        table.rows[0].allow_break_across_pages = False
+            
+        # Larghezze uguali
+        table.columns[0].width = Inches(3.25)
+        table.columns[1].width = Inches(3.25)
+        
+        # Cella 1
+        if event1:
+            self._insert_minimal_content(table.rows[0].cells[0], event1)
+            
+        # Cella 2
+        if event2:
+            self._insert_minimal_content(table.rows[0].cells[1], event2)
+            
+        self.doc.add_paragraph() # Spazio dopo la riga
 
     def _insert_minimal_content(self, cell, event_data):
+        """Inserisce Titolo (con Ora) + Immagine in una cella (modalità minimal)"""
         p = cell.paragraphs[0]
         p.alignment = WD_ALIGN_PARAGRAPH.CENTER
+        
+        # Titolo (Grassetto, dimensione contenuta)
+        # Formato: DATA - ORA - LUOGO
         title = event_data.get('title', 'Evento').upper()
         time = event_data.get('time', '').strip()
         
-        title_text = f"{title} - {time}" if time and time not in title else title
+        if time and time not in title:
+            # Ricostruzione titolo con ora se non presente
+            # (Assumendo che il titolo originale sia DATA - LUOGO)
+            if " - " in title:
+                parts = title.split(" - ", 1)
+                title_text = f"{parts[0]} - {time} - {parts[1]}"
+            else:
+                title_text = f"{title} - {time}"
+        else:
+            title_text = title
+
         run = p.add_run(title_text)
-        run.bold, run.font.size = True, Pt(9)
+        run.bold = True
+        run.font.size = Pt(9)
+        # Forza il titolo a stare insieme al paragrafo successivo (l'immagine)
         p.paragraph_format.keep_with_next = True
         
+        # Immagine (Sotto il titolo)
         img_path = event_data.get('image_path', '')
+        
+        # LOGICA SCADUTI MINIMAL: Se scaduto, mostra completed.jpg invece della locandina
         now = datetime.now()
-        if self.get_sort_date(event_data).date() < now.date() and os.path.exists("completed.jpg"):
-            img_path = "completed.jpg"
+        ev_date = WordGenerator.get_sort_date(event_data)
+        if ev_date != datetime.max and ev_date.date() < now.date():
+            if os.path.exists("completed.jpg"):
+                img_path = "completed.jpg"
 
         if img_path and os.path.exists(img_path):
             p_img = cell.add_paragraph()
             p_img.alignment = WD_ALIGN_PARAGRAPH.CENTER
-            p_img.add_run().add_picture(img_path, width=Inches(2.8))
-
+            run_img = p_img.add_run()
+            # Adatta larghezza per la griglia
+            run_img.add_picture(img_path, width=Inches(2.8))
+    
     def load_events_from_json(self, json_path: str) -> List[Dict]:
+        """Carica eventi dal file JSON"""
         if os.path.exists(json_path):
             with open(json_path, 'r', encoding='utf-8') as f:
                 return json.load(f)
         return []
     
     def save_events_to_json(self, events: List[Dict], json_path: str):
+        """Salva eventi nel file JSON"""
         with open(json_path, 'w', encoding='utf-8') as f:
             json.dump(events, f, ensure_ascii=False, indent=2)
+
+
+if __name__ == "__main__":
+    # Test
+    generator = WordGenerator()
+    print("Word Generator inizializzato correttamente!")
