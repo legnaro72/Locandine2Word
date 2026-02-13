@@ -10,10 +10,17 @@ from datetime import datetime
 from PIL import Image
 from ocr_engine import LocandineOCR
 from word_generator import WordGenerator
+import dateparser
+import pandas as pd
+import altair as alt
 try:
     from streamlit_mic_recorder import speech_to_text
 except ImportError:
     speech_to_text = None  # Fallback gracefully
+    
+@st.cache_data(show_spinner=False)
+def cached_ocr(image_path):
+    return st.session_state.ocr_engine.analyze_poster(image_path)
 
 # --- FUNZIONE HELPER AUDIO (Dall'esempio funzionante) ---
 def get_base64_file(file_path):
@@ -65,8 +72,12 @@ def save_optimized_image(input_source, save_path, max_width=1200):
     Ridimensiona e comprime un'immagine per risparmiare spazio e velocizzare il cloud.
     input_source: può essere un UploadedFile o un percorso (stringa).
     """
+    # 🚀 Se l'immagine esiste già, non rifarla
+    if os.path.exists(save_path):
+        return True
+
     try:
-        from PIL import Image
+        #from PIL import Image
         img = Image.open(input_source)
         # Conversione RGB per salvare in JPEG (gestisce PNG/RGBA)
         if img.mode in ("RGBA", "P"):
@@ -479,7 +490,7 @@ with st.sidebar:
             # st.rerun() # Evitiamo rerun immediato per far leggere il msg
         if col_c2.button("❌ Annulla", key="cancel_push_btn"):
             st.session_state.show_confirm_push = False
-            st.rerun()
+            # st.rerun()
 
     # --- GITHUB PULL ---
     if st.button("☁️ Carica da GitHub (Cloud)", disabled=not GITHUB_TOKEN):
@@ -504,7 +515,7 @@ with st.sidebar:
             st.session_state.show_confirm_pull = False
         if col_cp2.button("❌ Annulla", key="cancel_pull_btn"):
             st.session_state.show_confirm_pull = False
-            st.rerun()
+            # st.rerun()
 
     st.write("---")
 
@@ -609,13 +620,13 @@ with tab1:
                             else:
                                 parsed = {k: json_match.get(k, '') for k in ['title', 'date', 'time', 'location', 'venue', 'address', 'description']}
                         else:
-                            raw_ocr = st.session_state.ocr_engine.analyze_poster(image_path)
+                            raw_ocr = cached_ocr(image_path)
                             parsed = parse_event_text(raw_ocr.get('full_text', ''))
                         
                         parsed['image_path'] = f"{UPLOADS_DIR}/{uploaded_file.name}"
                         st.session_state[f'temp_data_{idx}'] = parsed
                 st.success("Tutte le immagini sono state analizzate! Controlla i moduli sotto.")
-                st.rerun()
+                # st.rerun()
 
         for idx, uploaded_file in enumerate(uploaded_files):
             with st.expander(f"🖼️ {uploaded_file.name}", expanded=True):
@@ -672,7 +683,7 @@ with tab1:
                             
                             # Salva in temp per mostrare il form
                             st.session_state[f'temp_data_{idx}'] = parsed
-                            st.rerun() # Refresh per mostrare il form sotto
+                            # st.rerun() # Refresh per mostrare il form sotto
 
                     # Form di Verifica (appare SOLO se abbiamo i dati in temp)
                     if f'temp_data_{idx}' in st.session_state:
@@ -818,7 +829,7 @@ with tab2:
                     if raw_date:
                         clean_date = normalize_date_to_italian(raw_date)
                         event['date'] = clean_date
-                        import dateparser
+                        #import dateparser
                         dt = dateparser.parse(clean_date, languages=['it'])
                         if dt:
                             day_map_safe = {0: "LUNEDI'", 1: "MARTEDI'", 2: "MERCOLEDI'", 3: "GIOVEDI'", 4: "VENERDI'", 5: "SABATO", 6: "DOMENICA"}
@@ -827,7 +838,7 @@ with tab2:
                 with open(DATA_FILE, 'w', encoding='utf-8') as f:
                     json.dump(events_list, f, ensure_ascii=False, indent=2)
                 st.success("Titoli aggiornati!")
-                st.rerun()
+                # st.rerun()
 
         with col_m3:
             if st.button("✨ Rimuovi NEW"):
@@ -843,10 +854,10 @@ with tab2:
                         json.dump(events_list, f, ensure_ascii=False, indent=2)
                     st.session_state.confirm_clear_new = False
                     st.success("Etichette NEW rimosse!")
-                    st.rerun()
+                    # st.rerun()
                 if c_n.button("❌ Annulla", key="n_clear_new"):
                     st.session_state.confirm_clear_new = False
-                    st.rerun()
+                    # st.rerun()
 
         with col_m4:
             if st.button("🔄 Riordina Date"):
@@ -854,7 +865,7 @@ with tab2:
                 with open(DATA_FILE, 'w', encoding='utf-8') as f:
                     json.dump(events_list, f, ensure_ascii=False, indent=2)
                 st.success("Eventi riordinati!")
-                st.rerun()
+                # st.rerun()
 
         # Ri-indicizzazione degli eventi filtrati per la visualizzazione corretta
         # Manteniamo l'indice originale per permettere l'aggiornamento corretto
@@ -990,7 +1001,7 @@ with tab2:
 
                                 del st.session_state[mic_buffer_key]
                                 st.success("Campo aggiornato!")
-                                st.rerun()
+                                # st.rerun()
 
 
                 st.divider()
@@ -1038,7 +1049,7 @@ with tab2:
                             json.dump(events_list, f, ensure_ascii=False, indent=2)
 
                         st.success("Aggiornato!")
-                        st.rerun()
+                        # st.rerun()
 
                     # Pulsante RIMUOVI NEW (visibile solo se l'evento è nuovo)
                     if event.get('is_new'):
@@ -1046,7 +1057,7 @@ with tab2:
                             events_list[real_idx]['is_new'] = False
                             with open(DATA_FILE, 'w', encoding='utf-8') as f:
                                 json.dump(events_list, f, ensure_ascii=False, indent=2)
-                            st.rerun()
+                            # st.rerun()
                     else:
                          col_b2.write("") # Spacer se non c'è il pulsante
 
@@ -1183,8 +1194,8 @@ with tab4:
                 stats_geo['ALTRO']['cities'][loc] = stats_geo['ALTRO']['cities'].get(loc, 0) + 1
 
         # --- GRAFICI INTERATTIVI ---
-        import pandas as pd
-        import altair as alt
+        #import pandas as pd
+        #import altair as alt
 
         col_g1, col_g2 = st.columns(2)
         
