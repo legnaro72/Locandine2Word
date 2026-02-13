@@ -36,6 +36,27 @@ audio_base64 = get_base64_file("audio.mp3")
 # Usa il parametro moderno 'width' (valido per st.image(), NON per button/download_button)
 IMG_WIDTH_ARG = {"width": "stretch"}
 
+MAPPING_FILE = "city_mappings.json"
+
+def load_custom_mappings():
+    if os.path.exists(MAPPING_FILE):
+        with open(MAPPING_FILE, "r", encoding="utf-8") as f:
+            return json.load(f)
+    return {}
+
+def save_custom_mapping(city, province):
+    mappings = load_custom_mappings()
+    mappings[city.strip().upper()] = province # Salviamo tutto in maiuscolo per evitare duplicati
+    with open(MAPPING_FILE, "w", encoding="utf-8") as f:
+        json.dump(mappings, f, indent=4)
+
+def delete_custom_mapping(city):
+    mappings = load_custom_mappings()
+    if city in mappings:
+        del mappings[city]
+        with open(MAPPING_FILE, "w", encoding="utf-8") as f:
+            json.dump(mappings, f, indent=4)
+
 # --- FUNZIONI DI SUPPORTO ---
 def normalize_date_to_italian(raw_date):
     """Normalizza date tipo 15/01/2026 o 15 GENNAIO 2026"""
@@ -1294,10 +1315,14 @@ with tab4:
         st.divider()
         st.info("💡 I grafici si aggiornano automaticamente ogni volta che modifichi o aggiungi un evento.")
 
-        # --- PULIZIA E OTTIMIZZAZIONE MANUALE ---
+        # --- PULIZIA, OTTIMIZZAZIONE E MAPPATURE ---
         with st.expander("🛠️ Strumenti Avanzati (Manutenzione)"):
-            st.write("Usa questi strumenti per tenere l'app veloce e leggera.")
-            if st.button("⚡ Ottimizza Archivio Esistente", help="Ridimensiona tutte le immagini caricate in precedenza per occupare meno spazio."):
+            
+            # SEZIONE 1: OTTIMIZZAZIONE IMMAGINI
+            st.markdown("#### ⚡ Ottimizzazione Immagini")
+            st.write("Ridimensiona tutte le immagini caricate per risparmiare spazio e velocizzare il backup.")
+            
+            if st.button("🚀 Avvia Ottimizzazione Archivio"):
                 files = [f for f in os.listdir(UPLOADS_DIR) if f.lower().endswith(('.png', '.jpg', '.jpeg'))]
                 if not files:
                     st.warning("Nessuna immagine trovata da ottimizzare.")
@@ -1307,6 +1332,7 @@ with tab4:
                     pbar = st.progress(0)
                     for i, filename in enumerate(files):
                         img_path = os.path.join(UPLOADS_DIR, filename)
+                        # Usa la funzione save_optimized_image già definita in app.py
                         if save_optimized_image(img_path, img_path):
                             processed += 1
                         else:
@@ -1314,3 +1340,53 @@ with tab4:
                         pbar.progress((i + 1) / len(files))
                     st.success(f"✅ Ottimizzazione completata! Processate {processed} immagini. (Fallite: {errors})")
                     st.info("Nota: Al prossimo salvataggio su GitHub, il backup sarà molto più leggero.")
+
+            st.divider()
+
+            # SEZIONE 2: GESTIONE LOCALITÀ (NUOVA)
+            st.markdown("#### 🗺️ Mappatura Località -> Provincia")
+            st.info("Insegna al sistema a riconoscere città non standard (es. Luni ➡ SP, Ospedaletti ➡ IM).")
+
+            # Form di inserimento
+            col_city, col_prov, col_btn = st.columns([3, 2, 2])
+            
+            with col_city:
+                new_city = st.text_input("Nome Località", placeholder="Es. Luni, Ospedaletti").strip()
+            
+            with col_prov:
+                # Lista province supportate
+                prov_options = ["SP", "IM", "GE", "SV", "MS", "AL"] 
+                new_prov = st.selectbox("Provincia", prov_options)
+                
+            with col_btn:
+                st.write("") # Spaziatura estetica per allineare il bottone in basso
+                st.write("") 
+                if st.button("➕ Aggiungi Regola"):
+                    if new_city:
+                        save_custom_mapping(new_city, new_prov)
+                        st.success(f"✅ Salvato: {new_city.upper()} ➡ {new_prov}")
+                        st.rerun()
+                    else:
+                        st.error("Inserisci il nome della località.")
+
+            # Tabella visualizzazione regole esistenti
+            mappings = load_custom_mappings()
+            if mappings:
+                st.write("📍 **Regole Personalizzate Attive:**")
+                
+                # Convertiamo il dizionario in una lista per visualizzarlo meglio
+                map_items = [{"Località": k, "Provincia": v} for k, v in mappings.items()]
+                st.dataframe(map_items, use_container_width=True, hide_index=True)
+                
+                # Area Cancellazione
+                col_del1, col_del2 = st.columns([3, 1])
+                with col_del1:
+                    city_to_del = st.selectbox("Seleziona una regola da rimuovere:", [""] + list(mappings.keys()))
+                with col_del2:
+                    st.write("")
+                    st.write("")
+                    if st.button("🗑️ Rimuovi") and city_to_del:
+                        delete_custom_mapping(city_to_del)
+                        st.rerun()
+            else:
+                st.caption("Nessuna regola personalizzata salvata.")
