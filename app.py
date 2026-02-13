@@ -56,6 +56,25 @@ def delete_custom_mapping(city):
         del mappings[city]
         with open(MAPPING_FILE, "w", encoding="utf-8") as f:
             json.dump(mappings, f, indent=4)
+            
+def save_custom_mapping(city, province):
+    mappings = load_custom_mappings()
+    mappings[city.strip().upper()] = province 
+    with open(MAPPING_FILE, "w", encoding="utf-8") as f:
+        json.dump(mappings, f, ensure_ascii=False, indent=4)
+    
+    # --- AGGIUNTA PER IL CLOUD ---
+    try:
+        # Supponendo che github_manager sia inizializzato in st.session_state
+        with open(MAPPING_FILE, "r", encoding="utf-8") as f:
+            content = f.read()
+        st.session_state.github_manager.upload_file(
+            MAPPING_FILE, 
+            content, 
+            f"Aggiornata mappatura località: {city}"
+        )
+    except Exception as e:
+        st.error(f"Errore sincronizzazione Cloud: {e}")
 
 # --- FUNZIONI DI SUPPORTO ---
 def normalize_date_to_italian(raw_date):
@@ -1153,122 +1172,70 @@ with tab3:
                 st.success("Documento pronto!")
 
 # --- TAB 4: STATISTICHE ---
+# --- TAB 4: STATISTICHE ---
 with tab4:
-    st.subheader("📊 Analisi e Distribuzione Eventi")
-    
-    events_list_stats = st.session_state.get('events', [])
-    
-    if not events_list_stats:
-        st.info("Nessun dato disponibile per le statistiche. Carica degli eventi per iniziare.")
+    st.subheader("📊 Analisi Eventi in Archivio")
+
+    if not st.session_state.events:
+        st.info("Nessun evento in archivio. Carica delle locandine per vedere le statistiche.")
     else:
-        # Calcoli di base
-        total_ev = len(events_list_stats)
-        now = datetime.now()
+        # --- PREPARAZIONE DATI ---
+        # Carichiamo le mappature personalizzate per assicurarci che siano fresche
+        custom_mappings = load_custom_mappings()
         
-        expired_count = 0
-        new_count = 0
-        active_count = 0
-        
-        for ev in events_list_stats:
-            ev_date = WordGenerator.get_sort_date(ev)
-            if ev.get('is_new'):
-                new_count += 1
+        df_list = []
+        for ev in st.session_state.events:
+            # Usiamo la logica centralizzata di WordGenerator per determinare la provincia
+            # Questa funzione deve essere definita come @staticmethod in word_generator.py
+            provincia = WordGenerator.get_province(ev)
             
-            if ev_date != datetime.max and ev_date.date() < now.date():
-                expired_count += 1
-            else:
-                active_count += 1
+            # Recuperiamo la data per l'ordinamento cronologico
+            dt = WordGenerator.get_sort_date(ev)
+            mese_anno = dt.strftime("%Y-%m") if dt != datetime.max else "N/D"
 
-        # Metriche principali
-        m1, m2, m3, m4 = st.columns(4)
-        m1.metric("Totale Eventi", total_ev)
-        m2.metric("Attivi (Futuri)", active_count)
-        m3.metric("Scaduti", expired_count)
-        m4.metric("Nuovi (NEW)", new_count)
-        
-        st.divider()
-        
-        # Mappatura Province/Regioni (Stessa logica del WordGenerator)
-        PROV_TO_REG = {
-            'GENOVA': 'LIGURIA', 'LA SPEZIA': 'LIGURIA', 'SAVONA': 'LIGURIA', 
-            'IMPERIA': 'LIGURIA', 'MASSA': 'TOSCANA'
-        }
-        
-        stats_geo = {
-            'LIGURIA': {'total': 0, 'provinces': {'GENOVA': 0, 'LA SPEZIA': 0, 'SAVONA': 0, 'IMPERIA': 0}},
-            'TOSCANA': {'total': 0, 'provinces': {'MASSA': 0}},
-            'ALTRO': {'total': 0, 'cities': {}}
-        }
-
-        # Elaborazione Geografica
-        for ev in events_list_stats:
-            prov_found = WordGenerator.get_province(ev)
-            loc = ev.get('location', 'N/D').strip().upper()
-            
-            reg = PROV_TO_REG.get(prov_found)
-            if reg:
-                stats_geo[reg]['total'] += 1
-                if prov_found in stats_geo[reg]['provinces']:
-                    stats_geo[reg]['provinces'][prov_found] += 1
-            else:
-                stats_geo['ALTRO']['total'] += 1
-                stats_geo['ALTRO']['cities'][loc] = stats_geo['ALTRO']['cities'].get(loc, 0) + 1
-
-        # --- GRAFICI INTERATTIVI ---
-        #import pandas as pd
-        #import altair as alt
-
-        col_g1, col_g2 = st.columns(2)
-        
-        with col_g1:
-            st.markdown("#### 🌍 Distribuzione Regionale")
-            reg_df = pd.DataFrame({
-                "Regione": ["LIGURIA", "TOSCANA", "ALTRO"],
-                "Eventi": [stats_geo['LIGURIA']['total'], stats_geo['TOSCANA']['total'], stats_geo['ALTRO']['total']]
+            df_list.append({
+                "Titolo": ev.get('title', 'N/D'),
+                "Provincia": provincia,
+                "Località": ev.get('location', 'N/D').upper(),
+                "Mese": mese_anno,
+                "Data_Sort": dt
             })
-            # Rimuoviamo righe con 0 eventi per pulizia grafico
-            reg_df = reg_df[reg_df["Eventi"] > 0]
-            if not reg_df.empty:
-                # Creazione Grafico a Torta (Donut) con Altair
-                pie_chart = alt.Chart(reg_df).mark_arc(innerRadius=50).encode(
-                    theta=alt.Theta(field="Eventi", type="quantitative"),
-                    color=alt.Color(field="Regione", type="nominal", scale=alt.Scale(range=['#667eea', '#764ba2', '#ff9a9e'])),
-                    tooltip=['Regione', 'Eventi']
-                ).properties(height=300)
-                
-                st.altair_chart(pie_chart, width="stretch")
-            else:
-                st.write("Nessun dato regionale.")
+
+        df = pd.DataFrame(df_list)
+
+        # --- VISUALIZZAZIONE GRAFICI ---
+        col_g1, col_g2 = st.columns(2)
+
+        with col_g1:
+            st.markdown("#### 📍 Distribuzione per Provincia")
+            # Conteggio per provincia
+            prov_counts = df['Provincia'].value_counts().reset_index()
+            prov_counts.columns = ['Provincia', 'Conteggio']
+            
+            chart_prov = alt.Chart(prov_counts).mark_arc(innerRadius=50).encode(
+                theta=alt.Theta(field="Conteggio", type="quantitative"),
+                color=alt.Color(field="Provincia", type="nominal", scale=alt.Scale(scheme='tableau10')),
+                tooltip=['Provincia', 'Conteggio']
+            ).properties(height=300)
+            st.altair_chart(chart_prov, use_container_width=True)
 
         with col_g2:
-            st.markdown("#### 🗺️ Dettaglio Province")
-            prov_data = []
-            for reg in ['LIGURIA', 'TOSCANA']:
-                for p, count in stats_geo[reg]['provinces'].items():
-                    if count > 0:
-                        prov_data.append({"Provincia": p, "Eventi": count, "Regione": reg})
-            
-            if prov_data:
-                prov_df = pd.DataFrame(prov_data).sort_values(by="Eventi", ascending=False)
-                
-                # Usa Altair con colori differenziati per regione
-                prov_chart = alt.Chart(prov_df).mark_bar().encode(
-                    x=alt.X('Provincia:N', sort='-y', title='Provincia'),
-                    y=alt.Y('Eventi:Q', title='Numero Eventi'),
-                    color=alt.Color('Regione:N', 
-                                   scale=alt.Scale(
-                                       domain=['LIGURIA', 'TOSCANA'],
-                                       range=['#667eea', '#ff9a9e']  # Viola per LIGURIA, Rosa per TOSCANA
-                                   ),
-                                   legend=alt.Legend(title="Regione")),
-                    tooltip=['Provincia', 'Regione', 'Eventi']
-                ).properties(height=300)
-                
-                st.altair_chart(prov_chart, width="stretch")
-            else:
-                st.write("Nessun dato provinciale.")
+            st.markdown("#### 📅 Eventi nel Tempo")
+            timeline = df[df['Mese'] != "N/D"].groupby('Mese').size().reset_index(name='Conteggio')
+            chart_time = alt.Chart(timeline).mark_line(point=True, color='#667eea').encode(
+                x=alt.X('Mese:T', title='Mese'),
+                y=alt.Y('Conteggio:Q', title='Numero Eventi'),
+                tooltip=['Mese', 'Conteggio']
+            ).properties(height=300)
+            st.altair_chart(chart_time, use_container_width=True)
 
-        st.divider()
+        # Tabella riassuntiva
+        st.markdown("#### 📋 Dettaglio Località Riconosciute")
+        st.dataframe(
+            df[['Provincia', 'Località', 'Titolo']].sort_values('Provincia'),
+            use_container_width=True,
+            hide_index=True
+        )
         
         # --- SECONDA RIGA GRAFICI ---
         col_g3, col_g4 = st.columns([2, 1])

@@ -15,20 +15,24 @@ class GithubManager:
         self.backup_filename = "github_backup.zip"
 
     def create_backup_zip(self, data_file, uploads_dir):
-        """Crea uno zip in memoria con data.json e la cartella uploads."""
+        """Crea uno zip in memoria con data.json, city_mappings.json e la cartella uploads."""
         zip_buffer = io.BytesIO()
         with zipfile.ZipFile(zip_buffer, 'w', zipfile.ZIP_DEFLATED) as zf:
-            # 1. Aggiungi il database JSON
+            # 1. Aggiungi il database degli eventi
             if os.path.exists(data_file):
                 zf.write(data_file, arcname='data.json')
             
-            # 2. Aggiungi la cartella uploads
+            # 2. AGGIUNTA: Aggiungi il file delle mappature personalizzate
+            mapping_file = "city_mappings.json"
+            if os.path.exists(mapping_file):
+                zf.write(mapping_file, arcname=mapping_file)
+            
+            # 3. Aggiungi la cartella uploads
             if os.path.exists(uploads_dir):
                 for root, _, files in os.walk(uploads_dir):
                     for file in files:
                         file_path = os.path.join(root, file)
-                        # Assicuriamoci che nel ZIP il percorso sia sempre 'uploads/nomefile'
-                        # indipendentemente dal sistema operativo
+                        # arcname assicura che nel ZIP il percorso sia 'uploads/nomefile'
                         arcname = f"uploads/{os.path.basename(file)}"
                         zf.write(file_path, arcname=arcname)
         
