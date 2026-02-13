@@ -1405,5 +1405,178 @@ with tab4:
             )
 
         st.divider()
+        
+        # --- ANALISI TEMPORALE ---
+        st.markdown("### 📈 Andamento Temporale")
+        
+        # Prepariamo i dati temporali
+        time_data = []
+        for ev in events_list_stats:
+            d = WordGenerator.get_sort_date(ev)
+            if d != datetime.max:
+                time_data.append(d.date())
+        
+        if time_data:
+            df_dates_raw = pd.DataFrame({"Data": time_data})
+            min_date = min(time_data)
+            max_date = max(time_data)
+            
+            # Creiamo un range completo di giorni per non avere buchi nel grafico
+            all_days = pd.date_range(start=min_date, end=max_date).date
+            date_counts = df_dates_raw["Data"].value_counts().to_dict()
+            
+            daily_stats = []
+            cumulative = 0
+            for d in all_days:
+                count_today = date_counts.get(d, 0)
+                cumulative += count_today
+                # Eventi "Attivi" per quel giorno specifico: eventi con data >= d
+                active_at_d = len([x for x in time_data if x >= d])
+                
+                daily_stats.append({
+                    "Data": d,
+                    "Eventi Giornalieri": count_today,
+                    "Totale Progressivo": cumulative,
+                    "Eventi Attivi": active_at_d
+                })
+            
+            df_time = pd.DataFrame(daily_stats)
+            
+            # 1. Grafico Andamento (Cumulativo e Attivi)
+            df_melted = df_time.melt(id_vars=["Data"], value_vars=["Totale Progressivo", "Eventi Attivi"], 
+                                     var_name="Tipo", value_name="Conteggio")
+            
+            # Linea verticale per OGGI
+            today_dt = datetime.now().date()
+            today_line = alt.Chart(pd.DataFrame({'Data': [pd.to_datetime(today_dt)]})).mark_rule(
+                color='red', 
+                strokeDash=[5, 5],
+                size=2
+            ).encode(x='Data:T')
+
+            line_chart = alt.Chart(df_melted).mark_line(interpolate='monotone', strokeWidth=3).encode(
+                x=alt.X('Data:T', title='Data'),
+                y=alt.Y('Conteggio:Q', title='Numero Eventi'),
+                color=alt.Color('Tipo:N', scale=alt.Scale(domain=['Totale Progressivo', 'Eventi Attivi'], range=['#667eea', '#ff9a9e'])),
+                tooltip=['Data:T', 'Conteggio', 'Tipo']
+            ).properties(height=350, title="Evoluzione del Volume Eventi")
+            
+            st.altair_chart(line_chart + today_line, width="stretch")
+            
+            # 2. Istogramma Giornaliero
+            hist_chart = alt.Chart(df_time).mark_bar(color='#764ba2', opacity=0.8).encode(
+                x=alt.X('Data:T', title='Giorno'),
+                y=alt.Y('Eventi Giornalieri:Q', title='Eventi Previsti'),
+                tooltip=['Data:T', 'Eventi Giornalieri']
+            ).properties(height=200, title="Frequenza Giornaliera Eventi")
+            
+            st.altair_chart(hist_chart + today_line, width="stretch")
+        else:
+            st.info("Aggiungi eventi con date valide per visualizzare l'analisi temporale.")
+
+        st.divider()
+
+        # --- TABELLA RIASSUNTIVA ---
+        st.markdown("### 📋 Elenco Riepilogativo Eventi")
+        
+        # Prepariamo i dati per la tabella (ordinati cronologicamente)
+        table_rows = []
+        sorted_stats = sorted(events_list_stats, key=WordGenerator.get_sort_date)
+        
+        for ev in sorted_stats:
+            table_rows.append({
+                "Data": ev.get('date', ''),
+                "Titolo": ev.get('title', ''),
+                "Località": ev.get('location', ''),
+                "Provincia": WordGenerator.get_province(ev),
+                "Indirizzo": ev.get('address', ''),
+                "Orario": ev.get('time', ''),
+                "NEW": "⭐" if ev.get('is_new') else ""
+            })
+        
+        if table_rows:
+            st.dataframe(
+                pd.DataFrame(table_rows),
+                column_config={
+                    "Data": st.column_config.TextColumn("Data", width="small"),
+                    "NEW": st.column_config.TextColumn("NEW", width="small"),
+                    "Titolo": st.column_config.TextColumn("Titolo", width="medium"),
+                },
+                hide_index=True,
+                width="stretch"
+            )
+        
+        st.divider()
+
+        # --- CONTROLLO INTEGRITÀ E DUPLICATI ---
+        st.markdown("### ⚠️ Avvisi Integrità e Conflitti")
+        
+        check_filename = {}
+        check_size = {}
+        check_datetime = {}
+        check_address = {}
+        
+        for ev in events_list_stats:
+            title = ev.get('title', 'N/D')
+            
+            # 1. Filename
+            img_rel_path = ev.get('image_path', '')
+            if img_rel_path:
+                fname = os.path.basename(img_rel_path)
+                if fname not in check_filename: check_filename[fname] = []
+                check_filename[fname].append(title)
+                
+                # 2. Size (Controllo effettivo sul disco)
+                if os.path.exists(img_rel_path):
+                    fsize = os.path.getsize(img_rel_path)
+                    if fsize not in check_size: check_size[fsize] = []
+                    check_size[fsize].append(title)
+            
+            # 3. Date-Time (Stesso giorno e stessa ora)
+            d_raw = ev.get('date', '').strip().upper()
+            t_raw = ev.get('time', '').strip().upper()
+            if d_raw and t_raw:
+                dt_key = f"{d_raw} alle {t_raw}"
+                if dt_key not in check_datetime: check_datetime[dt_key] = []
+                check_datetime[dt_key].append(title)
+            
+            # 4. Indirizzo (Stesso indirizzo anche su giorni diversi)
+            addr_raw = ev.get('address', '').strip().upper()
+            if addr_raw and len(addr_raw) > 5: # Evitiamo stringhe troppo corte o generiche
+                if addr_raw not in check_address: check_address[addr_raw] = []
+                check_address[addr_raw].append(title)
+        
+        any_warning = False
+        
+        # Visualizzazione Avvisi Filename
+        for fname, titles in check_filename.items():
+            if len(titles) > 1:
+                st.warning(f"🖼️ **Stessa Immagine (Filename):** Il file `{fname}` è usato da:\n" + "".join([f"- {t}\n" for t in titles]))
+                any_warning = True
+        
+        # Visualizzazione Avvisi Size (solo se non sono lo stesso filename, per evitare ridondanza)
+        for fsize, titles in check_size.items():
+            if len(titles) > 1:
+                filenames = set([os.path.basename(ev.get('image_path','')) for ev in events_list_stats if ev.get('title') in titles])
+                if len(filenames) > 1:
+                    st.warning(f"⚖️ **Immagini Sospette (Stessa Size):** Immagini diverse con dimensione `{fsize} bytes` in:\n" + "".join([f"- {t}\n" for t in titles]))
+                    any_warning = True
+
+        # Visualizzazione Avvisi Indirizzo (Stesso indirizzo)
+        for addr, titles in check_address.items():
+            if len(titles) > 1:
+                st.warning(f"📍 **Indirizzo Duplicato:** Lo stesso indirizzo `{addr}` compare in:\n" + "".join([f"- {t}\n" for t in titles]))
+                any_warning = True
+                
+        # Visualizzazione Avvisi Conflitto Orario (INFO - AZZURRINO)
+        for dt, titles in check_datetime.items():
+            if len(titles) > 1:
+                st.info(f"📅 **Nota Orario:** Più eventi lo stesso giorno alla stessa ora (`{dt}`). Casistica ammessa, verifica per scrupolo:\n" + "".join([f"- {t}\n" for t in titles]))
+                any_warning = True
+        
+        if not any_warning:
+            st.success("✅ Nessun conflitto rilevato tra immagini o orari.")
+
+        st.divider()
         st.info("💡 I grafici si aggiornano automaticamente ogni volta che modifichi o aggiungi un evento.")
 
