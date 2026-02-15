@@ -731,7 +731,20 @@ with tab1:
                 st.success("Tutte le immagini sono state analizzate! Controlla i moduli sotto.")
                 # st.rerun()
 
+        # Identifica le immagini già collegate a eventi esistenti
+        existing_imgs = set()
+        for ev in st.session_state.events:
+             path = ev.get('image_path', '')
+             if path:
+                 # Gestione sicura separatori (normalizzati a / nel DB)
+                 fname = path.replace('\\', '/').split('/')[-1]
+                 existing_imgs.add(fname)
+
         for idx, uploaded_file in enumerate(uploaded_files):
+            # Se l'immagine è già in un evento, saltala (nascondi preview)
+            if uploaded_file.name in existing_imgs:
+                continue
+
             with st.expander(f"🖼️ {uploaded_file.name}", expanded=True):
                 col1, col2 = st.columns([1, 2])
                 
