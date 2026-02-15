@@ -939,7 +939,7 @@ with tab2:
         
         with col_m2:
             if st.button("🏷️ Rinomina Auto"):
-                for event in events_list: # Azione globale sul database reale
+                for idx, event in enumerate(events_list): # Azione globale sul database reale
                     raw_date = event.get('date', '').strip()
                     location = event.get('location', '').strip()
                     if raw_date:
@@ -950,11 +950,19 @@ with tab2:
                         if dt:
                             day_map_safe = {0: "LUNEDI'", 1: "MARTEDI'", 2: "MERCOLEDI'", 3: "GIOVEDI'", 4: "VENERDI'", 5: "SABATO", 6: "DOMENICA"}
                             weekday = day_map_safe.get(dt.weekday(), "")
-                            event['title'] = f"{weekday} {clean_date} - {location}" if location else f"{weekday} {clean_date}"
+                            
+                            new_title = f"{weekday} {clean_date} - {location}" if location else f"{weekday} {clean_date}"
+                            event['title'] = new_title
+                            
+                            # Aggiorna anche il widget session_state se esiste, per riflettere la modifica nel form
+                            k_tit = f"e_tit_{idx}"
+                            if k_tit in st.session_state:
+                                st.session_state[k_tit] = new_title
+
                 with open(DATA_FILE, 'w', encoding='utf-8') as f:
                     json.dump(events_list, f, ensure_ascii=False, indent=2)
                 st.success("Titoli aggiornati!")
-                # st.rerun()
+                st.rerun()
 
         with col_m3:
             if st.button("✨ Rimuovi NEW"):
