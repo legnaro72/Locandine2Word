@@ -47,7 +47,8 @@ class AlbumGenerator:
                  rows=3, cols=2, layout="verticale",
                  custom_cover_image=None, custom_back_image=None,
                  logo_white_bg=False, logo_cover_white_bg=False, logo_cover_full_page=True,
-                 show_banner=True, transparent_stickers=False, force_aspect_ratio=False):
+                 show_banner=True, transparent_stickers=False, force_aspect_ratio=False,
+                 empty_album_mode=False, export_stickers=False):
         """
         Args:
             bg_image_path: percorso immagine di sfondo (giustidireno.png)
@@ -64,6 +65,8 @@ class AlbumGenerator:
             show_banner: se True, mostra il banner in alto in copertina
             transparent_stickers: se True, l'esterno del box figurina è trasparente
             force_aspect_ratio: se True, forza le immagini interne proporzione esatta (tipo 57x82mm) centrata
+            empty_album_mode: se True, disegna figure vuote con numero gigante
+            export_stickers: se True, salva crop perfetti delle figurine trasparenti (con bg vero fuso)
         """
         self.rows = max(1, min(5, rows))
         self.cols = max(1, min(4, cols))
@@ -75,6 +78,8 @@ class AlbumGenerator:
         self.show_banner = show_banner
         self.transparent_stickers = transparent_stickers
         self.force_aspect_ratio = force_aspect_ratio
+        self.empty_album_mode = empty_album_mode
+        self.export_stickers = export_stickers
 
         # --- Caricamento immagini ---
         self.bg_image = None
@@ -206,13 +211,14 @@ class AlbumGenerator:
         self._draw_page_frame(draw)
         return page
 
-    def _create_sticker(self, image_path, number, location="", date="", sticker_w=500, sticker_h=480):
+    def _create_sticker(self, image_path, number, location="", date="", sticker_w=500, sticker_h=480, empty=False):
         """
         Crea una singola figurina stile Panini con:
         - Ombra portata
         - Bordo dorato
         - Numero figurina
         - Didascalia con località e data
+        - empty=True: disegna solo il borgo e un numero gigante centrale.
         """
         canvas_w = sticker_w + self.SHADOW_OFFSET * 2 + 4
         canvas_h = sticker_h + self.SHADOW_OFFSET * 2 + 4
@@ -227,15 +233,18 @@ class AlbumGenerator:
         draw.rounded_rectangle(shadow_rect, radius=self.CORNER_RADIUS,
                               fill=self.COLOR_SHADOW)
 
-        # --- Sfondo figurina ---
+        # --- Sfondo figurina (o Bordo Album Vuoto) ---
         sticker_rect = [2, 2, sticker_w + 2, sticker_h + 2]
         
+        # === MODALITA' FIGURINA NORMALE O ALBUM VUOTO (Condivisa) ===
         if self.transparent_stickers:
             # Rettangolo base trasparente
+            # In modalità album vuoto lascio intravedere ancora di più lo sfondo dell'album (alpha bassissima o 0)
+            alpha_bg = 60 if not empty else 0
             draw.rounded_rectangle(sticker_rect, radius=self.CORNER_RADIUS,
-                                  fill=(0, 0, 0, 60),  # Lieve ombra/oscuramento per distacco
+                                  fill=(0, 0, 0, alpha_bg),
                                   outline=self.COLOR_STICKER_BORDER,
-                                  width=self.BORDER_WIDTH)
+                                  width=1 if empty else self.BORDER_WIDTH)
             
             # Area didascalia solida in basso per la leggibilità
             caption_h_calc = min(55, max(35, sticker_h // 10))
@@ -273,6 +282,9 @@ class AlbumGenerator:
         img_max_w = sticker_w - (self.STICKER_PADDING + self.BORDER_WIDTH + 4) * 2
         caption_height = min(55, max(35, sticker_h // 10))
         img_max_h = sticker_h - (self.STICKER_PADDING + self.BORDER_WIDTH + 4) * 2 - caption_height
+
+        offset_x, offset_y = img_x, img_y
+        draw_w, draw_h = img_max_w, img_max_h
 
         # Carica e ridimensiona l'immagine della locandina
         if os.path.exists(image_path):
@@ -322,7 +334,27 @@ class AlbumGenerator:
                     [offset_x - 1, offset_y - 1, offset_x + draw_w, offset_y + draw_h],
                     outline=(180, 160, 120), width=1
                 )
-                canvas.paste(poster_to_draw, (offset_x, offset_y), poster_to_draw)
+                
+                if empty:
+                    # Non incollo l'immagine. Metto un trattino interno e il testone del numero.
+                    dash_offset = 2
+                    draw.rectangle(
+                        [offset_x + dash_offset, offset_y + dash_offset, offset_x + draw_w - dash_offset, offset_y + draw_h - dash_offset],
+                        outline=(150, 150, 150, 80), width=1
+                    )
+                    
+                    # Numero gigante per incollaggio
+                    big_font = self._get_font(int(draw_h * 0.35), bold=True)
+                    big_txt = str(number)
+                    bbx = draw.textbbox((0, 0), big_txt, font=big_font)
+                    bw = bbx[2] - bbx[0]
+                    bh = bbx[3] - bbx[1]
+                    draw.text((offset_x + (draw_w - bw) // 2, offset_y + (draw_h - bh) // 2 - int(draw_h * 0.05)),
+                              big_txt, fill=(180, 160, 120, 200), font=big_font)
+                else:
+                    # Incollo la vera figurina
+                    canvas.paste(poster_to_draw, (offset_x, offset_y), poster_to_draw)
+                    
             except Exception:
                 self._draw_placeholder(draw, img_x, img_y, img_max_w, img_max_h)
         else:
@@ -373,7 +405,7 @@ class AlbumGenerator:
                  fill=(self.COLOR_STICKER_BORDER[0], self.COLOR_STICKER_BORDER[1],
                        self.COLOR_STICKER_BORDER[2], 100), width=1)
 
-        return canvas
+        return canvas, (offset_x, offset_y, draw_w, draw_h)
 
     def _draw_placeholder(self, draw, x, y, w, h):
         """Disegna un placeholder quando l'immagine non è disponibile."""
@@ -638,7 +670,8 @@ class AlbumGenerator:
             return []
 
         total_pages = math.ceil(len(valid_events) / self.stickers_per_page)
-        generated_pages = []
+        generated_pages_full = []
+        generated_pages_empty = []
 
         # Calcolo dimensioni sticker per A4 portrait con N righe x M colonne
         usable_w = self.PAGE_W - self.MARGIN_X * 2
@@ -654,8 +687,14 @@ class AlbumGenerator:
         sticker_h = (usable_h - gap_y * (self.rows - 1)) // self.rows
 
         for page_idx in range(total_pages):
-            page = self._create_page_background()
-            draw = ImageDraw.Draw(page)
+            page_full = self._create_page_background()
+            draw_full = ImageDraw.Draw(page_full)
+            
+            page_empty = None
+            draw_empty = None
+            if self.empty_album_mode:
+                page_empty = self._create_page_background()
+                draw_empty = ImageDraw.Draw(page_empty)
 
             # --- Header pagina ---
             font_header = self._get_font(20, bold=True)
@@ -664,16 +703,20 @@ class AlbumGenerator:
             end_num = min(start_num + self.stickers_per_page - 1, len(valid_events))
 
             header_text = "GIUSTO DIRE NO  —  ALBUM EVENTI"
-            bbox = draw.textbbox((0, 0), header_text, font=font_header)
+            bbox = draw_full.textbbox((0, 0), header_text, font=font_header)
             header_w = bbox[2] - bbox[0]
-            draw.text(((self.PAGE_W - header_w) // 2, 28), header_text,
-                     fill=self.COLOR_HEADER_TEXT, font=font_header)
+            
+            draw_full.text(((self.PAGE_W - header_w) // 2, 28), header_text, fill=self.COLOR_HEADER_TEXT, font=font_header)
+            if draw_empty:
+                draw_empty.text(((self.PAGE_W - header_w) // 2, 28), header_text, fill=self.COLOR_HEADER_TEXT, font=font_header)
 
             page_label = f"Pagina {page_idx + 1} di {total_pages}  •  Figurine {start_num}–{end_num}"
-            bbox2 = draw.textbbox((0, 0), page_label, font=font_sub)
+            bbox2 = draw_full.textbbox((0, 0), page_label, font=font_sub)
             label_w = bbox2[2] - bbox2[0]
-            draw.text(((self.PAGE_W - label_w) // 2, 52), page_label,
-                     fill=(160, 150, 120), font=font_sub)
+            
+            draw_full.text(((self.PAGE_W - label_w) // 2, 52), page_label, fill=(160, 150, 120), font=font_sub)
+            if draw_empty:
+                draw_empty.text(((self.PAGE_W - label_w) // 2, 52), page_label, fill=(160, 150, 120), font=font_sub)
 
             # --- Posizionamento figurine ---
             start_y = self.MARGIN_TOP
@@ -694,32 +737,74 @@ class AlbumGenerator:
                 if self.layout == "obliquo" and row % 2 == 1:
                     x += oblique_offset
 
-                sticker = self._create_sticker(
+                # 1. Genera la figurina piena, necessaria in ogni caso per export o modalità normale
+                sticker_full, inner_rect = self._create_sticker(
                     image_path=ev.get('image_path', ''),
                     number=ev_idx + 1,
                     location=ev.get('location', ''),
                     date=ev.get('date', ''),
                     sticker_w=sticker_w,
-                    sticker_h=sticker_h
+                    sticker_h=sticker_h,
+                    empty=False
                 )
+                ox, oy, dw, dh = inner_rect
 
-                page.paste(sticker, (x, y), sticker)
+                # 2. Esporta la figurina pura "Stile Effetto Album" (solo l'immagine fusa col background)
+                if self.export_stickers:
+                    # Ritaglia sfondino "page_full" alla coordinata INTERNA della figurina esatta (es. 57x82)
+                    bx, by = int(x + ox), int(y + oy)
+                    bx2, by2 = bx + dw, by + dh
+                    bg_crop = page_full.crop((bx, by, bx2, by2))
+                    
+                    # Ritaglia la figurina INTERNA esatta dallo sticker_full originario
+                    st_crop = sticker_full.crop((ox, oy, ox + dw, oy + dh))
+                    
+                    # Fonde e salva PNG finale
+                    bg_crop.paste(st_crop, (0, 0), st_crop)
+                    
+                    stickers_dir = os.path.join(output_dir, "stickers")
+                    os.makedirs(stickers_dir, exist_ok=True)
+                    stk_path = os.path.join(stickers_dir, f"{ev_idx + 1:03d}.png")
+                    bg_crop.save(stk_path, "PNG", quality=100)
+
+                # 3. Incolla lo sticker pieno sulla pagina piena
+                page_full.paste(sticker_full, (int(x), int(y)), sticker_full)
+
+                # 4. Incolla lo sticker vuoto sulla pagina vuota se richiesta
+                if self.empty_album_mode and page_empty:
+                    sticker_empty, _ = self._create_sticker(
+                        image_path=ev.get('image_path', ''),
+                        number=ev_idx + 1,
+                        location=ev.get('location', ''),
+                        date=ev.get('date', ''),
+                        sticker_w=sticker_w,
+                        sticker_h=sticker_h,
+                        empty=True
+                    )
+                    page_empty.paste(sticker_empty, (int(x), int(y)), sticker_empty)
 
             # --- Footer pagina ---
             font_footer = self._get_font(9)
             footer_text = "© Comitato Giusto Dire No — Collezione Completa Eventi — Coordinamento Liguria e Massa"
-            bbox3 = draw.textbbox((0, 0), footer_text, font=font_footer)
+            bbox3 = draw_full.textbbox((0, 0), footer_text, font=font_footer)
             footer_w = bbox3[2] - bbox3[0]
-            draw.text(((self.PAGE_W - footer_w) // 2, self.PAGE_H - 32),
-                     footer_text, fill=(100, 95, 80), font=font_footer)
+            draw_full.text(((self.PAGE_W - footer_w) // 2, self.PAGE_H - 32), footer_text, fill=(100, 95, 80), font=font_footer)
+            if draw_empty:
+                draw_empty.text(((self.PAGE_W - footer_w) // 2, self.PAGE_H - 32), footer_text, fill=(100, 95, 80), font=font_footer)
 
-            # Salva pagina
-            page_rgb = self._page_to_rgb(page)
-            page_path = os.path.join(output_dir, f"album_page_{page_idx + 1:03d}.png")
-            page_rgb.save(page_path, "PNG", quality=95)
-            generated_pages.append(page_path)
+            # Salva pagina(e)
+            page_rgb_full = self._page_to_rgb(page_full)
+            page_path_full = os.path.join(output_dir, f"album_page_{page_idx + 1:03d}.png")
+            page_rgb_full.save(page_path_full, "PNG", quality=95)
+            generated_pages_full.append(page_path_full)
+            
+            if self.empty_album_mode and page_empty:
+                page_rgb_empty = self._page_to_rgb(page_empty)
+                page_path_empty = os.path.join(output_dir, f"album_page_empty_{page_idx + 1:03d}.png")
+                page_rgb_empty.save(page_path_empty, "PNG", quality=95)
+                generated_pages_empty.append(page_path_empty)
 
-        return generated_pages
+        return generated_pages_full, generated_pages_empty
 
     # ---------------------------------------------------------------
     #  GENERAZIONE COMPLETA
@@ -730,35 +815,64 @@ class AlbumGenerator:
         Genera l'album completo: copertina + pagine figurine + ultima pagina.
         Ritorna:
          - cover_path: percorso copertina
-         - page_paths: lista percorsi pagine (include back cover come ultima)
-         - pdf_buffer: BytesIO con il PDF completo
+         - page_paths: lista percorsi pagine piene_ (include back cover come ultima)
+         - pdf_buffer: BytesIO con il PDF completo (pien0)
+         - pdf_empty_buffer: BytesIO con PDF formato vuoto (o None se non generato)
+         - zip_buffer: BytesIO con ZIP figurine estratte (se export_stickers=True) oppure None
         """
         valid_events = [ev for ev in events
                        if ev.get('image_path') and os.path.exists(ev.get('image_path', ''))]
 
         cover_path = self.generate_cover(len(valid_events), output_dir)
-        page_paths = self.generate_album_pages(events, output_dir)
+        pages_full, pages_empty = self.generate_album_pages(events, output_dir)
         back_path = self.generate_back_cover(len(valid_events), output_dir)
 
-        # Genera PDF combinato
+        # Genera PDF combinato Pieno
         pdf_buffer = None
+        all_pages_full = [cover_path] + pages_full + [back_path]
         try:
-            all_pages = [cover_path] + page_paths + [back_path]
-            if all_pages:
-                images = []
-                first_img = Image.open(all_pages[0]).convert("RGB")
-                for p in all_pages[1:]:
-                    images.append(Image.open(p).convert("RGB"))
+            images = []
+            first_img = Image.open(all_pages_full[0]).convert("RGB")
+            for p in all_pages_full[1:]:
+                images.append(Image.open(p).convert("RGB"))
 
-                pdf_buffer = io.BytesIO()
-                first_img.save(pdf_buffer, "PDF", save_all=True, append_images=images,
-                             resolution=150.0)
-                pdf_buffer.seek(0)
+            pdf_buffer = io.BytesIO()
+            first_img.save(pdf_buffer, "PDF", save_all=True, append_images=images, resolution=150.0)
+            pdf_buffer.seek(0)
         except Exception as e:
             print(f"Errore generazione PDF: {e}")
             pdf_buffer = None
 
-        # Aggiungiamo il back cover alla lista pagine per la preview
-        page_paths.append(back_path)
+        # Genera PDF combinato Vuoto (se richiesto)
+        pdf_empty_buffer = None
+        if self.empty_album_mode and pages_empty:
+            all_pages_empty = [cover_path] + pages_empty + [back_path]
+            try:
+                images_e = []
+                first_img_e = Image.open(all_pages_empty[0]).convert("RGB")
+                for p in all_pages_empty[1:]:
+                    images_e.append(Image.open(p).convert("RGB"))
 
-        return cover_path, page_paths, pdf_buffer
+                pdf_empty_buffer = io.BytesIO()
+                first_img_e.save(pdf_empty_buffer, "PDF", save_all=True, append_images=images_e, resolution=150.0)
+                pdf_empty_buffer.seek(0)
+            except Exception as e:
+                print(f"Errore generazione PDF vuoto: {e}")
+                pdf_empty_buffer = None
+
+        # Aggiungiamo il back cover alla lista pagine per la preview
+        pages_full.append(back_path)
+
+        zip_buffer = None
+        if self.export_stickers:
+            import zipfile
+            stickers_dir = os.path.join(output_dir, "stickers")
+            if os.path.exists(stickers_dir):
+                zip_buffer = io.BytesIO()
+                with zipfile.ZipFile(zip_buffer, "w", zipfile.ZIP_DEFLATED) as zf:
+                    for f in os.listdir(stickers_dir):
+                        if f.endswith(".png"):
+                            zf.write(os.path.join(stickers_dir, f), f)
+                zip_buffer.seek(0)
+
+        return cover_path, pages_full, pdf_buffer, pdf_empty_buffer, zip_buffer

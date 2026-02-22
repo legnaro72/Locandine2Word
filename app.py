@@ -1718,6 +1718,26 @@ with tab5:
             )
             
             st.divider()
+
+            # =============================================
+            # SEZIONE STAMPA 
+            # =============================================
+            st.markdown("### 🖨️ Opzioni formato Stampa")
+            col_print1, col_print2 = st.columns(2)
+            with col_print1:
+                album_empty_mode = st.checkbox(
+                    "📖 Crea Album Fisico (Vuoto)",
+                    value=False,
+                    help="Il PDF dell'album mostrerà solo il bordino vuoto e il numero, per poterci incollare le figurine sopra."
+                )
+            with col_print2:
+                album_export_stickers = st.checkbox(
+                    "✂️ Estrai Figurine Singole",
+                    value=False,
+                    help="Genera anche un archivio ZIP con tutte le singole figurine esatte fuso con la trama di sfondo per poterle stampare a parte ed incollarle."
+                )
+            
+            st.divider()
             
             # =============================================
             # SEZIONE 2: LAYOUT FIGURINE
@@ -1845,15 +1865,19 @@ with tab5:
                             logo_cover_full_page=album_logo_cover_full_page,
                             show_banner=album_show_banner,
                             transparent_stickers=album_transparent_stickers,
-                            force_aspect_ratio=album_force_aspect_ratio
+                            force_aspect_ratio=album_force_aspect_ratio,
+                            empty_album_mode=album_empty_mode,
+                            export_stickers=album_export_stickers
                         )
-                        cover_path, page_paths, pdf_buffer = gen.generate_full_album(
+                        cover_path, page_paths, pdf_buffer, pdf_empty_buffer, zip_buffer = gen.generate_full_album(
                             sorted_album_events, output_dir=album_output_dir
                         )
                         
                         st.session_state['album_cover'] = cover_path
                         st.session_state['album_pages'] = page_paths
                         st.session_state['album_pdf'] = pdf_buffer
+                        st.session_state['album_pdf_empty'] = pdf_empty_buffer
+                        st.session_state['album_zip'] = zip_buffer
                     
                     st.success(f"✅ Album generato! {len(page_paths) - 1} pagine figurine + copertina + retro.")
                     st.balloons()
@@ -1865,16 +1889,39 @@ with tab5:
                     st.divider()
                     st.markdown("### 📖 Anteprima Album")
                     
-                    # Download PDF
-                    if st.session_state.get('album_pdf'):
-                        st.download_button(
-                            label="📥 Scarica Album Completo (PDF)",
-                            data=st.session_state['album_pdf'],
-                            file_name="Album_Figurine_GiustoDireNo.pdf",
-                            mime="application/pdf",
-                            type="primary",
-                            key="btn_download_album_pdf"
-                        )
+                    # Download PDF e/o ZIP
+                    col_down1, col_down2, col_down3 = st.columns(3)
+                    with col_down1:
+                        if st.session_state.get('album_pdf'):
+                            st.download_button(
+                                label="📥 Scarica Album Completo",
+                                data=st.session_state['album_pdf'],
+                                file_name="Album_Figurine.pdf",
+                                mime="application/pdf",
+                                type="primary",
+                                key="btn_download_album_pdf"
+                            )
+                    
+                    with col_down2:
+                        if st.session_state.get('album_pdf_empty'):
+                            st.download_button(
+                                label="📥 Scarica Album VUOTO",
+                                data=st.session_state['album_pdf_empty'],
+                                file_name="Album_Vuoto.pdf",
+                                mime="application/pdf",
+                                key="btn_download_album_empty"
+                            )
+                            
+                    with col_down3:
+                        if st.session_state.get('album_zip'):
+                            st.download_button(
+                                label="📥 Scarica ZIP Figurine",
+                                data=st.session_state['album_zip'],
+                                file_name="Figurine_Singole_da_stampare.zip",
+                                mime="application/zip",
+                                type="primary" if st.session_state.get('album_pdf_empty') else "secondary",
+                                key="btn_download_album_zip"
+                            )
                     
                     st.divider()
                     
