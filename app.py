@@ -6,11 +6,13 @@ import re
 import zipfile
 import io
 import base64
+import math
 from github_manager import GithubManager
 from datetime import datetime
 from PIL import Image
 from ocr_engine import LocandineOCR
 from word_generator import WordGenerator
+from album_generator import AlbumGenerator
 # Versione: 1.0.1 (Forza reload per reset_city_cache)
 
 def safe_reset_city_cache():
@@ -670,7 +672,7 @@ with st.sidebar:
 
 
 
-tab4, tab1, tab2, tab3 = st.tabs(["📊 Statistiche", "📤 Carica & Analizza", "📋 Modifica Dati", "📖 Export Word"])
+tab4, tab1, tab2, tab3, tab5 = st.tabs(["📊 Statistiche", "📤 Carica & Analizza", "📋 Modifica Dati", "📖 Export Word", "📖 Creazione Album"])
 
 # --- TAB 1: CARICAMENTO ---
 with tab1:
@@ -753,7 +755,7 @@ with tab1:
                 save_optimized_image(uploaded_file, image_path)
                 
                 # Visualizza immagine
-                col1.image(image_path, **IMG_WIDTH_ARG)
+                col1.image(Image.open(image_path), **IMG_WIDTH_ARG)
                 
                 with col2:
                     # Check match JSON
@@ -1136,7 +1138,7 @@ with tab2:
                 image_path = os.path.normpath(event.get('image_path', ''))
 
                 if image_path and os.path.exists(image_path):
-                    c1.image(image_path, **IMG_WIDTH_ARG)
+                    c1.image(Image.open(image_path), **IMG_WIDTH_ARG)
                 else:
                     c1.error(f"Immagine non trovata: {image_path}")
 
@@ -1600,4 +1602,322 @@ with tab4:
 
         st.divider()
         st.info("💡 I grafici si aggiornano automaticamente ogni volta che modifichi o aggiungi un evento.")
+
+# --- TAB 5: CREAZIONE ALBUM FIGURINE ---
+with tab5:
+    st.subheader("📖 Album Figurine — Stile Panini")
+    st.markdown("""
+    <style>
+    .album-hero {
+        background: linear-gradient(135deg, #1e375a 0%, #2a4f80 50%, #1a3050 100%);
+        border: 3px solid #c8aa50;
+        border-radius: 16px;
+        padding: 25px;
+        text-align: center;
+        margin-bottom: 20px;
+        box-shadow: 0 8px 24px rgba(0,0,0,0.3);
+    }
+    .album-hero h2 { color: #dcc364; margin: 0 0 8px 0; font-size: 1.6rem; }
+    .album-hero p { color: #b0a880; margin: 0; font-size: 0.95rem; }
+    </style>
+    
+    <div class="album-hero">
+        <h2>🏆 ALBUM — GIUSTO DIRE NO</h2>
+        <p>Genera un album collezionabile con tutte le locandine degli eventi, in stile Panini!</p>
+    </div>
+    """, unsafe_allow_html=True)
+    
+    events_album = st.session_state.get('events', [])
+    
+    if not events_album:
+        st.warning("⚠️ Nessun evento disponibile. Carica delle locandine per creare l'album.")
+    else:
+        # Conta solo eventi con immagine valida
+        valid_album_events = [ev for ev in events_album if ev.get('image_path') and os.path.exists(ev.get('image_path', ''))]
+        total_figurine = len(valid_album_events)
+        
+        if total_figurine == 0:
+            st.warning("⚠️ Nessuna immagine valida trovata nella cartella uploads.")
+        else:
+            # =============================================
+            # SEZIONE 1: IMMAGINI PERSONALIZZATE
+            # =============================================
+            st.markdown("### 🖼️ Immagini Copertina e Retro")
+            
+            col_img1, col_img2 = st.columns(2)
+            
+            with col_img1:
+                st.markdown("**📘 Immagine Prima Pagina (Copertina)**")
+                st.caption("Se non carichi nulla, verrà usato il logo di default.")
+                uploaded_cover_img = st.file_uploader(
+                    "Carica immagine copertina", 
+                    type=['png', 'jpg', 'jpeg'],
+                    key="album_cover_upload",
+                    label_visibility="collapsed"
+                )
+                if uploaded_cover_img:
+                    st.image(uploaded_cover_img, caption="Anteprima Copertina", width=200)
+            
+            with col_img2:
+                st.markdown("**📕 Immagine Ultima Pagina (Retro)**")
+                st.caption("Se non carichi nulla, verrà usato il logo piccolo di default.")
+                uploaded_back_img = st.file_uploader(
+                    "Carica immagine pagina finale", 
+                    type=['png', 'jpg', 'jpeg'],
+                    key="album_back_upload",
+                    label_visibility="collapsed"
+                )
+                if uploaded_back_img:
+                    st.image(uploaded_back_img, caption="Anteprima Retro", width=200)
+            
+            # Opzione logo con sfondo bianco
+            col_opt1, col_opt2 = st.columns(2)
+            with col_opt1:
+                logo_white_bg = st.checkbox(
+                    "⚪ Logo ultima pagina con cerchio bianco (non trasparente)",
+                    value=True,
+                    help="Se attivo, l'interno del cerchio del logo nell'ultima pagina avrà sfondo bianco anziché trasparente.",
+                    key="album_logo_white_bg"
+                )
+            with col_opt2:
+                logo_cover_white_bg = st.checkbox(
+                    "⚪ Logo PRIMA pagina con cerchio bianco (se predefinito)",
+                    value=False,
+                    help="Se attivo e non carichi una vera copertina, il logo in prima pagina avrà sfondo bianco anziché trasparente.",
+                    key="album_logo_cover_white_bg"
+                )
+                
+            col_opt3, col_opt4 = st.columns(2)
+            with col_opt3:
+                album_logo_cover_full_page = st.checkbox(
+                    "🖼️ Logo PRIMA pagina a tutta altezza",
+                    value=True,
+                    help="Se attivo e non carichi una vera copertina, il logo in copertina proverà a riempire verticalmente lo spazio disponibile.",
+                    key="album_logo_cover_full"
+                )
+            with col_opt4:
+                album_show_banner = st.checkbox(
+                    "🚩 Mostra banner in cima alla copertina",
+                    value=False,
+                    help="Se disattivato, il banner verde 'Giusto Dire No' in alto verrà nascosto.",
+                    key="album_show_banner"
+                )
+
+            album_transparent_stickers = st.checkbox(
+                "🎴 Sfondo figurine trasparente (visibile trama album)",
+                value=True,
+                help="Se attivo, lo sfondo della figurina sarà trasparente (mostra lo sfondo della pagina), mantenendo opaca solo l'area della didascalia.",
+                key="album_transparent_stickers"
+            )
+
+            album_force_aspect_ratio = st.checkbox(
+                "📏 Forza proporzione classica 57×82",
+                value=False,
+                help="Se attivo, ridimensiona le immagini per rispettare fedelmente la proporzione di una figurina classica. Gli spazi vuoti vengono riempiti con sfondo trasparente.",
+                key="album_force_aspect_ratio"
+            )
+            
+            st.divider()
+            
+            # =============================================
+            # SEZIONE 2: LAYOUT FIGURINE
+            # =============================================
+            st.markdown("### 📐 Layout Figurine")
+            
+            col_lay1, col_lay2, col_lay3 = st.columns(3)
+            
+            with col_lay1:
+                album_cols = st.number_input(
+                    "📊 Colonne per pagina",
+                    min_value=1, max_value=4, value=2, step=1,
+                    key="album_cols_input",
+                    help="Numero di colonne di figurine per ogni pagina (1-4)"
+                )
+            
+            with col_lay2:
+                album_rows = st.number_input(
+                    "📏 Righe per pagina",
+                    min_value=1, max_value=5, value=3, step=1,
+                    key="album_rows_input",
+                    help="Numero di righe di figurine per ogni pagina (1-5)"
+                )
+            
+            with col_lay3:
+                album_layout = st.selectbox(
+                    "🔀 Distribuzione colonne",
+                    ["Verticale (dritte)", "Obliquo (sfalsate)"],
+                    key="album_layout_sel",
+                    help="Verticale: colonne allineate. Obliquo: righe alternate sfalsate."
+                )
+            
+            layout_value = "obliquo" if "Obliquo" in album_layout else "verticale"
+            stickers_per_page = album_cols * album_rows
+            total_pages = math.ceil(total_figurine / stickers_per_page)
+            
+            # --- Metriche aggiornate ---
+            col_m1, col_m2, col_m3, col_m4 = st.columns(4)
+            col_m1.metric("🎴 Figurine Totali", total_figurine)
+            col_m2.metric("📄 Pagine Album", total_pages)
+            col_m3.metric("🖼️ Per Pagina", stickers_per_page)
+            col_m4.metric("📐 Layout", f"{album_cols}×{album_rows}")
+            
+            st.divider()
+            
+            # =============================================
+            # SEZIONE 3: ORDINAMENTO E FILTRO
+            # =============================================
+            st.markdown("### 🔧 Ordinamento e Filtri")
+            
+            col_opt1, col_opt2 = st.columns(2)
+            with col_opt1:
+                album_sort = st.selectbox(
+                    "📅 Ordinamento Figurine",
+                    ["Cronologico (Data)", "Alfabetico (Località)", "Ordine di Inserimento"],
+                    key="album_sort_order"
+                )
+            with col_opt2:
+                album_filter = st.selectbox(
+                    "🔍 Filtra Eventi",
+                    ["Tutti", "Solo Attivi", "Solo NEW"],
+                    key="album_filter_sel"
+                )
+            
+            # Applicazione ordinamento
+            sorted_album_events = list(valid_album_events)
+            if album_sort == "Cronologico (Data)":
+                sorted_album_events.sort(key=WordGenerator.get_sort_date)
+            elif album_sort == "Alfabetico (Località)":
+                sorted_album_events.sort(key=lambda e: e.get('location', '').strip().upper())
+            
+            # Applicazione filtro
+            now_album = datetime.now()
+            if album_filter == "Solo Attivi":
+                sorted_album_events = [ev for ev in sorted_album_events 
+                                       if WordGenerator.get_sort_date(ev).date() >= now_album.date()]
+            elif album_filter == "Solo NEW":
+                sorted_album_events = [ev for ev in sorted_album_events if ev.get('is_new')]
+            
+            if not sorted_album_events:
+                st.warning("Nessun evento corrisponde ai filtri selezionati.")
+            else:
+                # Ricalcola dopo filtro
+                total_figurine_filtered = len(sorted_album_events)
+                total_pages_filtered = math.ceil(total_figurine_filtered / stickers_per_page)
+                
+                if total_figurine_filtered != total_figurine:
+                    st.info(f"📊 Con i filtri attuali: **{total_figurine_filtered}** figurine su **{total_pages_filtered}** pagine")
+                
+                st.divider()
+                
+                # =============================================
+                # SEZIONE 4: GENERAZIONE
+                # =============================================
+                if st.button("🏆 Genera Album Figurine", type="primary", key="btn_gen_album"):
+                    album_output_dir = os.path.join(OUTPUT_DIR, "album")
+                    
+                    with st.spinner("🎨 Creazione dell'album in stile Panini... Attendere prego."):
+                        # Prepara immagini custom come PIL Image
+                        custom_cover_pil = None
+                        custom_back_pil = None
+                        
+                        if uploaded_cover_img:
+                            try:
+                                custom_cover_pil = Image.open(uploaded_cover_img).convert("RGBA")
+                            except Exception:
+                                st.warning("⚠️ Impossibile leggere l'immagine copertina. Uso default.")
+                        
+                        if uploaded_back_img:
+                            try:
+                                custom_back_pil = Image.open(uploaded_back_img).convert("RGBA")
+                            except Exception:
+                                st.warning("⚠️ Impossibile leggere l'immagine retro. Uso default.")
+                        
+                        gen = AlbumGenerator(
+                            bg_image_path="giustidireno.png",
+                            logo_path="LogoNOConfiniTrasparente.png",
+                            rows=album_rows,
+                            cols=album_cols,
+                            layout=layout_value,
+                            custom_cover_image=custom_cover_pil,
+                            custom_back_image=custom_back_pil,
+                            logo_white_bg=logo_white_bg,
+                            logo_cover_white_bg=logo_cover_white_bg,
+                            logo_cover_full_page=album_logo_cover_full_page,
+                            show_banner=album_show_banner,
+                            transparent_stickers=album_transparent_stickers,
+                            force_aspect_ratio=album_force_aspect_ratio
+                        )
+                        cover_path, page_paths, pdf_buffer = gen.generate_full_album(
+                            sorted_album_events, output_dir=album_output_dir
+                        )
+                        
+                        st.session_state['album_cover'] = cover_path
+                        st.session_state['album_pages'] = page_paths
+                        st.session_state['album_pdf'] = pdf_buffer
+                    
+                    st.success(f"✅ Album generato! {len(page_paths) - 1} pagine figurine + copertina + retro.")
+                    st.balloons()
+                
+                # =============================================
+                # SEZIONE 5: ANTEPRIMA E DOWNLOAD
+                # =============================================
+                if 'album_cover' in st.session_state and st.session_state.get('album_pages'):
+                    st.divider()
+                    st.markdown("### 📖 Anteprima Album")
+                    
+                    # Download PDF
+                    if st.session_state.get('album_pdf'):
+                        st.download_button(
+                            label="📥 Scarica Album Completo (PDF)",
+                            data=st.session_state['album_pdf'],
+                            file_name="Album_Figurine_GiustoDireNo.pdf",
+                            mime="application/pdf",
+                            type="primary",
+                            key="btn_download_album_pdf"
+                        )
+                    
+                    st.divider()
+                    
+                    # Copertina
+                    st.markdown("#### 🎨 Copertina")
+                    if os.path.exists(st.session_state['album_cover']):
+                        st.image(Image.open(st.session_state['album_cover']), caption="Copertina Album", **IMG_WIDTH_ARG)
+                    
+                    st.divider()
+                    
+                    # Pagine
+                    st.markdown("#### 📄 Pagine dell'Album")
+                    album_pages = st.session_state['album_pages']
+                    
+                    # Navigazione pagine
+                    if len(album_pages) > 1:
+                        page_select = st.slider(
+                            "Sfoglia le pagine", 
+                            min_value=1, 
+                            max_value=len(album_pages), 
+                            value=1,
+                            key="album_page_slider"
+                        )
+                    else:
+                        page_select = 1
+                    
+                    page_path = album_pages[page_select - 1]
+                    if os.path.exists(page_path):
+                        # Identifica se è la back cover
+                        is_back = (page_select == len(album_pages))
+                        caption = "Pagina Finale (Retro)" if is_back else f"Pagina {page_select} di {len(album_pages)}"
+                        st.image(Image.open(page_path), caption=caption, **IMG_WIDTH_ARG)
+                    
+                    # Griglia miniature
+                    if len(album_pages) > 1:
+                        st.divider()
+                        st.markdown("#### 🗂️ Tutte le Pagine (Miniature)")
+                        n_thumb_cols = min(4, len(album_pages))
+                        thumb_cols = st.columns(n_thumb_cols)
+                        for idx, pg_path in enumerate(album_pages):
+                            with thumb_cols[idx % n_thumb_cols]:
+                                if os.path.exists(pg_path):
+                                    is_back = (idx == len(album_pages) - 1)
+                                    cap = "Retro" if is_back else f"Pag. {idx + 1}"
+                                    st.image(Image.open(pg_path), caption=cap, width=280)
 
