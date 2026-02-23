@@ -758,8 +758,17 @@ with st.sidebar:
         st.divider()
         
         if st.button("⚡ Ottimizza Archivio Esistente", help="Ridimensiona tutte le immagini e converti le figurine in JPG leggero per risparmiare spazio."):
-            # 1. Trova file in uploads
-            files_uploads = [(UPLOADS_DIR, f) for f in os.listdir(UPLOADS_DIR) if f.lower().endswith(('.png', '.jpg', '.jpeg'))]
+            # 0. Trova immagini attive (referenziate dagli eventi)
+            active_images = set()
+            for ev in st.session_state.events:
+                img_p = ev.get('image_path', '')
+                if img_p:
+                    active_images.add(os.path.basename(img_p))
+            
+            # 1. Trova file in uploads (SOLO quelli attivi)
+            all_uploads = [f for f in os.listdir(UPLOADS_DIR) if f.lower().endswith(('.png', '.jpg', '.jpeg'))]
+            files_uploads = [(UPLOADS_DIR, f) for f in all_uploads if f in active_images]
+            orphan_files = [f for f in all_uploads if f not in active_images]
             
             # 2. Trova file in album
             album_dir = "output/images_album"
@@ -772,10 +781,19 @@ with st.sidebar:
             else:
                 processed = 0
                 errors = 0
+                orphans_removed = 0
                 pbar = st.progress(0)
                 total_to_do = len(files_uploads) + len(files_album)
                 
-                # --- A. Ottimizza Uploads (sovrascrivi esistenti) ---
+                # --- 0. Rimuovi immagini orfane ---
+                for orphan in orphan_files:
+                    try:
+                        os.remove(os.path.join(UPLOADS_DIR, orphan))
+                        orphans_removed += 1
+                    except:
+                        pass
+                
+                # --- A. Ottimizza Uploads (solo attivi, sovrascrivi esistenti) ---
                 for i, (folder, filename) in enumerate(files_uploads):
                     img_path = os.path.join(folder, filename)
                     # Forza salvataggio anche se esiste
@@ -824,7 +842,10 @@ with st.sidebar:
                 if json_updated:
                     save_events_to_disk()
                 
-                st.success(f"✅ Ottimizzazione completa! Elaborati {processed} file. (Errori: {errors})")
+                msg = f"✅ Ottimizzazione completa! Elaborati {processed} file ({len(files_uploads)} locandine + {len(files_album)} figurine). Errori: {errors}."
+                if orphans_removed > 0:
+                    msg += f"\n🗑️ Rimosse {orphans_removed} immagini orfane (non referenziate da nessun evento)."
+                st.success(msg)
                 st.info("Le figurine sono state convertite in JPG e i vecchi PNG eliminati.")
                 safe_media_rerun()
 
