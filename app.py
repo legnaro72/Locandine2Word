@@ -1036,7 +1036,7 @@ with tab2:
         st.info("Nessun evento in archivio.")
     else:
         # --- SISTEMA DI FILTRAGGIO AVANZATO ---
-        col_f1, col_f2 = st.columns(2)
+        col_f1, col_f2, col_f3 = st.columns(3)
         
         with col_f1:
             status_filter = st.selectbox(
@@ -1050,6 +1050,13 @@ with tab2:
                 "📍 2. Filtra per Luogo",
                 ["Tutti", "LIGURIA", "TOSCANA", "GENOVA", "LA SPEZIA", "SAVONA", "IMPERIA", "MASSA"],
                 key="mgr_geo_filter"
+            )
+        
+        with col_f3:
+            album_filter = st.selectbox(
+                "🎨 3. Locandina Album",
+                ["Tutti", "Con Locandina Album", "Senza Locandina Album"],
+                key="mgr_album_filter"
             )
         
         search_query = st.text_input("📝 Cerca nel testo (Titolo, Luogo, Descrizione...)", "").strip().lower()
@@ -1088,7 +1095,14 @@ with tab2:
                 content = (ev.get('title', '') + ev.get('description', '') + ev.get('location', '') + ev.get('venue', '')).lower()
                 m_t = search_query in content
             
-            if m_s and m_g and m_t:
+            # D. Controllo Locandina Album (sticker_image_path)
+            m_a = True
+            if album_filter == "Con Locandina Album":
+                m_a = bool(ev.get('sticker_image_path', ''))
+            elif album_filter == "Senza Locandina Album":
+                m_a = not bool(ev.get('sticker_image_path', ''))
+            
+            if m_s and m_g and m_t and m_a:
                 indexed_view_events.append((i, ev))
 
         sorted_view_events = sorted(indexed_view_events, key=lambda x: WordGenerator.get_sort_date(x[1]))
