@@ -5,6 +5,7 @@ import json
 import os
 import dateparser
 import re
+import streamlit as st
 from typing import List, Dict
 from docx.enum.text import WD_ALIGN_PARAGRAPH
 from docx.shared import Inches, Pt, RGBColor
@@ -146,12 +147,17 @@ class WordGenerator:
     
     @staticmethod
     def get_sort_date(event: Dict) -> datetime:
-        """Helper statico per ottenere la data datetime da un evento"""
-        d_str = event.get('date', '')
+        """Helper statico per ottenere la data datetime da un evento con cache Streamlit."""
+        d_str = event.get('date', '').strip()
         if not d_str:
-            return datetime.max # Metti in fondo se non ha data
-        
-        # Usa dateparser per capire la data (IT e EN)
+            return datetime.max
+            
+        return WordGenerator._cached_date_parsing(d_str)
+
+    @staticmethod
+    @st.cache_data(show_spinner=False)
+    def _cached_date_parsing(d_str: str) -> datetime:
+        """Parsing effettivo della data con cache per massime prestazioni."""
         try:
             dt = dateparser.parse(d_str, languages=['it', 'en'])
             if dt:

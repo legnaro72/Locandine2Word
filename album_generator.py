@@ -16,6 +16,68 @@ import math
 from PIL import Image, ImageDraw, ImageFont, ImageFilter, ImageEnhance
 
 
+# Semplice cache globale per velocizzare l'anteprima interattiva (evita Image.open ripetuti)
+_STK_CACHE = {"path": None, "img": None}
+
+def create_single_sticker(img_path, mask_w_mm=57, mask_h_mm=80, 
+                          zoom=1.0, stretch_x=1.0, offset_x=0, offset_y=0, preview_mode=False):
+    """
+    Elabora una singola immagine per la maschera figurina con parametri interattivi.
+    Ritorna un oggetto PIL Image (RGBA) pronto per essere mostrato o salvato.
+    Se preview_mode è True, aggiunge un bordo rosso vivace per mostrare i limiti della maschera.
+    """
+    if not img_path or not os.path.exists(img_path):
+        return None
+        
+    SCALE = 15  # pixel per mm
+    mask_w = int(mask_w_mm * SCALE)
+    mask_h = int(mask_h_mm * SCALE)
+    
+    # Check cache
+    global _STK_CACHE
+    if _STK_CACHE["path"] == img_path:
+        original = _STK_CACHE["img"]
+    else:
+        original = Image.open(img_path).convert("RGBA")
+        _STK_CACHE["path"] = img_path
+        _STK_CACHE["img"] = original
+
+    orig_w, orig_h = original.size
+    
+    # Scala base per fittare la larghezza
+    base_scale = mask_w / orig_w
+    scaled_w = int(orig_w * base_scale)
+    scaled_h = int(orig_h * base_scale)
+    
+    # Applica zoom
+    eff_zoom = max(1.0, zoom)
+    scaled_w = int(scaled_w * eff_zoom)
+    scaled_h = int(scaled_h * eff_zoom)
+    
+    # Applica stretch orizzontale (max ~1.02, ma lasciato libero per il parametro)
+    scaled_w = int(scaled_w * stretch_x)
+    
+    img_resized = original.resize((scaled_w, scaled_h), Image.LANCZOS)
+    
+    canvas = Image.new("RGBA", (mask_w, mask_h), (0, 0, 0, 0))
+    
+    # Centratura base + offset utente
+    paste_x = (mask_w - scaled_w) // 2 + offset_x
+    paste_y = (mask_h - scaled_h) // 2 + offset_y
+    
+    # Se l'immagine è più grande della maschera, paste() di PIL ritaglia automaticamente
+    # le parti fuori dal canvas, ma possiamo gestire tutto con un blend diretto.
+    canvas.paste(img_resized, (paste_x, paste_y), img_resized)
+    
+    if preview_mode:
+        # Disegna un bounding box rosso spesso per distinguere i bordi in anteprima
+        draw = ImageDraw.Draw(canvas)
+        draw.rectangle([(0, 0), (mask_w - 1, mask_h - 1)], outline="red", width=8)
+    
+    return canvas
+
+
+
 class AlbumGenerator:
     """Genera un album di figurine stile Panini dalle locandine degli eventi."""
 
@@ -47,14 +109,11 @@ class AlbumGenerator:
                  rows=3, cols=2, layout="verticale",
                  custom_cover_image=None, custom_back_image=None,
                  logo_white_bg=False, logo_cover_white_bg=False, logo_cover_full_page=True,
-                 show_banner=True, transparent_stickers=False, force_aspect_ratio=False,
-                 empty_album_mode=False, export_stickers=False):
+                 show_banner=True, sticker_fill_mode="trasparente", force_aspect_ratio=False,
+                  sticker_height_mm=80,
+                  empty_album_mode=False, export_stickers=False, preview_mode=False):
         """
         Args:
-            bg_image_path: percorso immagine di sfondo (giustidireno.png)
-            logo_path: percorso logo default (LogoNOConfiniTrasparente.png)
-            banner_path: percorso banner in alto sulla copertina
-            rows: numero righe per pagina (1-5)
             cols: numero colonne per pagina (1-4)
             layout: "verticale" (dritto) o "obliquo" (sfalsato)
             custom_cover_image: PIL Image per copertina (None = usa logo_path)
@@ -63,8 +122,12 @@ class AlbumGenerator:
             logo_cover_white_bg: se True, il cerchio del logo in prima pagina (se default) ha sfondo bianco
             logo_cover_full_page: se True, il logo in prima pagina riempie la pagina, sennò è piccolo
             show_banner: se True, mostra il banner in alto in copertina
-            transparent_stickers: se True, l'esterno del box figurina è trasparente
-            force_aspect_ratio: se True, forza le immagini interne proporzione esatta (tipo 57x82mm) centrata
+            sticker_fill_mode: modalità riempimento figurina:
+                - "opaco": sfondo classico color crema solido
+                - "trasparente": sfondo trasparente (si vede la trama dell'album)
+                - "espansione": sfondo riempito con immagine sfocata (stile Instagram)
+            force_aspect_ratio: se True, forza le immagini interne alla proporzione configurata
+            sticker_height_mm: altezza in mm della figurina (57mm è la larghezza fissa). Range 76-80. Default 80.
             empty_album_mode: se True, disegna figure vuote con numero gigante
             export_stickers: se True, salva crop perfetti delle figurine trasparenti (con bg vero fuso)
         """
@@ -76,10 +139,13 @@ class AlbumGenerator:
         self.logo_cover_white_bg = logo_cover_white_bg
         self.logo_cover_full_page = logo_cover_full_page
         self.show_banner = show_banner
-        self.transparent_stickers = transparent_stickers
+        self.sticker_fill_mode = sticker_fill_mode  # "opaco", "trasparente", "espansione"
         self.force_aspect_ratio = force_aspect_ratio
+        self.sticker_height_mm = max(76, min(80, sticker_height_mm))  # 76-80
         self.empty_album_mode = empty_album_mode
         self.export_stickers = export_stickers
+        self.preview_mode = preview_mode
+        self._image_cache = {}
 
         # --- Caricamento immagini ---
         self.bg_image = None
@@ -211,6 +277,29 @@ class AlbumGenerator:
         self._draw_page_frame(draw)
         return page
 
+    def _resolve_image_path(self, image_path):
+        """
+        Risoluzione Robusta (Soluzione Definitiva):
+        Normalizza i separatori e tenta di risolvere il path sia come assoluto
+        che come relativo alla current working directory.
+        """
+        if not image_path:
+            return None
+        
+        # Normalizzazione backslash e slash doppie
+        clean_path = image_path.replace("\\", "/").replace("//", "/")
+        
+        # 1. Prova path così com'è (assoluto o relativo alla shell)
+        if os.path.exists(clean_path):
+            return clean_path
+        
+        # 2. Prova relativo alla root dell'app (getcwd)
+        full_path = os.path.join(os.getcwd(), clean_path)
+        if os.path.exists(full_path):
+            return full_path
+            
+        return None
+
     def _create_sticker(self, image_path, number, location="", date="", sticker_w=500, sticker_h=480, empty=False):
         """
         Crea una singola figurina stile Panini con:
@@ -237,9 +326,9 @@ class AlbumGenerator:
         sticker_rect = [2, 2, sticker_w + 2, sticker_h + 2]
         
         # === MODALITA' FIGURINA NORMALE O ALBUM VUOTO (Condivisa) ===
-        if self.transparent_stickers:
-            # Rettangolo base trasparente
-            # In modalità album vuoto lascio intravedere ancora di più lo sfondo dell'album (alpha bassissima o 0)
+        if self.sticker_fill_mode in ("trasparente", "espansione"):
+            # Rettangolo base trasparente (sia per trasparente che per espansione)
+            # L'espansione riempirà SOLO l'area immagine interna con sfocatura
             alpha_bg = 60 if not empty else 0
             draw.rounded_rectangle(sticker_rect, radius=self.CORNER_RADIUS,
                                   fill=(0, 0, 0, alpha_bg),
@@ -259,7 +348,7 @@ class AlbumGenerator:
                 width=1
             )
         else:
-            # Rettangolo base opaco standard
+            # Rettangolo base opaco (solo "opaco")
             draw.rounded_rectangle(sticker_rect, radius=self.CORNER_RADIUS,
                                   fill=self.COLOR_STICKER_BG,
                                   outline=self.COLOR_STICKER_BORDER,
@@ -286,39 +375,79 @@ class AlbumGenerator:
         offset_x, offset_y = img_x, img_y
         draw_w, draw_h = img_max_w, img_max_h
 
-        # Carica e ridimensiona l'immagine della locandina
-        if os.path.exists(image_path):
+        # RISOLUZIONE PATH DEFINITIVA
+        full_path = self._resolve_image_path(image_path)
+
+        # print(f"CHECK PATH: {image_path} -> {full_path}")
+
+        if full_path:
             try:
-                poster = Image.open(image_path).convert("RGBA")
+                if full_path in self._image_cache:
+                    poster = self._image_cache[full_path]
+                else:
+                    poster = Image.open(full_path).convert("RGBA")
+                    self._image_cache[full_path] = poster
                 p_w, p_h = poster.size
                 
                 if self.force_aspect_ratio:
-                    # Ricalcola contenitore interno basato su proporzione 57 larghezza : 82 altezza
-                    target_ratio = 57.0 / 82.0
+                    # Proporzione configurabile: 57mm larghezza x (76-80)mm altezza
+                    target_ratio = 57.0 / float(self.sticker_height_mm)
                     box_w, box_h = img_max_w, img_max_h
                     
                     if box_w / box_h > target_ratio:
-                        # Box è più largo del necessario
                         box_w = int(box_h * target_ratio)
                     else:
-                        # Box è più alto del necessario
                         box_h = int(box_w / target_ratio)
+                    
+                    # Prova a fittare per larghezza: se l'eccesso in altezza è ≤5%, croppa solo verticalmente
+                    fit_w_ratio = box_w / p_w
+                    fitted_h = int(p_h * fit_w_ratio)
+                    height_excess = (fitted_h - box_h) / box_h if fitted_h > box_h else 0
+                    
+                    if 0 < height_excess <= 0.05:
+                        # Micro-crop verticale (max 5%): scala per larghezza, taglia sopra/sotto
+                        poster_fitted = poster.resize((box_w, fitted_h), Image.LANCZOS)
+                        crop_top = (fitted_h - box_h) // 2
+                        poster_to_draw = poster_fitted.crop((0, crop_top, box_w, crop_top + box_h))
+                        draw_w, draw_h = box_w, box_h
+                    else:
+                        # Fit completo dentro il box (nessun crop)
+                        ratio = min(box_w / p_w, box_h / p_h)
+                        new_pw = int(p_w * ratio)
+                        new_ph = int(p_h * ratio)
+                        poster_resized = poster.resize((new_pw, new_ph), Image.LANCZOS)
+
+                        if self.sticker_fill_mode == "espansione" and (new_pw < box_w or new_ph < box_h):
+                            # === ESPANSIONE INTELLIGENTE (sfocatura) ===
+                            cover_ratio = max(box_w / p_w, box_h / p_h)
+                            cover_w = int(p_w * cover_ratio)
+                            cover_h = int(p_h * cover_ratio)
+                            bg_img = poster.resize((cover_w, cover_h), Image.LANCZOS)
+                            
+                            cx = (cover_w - box_w) // 2
+                            cy = (cover_h - box_h) // 2
+                            bg_img = bg_img.crop((cx, cy, cx + box_w, cy + box_h))
+                            
+                            # SFOCATURA: Ridotta pesantemente in preview per fluidità
+                            blur_radius = 6 if self.preview_mode else 18
+                            bg_img = bg_img.filter(ImageFilter.GaussianBlur(radius=blur_radius))
+                            enhancer = ImageEnhance.Brightness(bg_img)
+                            bg_img = enhancer.enhance(0.65)
+                            
+                            final_poster = bg_img.convert("RGBA")
+                            off_p_x = (box_w - new_pw) // 2
+                            off_p_y = (box_h - new_ph) // 2
+                            final_poster.paste(poster_resized, (off_p_x, off_p_y), poster_resized)
+                        else:
+                            # Trasparente o Opaco: canvas vuoto
+                            fill_color = (0, 0, 0, 0)
+                            final_poster = Image.new("RGBA", (box_w, box_h), fill_color)
+                            off_p_x = (box_w - new_pw) // 2
+                            off_p_y = (box_h - new_ph) // 2
+                            final_poster.paste(poster_resized, (off_p_x, off_p_y), poster_resized)
                         
-                    # Ridimensiona l'immagine originale per fittare dentro il nuovo box (57x82 scalato)
-                    ratio = min(box_w / p_w, box_h / p_h)
-                    new_pw = int(p_w * ratio)
-                    new_ph = int(p_h * ratio)
-                    poster_resized = poster.resize((new_pw, new_ph), Image.LANCZOS)
-                    
-                    # Crea un canvas vuoto trasparente che fa da passpartout con l'aspect ratio giusto
-                    final_poster = Image.new("RGBA", (box_w, box_h), (0, 0, 0, 0))
-                    # Centra l'immagine scalata nel nuovo box
-                    off_p_x = (box_w - new_pw) // 2
-                    off_p_y = (box_h - new_ph) // 2
-                    final_poster.paste(poster_resized, (off_p_x, off_p_y), poster_resized)
-                    
-                    poster_to_draw = final_poster
-                    draw_w, draw_h = box_w, box_h
+                        poster_to_draw = final_poster
+                        draw_w, draw_h = box_w, box_h
 
                 else:
                     # Comportamento classico: sfrutta massimo spazio
@@ -659,11 +788,10 @@ class AlbumGenerator:
         """
         os.makedirs(output_dir, exist_ok=True)
 
-        # Filtra solo eventi con immagine valida
+        # Filtra solo eventi con immagine valida (usando la risoluzione robusta)
         valid_events = []
         for ev in events:
-            img_path = ev.get('image_path', '')
-            if img_path and os.path.exists(img_path):
+            if self._resolve_image_path(ev.get('image_path', '')):
                 valid_events.append(ev)
 
         if not valid_events:
@@ -820,8 +948,7 @@ class AlbumGenerator:
          - pdf_empty_buffer: BytesIO con PDF formato vuoto (o None se non generato)
          - zip_buffer: BytesIO con ZIP figurine estratte (se export_stickers=True) oppure None
         """
-        valid_events = [ev for ev in events
-                       if ev.get('image_path') and os.path.exists(ev.get('image_path', ''))]
+        valid_events = [ev for ev in events if self._resolve_image_path(ev.get('image_path', ''))]
 
         cover_path = self.generate_cover(len(valid_events), output_dir)
         pages_full, pages_empty = self.generate_album_pages(events, output_dir)

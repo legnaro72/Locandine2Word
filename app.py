@@ -12,7 +12,7 @@ from datetime import datetime
 from PIL import Image
 from ocr_engine import LocandineOCR
 from word_generator import WordGenerator
-from album_generator import AlbumGenerator
+from album_generator import AlbumGenerator, create_single_sticker
 # Versione: 1.0.1 (Forza reload per reset_city_cache)
 
 def safe_reset_city_cache():
@@ -21,6 +21,28 @@ def safe_reset_city_cache():
         WordGenerator.reset_city_cache()
     else:
         st.warning("⚠️ Avviso: Modulo WordGenerator non aggiornato. Riavviare l'applicazione Streamlit se il problema persiste.")
+
+def safe_media_rerun():
+    """Tenta di pulire la cache dei media di Streamlit prima di riavviare per evitare MediaFileStorageError."""
+    try:
+        from streamlit.runtime import get_instance
+        runtime = get_instance()
+        if hasattr(runtime, "media_file_mgr"):
+            runtime.media_file_mgr.clear()
+    except:
+        pass
+    
+    # Rimuoviamo stati che contengono binari o path di immagini potenzialmente sparite
+    keys_to_clear = ['album_cover', 'album_pages', 'album_zip', 'album_pdf', 'backup_zip', 'events', 'data_initialized']
+    for k in keys_to_clear:
+        if k in st.session_state:
+            try: del st.session_state[k]
+            except: pass
+            
+    # Piccola attesa per rilascio file handle prima del ricaricamento
+    import time
+    time.sleep(0.8)
+    st.rerun()
 import dateparser
 import pandas as pd
 import altair as alt
@@ -80,17 +102,10 @@ def normalize_date_to_italian(raw_date):
 
 def save_optimized_image(input_source, save_path, max_width=1200):
     """
-    Ridimensiona e comprime un'immagine per risparmiare spazio e velocizzare il cloud.
-    input_source: può essere un UploadedFile o un percorso (stringa).
+    Ridimensiona e comprime un'immagine forzando il formato JPEG.
     """
-    # 🚀 Se l'immagine esiste già, non rifarla
-    if os.path.exists(save_path):
-        return True
-
     try:
-        #from PIL import Image
         img = Image.open(input_source)
-        # Conversione RGB per salvare in JPEG (gestisce PNG/RGBA)
         if img.mode in ("RGBA", "P"):
             img = img.convert("RGB")
             
@@ -98,12 +113,10 @@ def save_optimized_image(input_source, save_path, max_width=1200):
         if w > max_width:
             new_h = int(h * (max_width / w))
             img = img.resize((max_width, new_h), Image.LANCZOS)
-
         
-        # Salva con compressione (qualità 80 è ottima per OCR)
         img.save(save_path, "JPEG", quality=80, optimize=True)
         return True
-    except Exception as e:
+    except:
         return False
 
 # --- FUNZIONE DI PARSING INTELLIGENTE MIGLIORATA ---
@@ -291,7 +304,7 @@ with st.spinner("Caricamento audio di sottofondo..."):
         st.toast("✅ Audio Pronto!", icon="🎵")
 
 if "audio_enabled" not in st.session_state:
-    st.session_state.audio_enabled = True
+    st.session_state.audio_enabled = False
 
 # --- AUDIO PLAYER (REPLICA ESEMPIO "EMAIL EXTRACTOR") ---
 # --- AUDIO DISATTIVATO QUI (SPOSTATO DOPO) ---
@@ -359,7 +372,8 @@ if audio_base64:
     with st.sidebar:
         st.markdown(f"<h3 style='text-align:center;'>🎵 MUSIC PLAYER</h3>", unsafe_allow_html=True)
         # Toggle semplice (identico a esempio)
-        audio_on = st.toggle("🔊 Musica di sottofondo", value=True)
+        # Toggle disattivato di default
+        audio_on = st.toggle("🔊 Musica di sottofondo", value=False)
         
         if audio_on:
             # HTML Audio PURO - Identico all'esempio
@@ -389,20 +403,25 @@ GITHUB_TOKEN = st.secrets.get("GITHUB_TOKEN", None)
 GITHUB_REPO = "legnaro72/Locandine2Word"
 
 if 'github_manager' not in st.session_state and GITHUB_TOKEN:
-    st.session_state.github_manager = GithubManager(GITHUB_TOKEN, GITHUB_REPO)
+    try:
+        st.session_state.github_manager = GithubManager(GITHUB_TOKEN, GITHUB_REPO)
+    except Exception as e:
+        st.warning(f"⚠️ Impossibile connettersi a GitHub all'avvio. Funzionalità cloud disabilitate. Errore: {e}")
+        st.session_state.github_manager = None
 
 # --- AUTO-SYNC CLOUD ALL'AVVIO ---
 if GITHUB_TOKEN and 'data_initialized' not in st.session_state:
-    with st.spinner("Sincronizzazione dati dal cloud..."):
-        try:
-            # Tenta di scaricare l'ultimo stato da GitHub
-            zip_content = st.session_state.github_manager.download_backup()
-            st.session_state.github_manager.restore_from_zip(zip_content)
-            st.toast("✅ Dati sincronizzati dal cloud!", icon="☁️")
-        except Exception as e:
-            # Se è il primo avvio assoluto o il backup non esiste, ignoriamo l'errore
-            if "404" not in str(e):
-                st.info("Avviso: Nessun backup cloud trovato o sincronizzazione non riuscita. Caricamento dati locali.")
+    if st.session_state.get('github_manager'):
+        with st.spinner("Sincronizzazione dati dal cloud..."):
+            try:
+                # Tenta di scaricare l'ultimo stato da GitHub
+                zip_content = st.session_state.github_manager.download_backup()
+                st.session_state.github_manager.restore_from_zip(zip_content)
+                st.toast("✅ Dati sincronizzati dal cloud!", icon="☁️")
+            except Exception as e:
+                # Se è il primo avvio assoluto o il backup non esiste, ignoriamo l'errore
+                if "404" not in str(e):
+                    st.info("Avviso: Sincronizzazione automatica non riuscita. Caricamento dati locali.")
     st.session_state.data_initialized = True
 
 if 'events' not in st.session_state:
@@ -413,14 +432,54 @@ if 'events' not in st.session_state:
                 content = json.load(f)
                 if isinstance(content, list):
                     # Normalizzazione automatica al caricamento
+                    needs_save = False
                     for ev in content:
-                        if 'image_path' in ev:
-                            ev['image_path'] = ev['image_path'].replace('\\', '/')
+                        for key_path in ['image_path', 'sticker_image_path']:
+                            if ev.get(key_path):
+                                ev[key_path] = ev[key_path].replace('\\', '/')
+                                # Auto-healer: se il file .png è in JSON ma su disco c'è un .jpg (da ottimizzazione)
+                                if ev[key_path].lower().endswith('.png'):
+                                    alt_jpg = ev[key_path][:-4] + ".jpg"
+                                    if not os.path.exists(ev[key_path]) and os.path.exists(alt_jpg):
+                                        ev[key_path] = alt_jpg
+                                        needs_save = True
+
                         if 'date' in ev:
                             ev['date'] = normalize_date_to_italian(ev['date'])
+                            
+                    # Pre-calcolo dati pesanti (Booster performance)
+                    for ev in content:
+                        if '_dt' not in ev:
+                            ev['_dt'] = WordGenerator.get_sort_date(ev)
+                        if '_prov' not in ev:
+                            ev['_prov'] = WordGenerator.get_province(ev)
+                            
                     st.session_state.events = content
+                    if needs_save:
+                        save_events_to_disk()
         except Exception as e:
             st.error(f"Errore caricamento database locale: {e}")
+
+# Helper per salvataggio pulito (senza metadati temporanei)
+def save_events_to_disk():
+    if 'events' in st.session_state:
+        # Crea una copia pulita senza i metadati _dt e _prov
+        clean_events = []
+        for ev in st.session_state.events:
+            clean_ev = {k: v for k, v in ev.items() if not k.startswith('_')}
+            clean_events.append(clean_ev)
+            
+        with open(DATA_FILE, 'w', encoding='utf-8') as f:
+            json.dump(clean_events, f, ensure_ascii=False, indent=2)
+
+# Helper per refresh dei dati calcolati (da usare dopo edit/add)
+def refresh_event_metadata():
+    if 'events' in st.session_state:
+        for ev in st.session_state.events:
+            if '_dt' not in ev:
+                ev['_dt'] = WordGenerator.get_sort_date(ev)
+            if '_prov' not in ev:
+                ev['_prov'] = WordGenerator.get_province(ev)
 
 
 if 'ocr_engine' not in st.session_state:
@@ -444,6 +503,15 @@ with st.sidebar:
             try:
                 # Creazione ZIP in memoria
                 zip_buffer = io.BytesIO()
+                active_images = set()
+                
+                # 0. Trova immagini in uso (per filtrare uploads)
+                current_events = st.session_state.events
+                for ev in current_events:
+                    img_p = ev.get('image_path', '')
+                    if img_p:
+                        active_images.add(os.path.basename(img_p))
+
                 with zipfile.ZipFile(zip_buffer, 'w', zipfile.ZIP_DEFLATED) as zf:
                     # 1. Aggiungi il database JSON
                     if os.path.exists(DATA_FILE):
@@ -452,18 +520,27 @@ with st.sidebar:
                     if os.path.exists("CITY_FALLBACK.json"):
                         zf.write("CITY_FALLBACK.json", arcname='CITY_FALLBACK.json')
                     
-                    # 2. Aggiungi la cartella uploads
+                    # 2. Aggiungi la cartella uploads (SOLO file attivi)
                     if os.path.exists(UPLOADS_DIR):
                         for root, _, files in os.walk(UPLOADS_DIR):
                             for file in files:
+                                if file in active_images:
+                                    file_path = os.path.join(root, file)
+                                    arcname = f"uploads/{os.path.basename(file)}"
+                                    zf.write(file_path, arcname=arcname)
+                    
+                    # 3. Aggiungi la cartella images_album (elaborate)
+                    album_dir = "output/images_album"
+                    if os.path.exists(album_dir):
+                        for root, _, files in os.walk(album_dir):
+                            for file in files:
                                 file_path = os.path.join(root, file)
-                                # Forza l'uso di / nello ZIP per compatibilità Linux/Cloud
-                                arcname = f"uploads/{os.path.basename(file)}"
+                                arcname = f"output/images_album/{os.path.basename(file)}"
                                 zf.write(file_path, arcname=arcname)
                 
                 zip_buffer.seek(0)
                 st.session_state['backup_zip'] = zip_buffer
-                st.success("Backup creato! Clicca sotto per scaricare.")
+                st.success("Backup ottimizzato creato! Clicca sotto per scaricare.")
             except Exception as e:
                 st.error(f"Errore creazione backup: {e}")
 
@@ -472,6 +549,7 @@ with st.sidebar:
             label="⬇️ Scarica Backup Completo",
             data=st.session_state['backup_zip'],
             file_name=f"locandine_backup_{datetime.now().strftime('%Y%m%d_%H%M')}.zip",
+            key="btn_download_backup_local_final",
             mime="application/zip"
         )
     
@@ -521,10 +599,8 @@ with st.sidebar:
                     safe_reset_city_cache()
                     st.success("Dati ripristinati da GitHub correttamente! Ricarico...")
                     # Rimuoviamo la chiave per forzare la rilettura dal nuovo data.json su disco al rerun
-                    if 'events' in st.session_state:
-                        del st.session_state['events']
                     st.session_state.show_confirm_pull = False
-                    st.rerun()
+                    safe_media_rerun()
                 except Exception as e:
                     st.error(f"Errore durante il ripristino: {e}")
             st.session_state.show_confirm_pull = False
@@ -549,10 +625,7 @@ with st.sidebar:
                     safe_reset_city_cache()
                     
                     # Forza ricaricamento totale
-                    if 'events' in st.session_state:
-                        del st.session_state['events']
-                    st.success("Backup ripristinato con successo! Ricarico...")
-                    st.rerun()
+                    safe_media_rerun()
 
                 # Caso 2: È un file JSON (Vecchio metodo Import)
                 elif uploaded_backup.name.endswith('.json'):
@@ -651,23 +724,77 @@ with st.sidebar:
 
         st.divider()
         
-        if st.button("⚡ Ottimizza Archivio Esistente", help="Ridimensiona tutte le immagini caricate in precedenza per occupare meno spazio."):
-            files = [f for f in os.listdir(UPLOADS_DIR) if f.lower().endswith(('.png', '.jpg', '.jpeg'))]
-            if not files:
+        if st.button("⚡ Ottimizza Archivio Esistente", help="Ridimensiona tutte le immagini e converti le figurine in JPG leggero per risparmiare spazio."):
+            # 1. Trova file in uploads
+            files_uploads = [(UPLOADS_DIR, f) for f in os.listdir(UPLOADS_DIR) if f.lower().endswith(('.png', '.jpg', '.jpeg'))]
+            
+            # 2. Trova file in album
+            album_dir = "output/images_album"
+            files_album = []
+            if os.path.exists(album_dir):
+                files_album = [f for f in os.listdir(album_dir) if f.lower().endswith(('.png', '.jpg', '.jpeg'))]
+            
+            if not files_uploads and not files_album:
                 st.warning("Nessuna immagine trovata da ottimizzare.")
             else:
                 processed = 0
                 errors = 0
                 pbar = st.progress(0)
-                for i, filename in enumerate(files):
-                    img_path = os.path.join(UPLOADS_DIR, filename)
-                    if save_optimized_image(img_path, img_path):
+                total_to_do = len(files_uploads) + len(files_album)
+                
+                # --- A. Ottimizza Uploads (sovrascrivi esistenti) ---
+                for i, (folder, filename) in enumerate(files_uploads):
+                    img_path = os.path.join(folder, filename)
+                    # Forza salvataggio anche se esiste
+                    try:
+                        img = Image.open(img_path)
+                        if img.mode in ("RGBA", "P"): img = img.convert("RGB")
+                        img.save(img_path, "JPEG", quality=80, optimize=True)
                         processed += 1
+                    except: errors += 1
+                    pbar.progress((i + 1) / total_to_do)
+                
+                # --- B. Converti figurine PNG -> JPG e aggiorna JSON ---
+                json_updated = False
+                events_list = st.session_state.events
+                
+                start_idx_album = len(files_uploads)
+                for i, filename in enumerate(files_album):
+                    old_path = os.path.join(album_dir, filename)
+                    if filename.lower().endswith('.png'):
+                        new_filename = filename.rsplit('.', 1)[0] + ".jpg"
+                        new_path = os.path.join(album_dir, new_filename)
+                        
+                        try:
+                            img = Image.open(old_path)
+                            img.convert("RGB").save(new_path, "JPEG", quality=85, optimize=True)
+                            
+                            # Aggiorna Database
+                            for ev in events_list:
+                                if ev.get('sticker_image_path', '') == old_path:
+                                    ev['sticker_image_path'] = new_path
+                                    json_updated = True
+                            
+                            os.remove(old_path)
+                            processed += 1
+                        except: errors += 1
                     else:
-                        errors += 1
-                    pbar.progress((i + 1) / len(files))
-                st.success(f"✅ Ottimizzazione completata! Processate {processed} immagini. (Fallite: {errors})")
-                st.info("Nota: Al prossimo salvataggio su GitHub, il backup sarà molto più leggero.")
+                        # Se è già JPG, lo comprimiamo ulteriormente
+                        try:
+                            img = Image.open(old_path)
+                            img.convert("RGB").save(old_path, "JPEG", quality=85, optimize=True)
+                            processed += 1
+                        except: errors += 1
+                        
+                    pbar.progress((start_idx_album + i + 1) / total_to_do)
+                
+                if json_updated:
+                    with open(DATA_FILE, 'w', encoding='utf-8') as f:
+                        json.dump(events_list, f, ensure_ascii=False, indent=2)
+                
+                st.success(f"✅ Ottimizzazione completa! Elaborati {processed} file. (Errori: {errors})")
+                st.info("Le figurine sono state convertite in JPG e i vecchi PNG eliminati.")
+                safe_media_rerun()
 
 
 
@@ -709,8 +836,9 @@ with tab1:
         if st.button("🔍 Analizza tutte le locandine (OCR)", type="secondary"):
             with st.spinner("Analisi di tutte le locandine in corso..."):
                 for idx, uploaded_file in enumerate(uploaded_files):
-                    # Salva immagine ottimizzata
-                    image_path = os.path.join(UPLOADS_DIR, uploaded_file.name)
+                    # Salva immagine ottimizzata direttamente come JPG
+                    base_name = os.path.splitext(uploaded_file.name)[0]
+                    image_path = os.path.join(UPLOADS_DIR, f"{base_name}.jpg")
                     save_optimized_image(uploaded_file, image_path)
                     
                     # Se non è già stato processato
@@ -728,7 +856,7 @@ with tab1:
                             raw_ocr = cached_ocr(image_path)
                             parsed = parse_event_text(raw_ocr.get('full_text', ''))
                         
-                        parsed['image_path'] = f"{UPLOADS_DIR}/{uploaded_file.name}"
+                        parsed['image_path'] = f"{UPLOADS_DIR}/{base_name}.jpg"
                         st.session_state[f'temp_data_{idx}'] = parsed
                 st.success("Tutte le immagini sono state analizzate! Controlla i moduli sotto.")
                 # st.rerun()
@@ -750,12 +878,13 @@ with tab1:
             with st.expander(f"🖼️ {uploaded_file.name}", expanded=True):
                 col1, col2 = st.columns([1, 2])
                 
-                # Salvataggio e Anteprima Immagine (Ottimizzata)
-                image_path = os.path.join(UPLOADS_DIR, uploaded_file.name)
+                # Salvataggio e Anteprima Immagine (Ottimizzata JPG)
+                base_name = os.path.splitext(uploaded_file.name)[0]
+                image_path = os.path.join(UPLOADS_DIR, f"{base_name}.jpg")
                 save_optimized_image(uploaded_file, image_path)
                 
                 # Visualizza immagine
-                col1.image(Image.open(image_path), **IMG_WIDTH_ARG)
+                col1.image(image_path, **IMG_WIDTH_ARG)
                 
                 with col2:
                     # Check match JSON
@@ -1034,9 +1163,74 @@ with tab2:
 
             dup_icon = "👯 " if event.get('image_path', '').strip() in duplicate_paths else ""
             exp_icon = "🚫 SCADUTO " if is_expired else ""
+            stck_icon = "🖼️ [OK] " if event.get('sticker_processed') else ""
             title_prefix = f"{dup_icon}{exp_icon}🆕 " if event.get('is_new') else f"{dup_icon}{exp_icon}"
             
-            with st.expander(f"{title_prefix}📅 {event.get('title', 'Titolo n/d')}"):
+            with st.expander(f"{title_prefix}{stck_icon}📅 {event.get('title', 'Titolo n/d')}"):
+
+                # ===== EDITOR FIGURINA INTERATTIVO =====
+                st.markdown("#### 🖼️ Editor Figurina (Maschera 57×80mm)")
+                if event.get('sticker_processed') and os.path.exists(event.get('sticker_image_path', '')):
+                    st.success("✅ Figurina già elaborata!")
+                    if st.button("🔄 Modifica Figurina", key=f"edit_stk_{real_idx}"):
+                        st.session_state[f"show_ed_stk_{real_idx}"] = True
+                else:
+                    if st.button("🖼️ Crea Figurina", key=f"edit_stk_{real_idx}"):
+                        st.session_state[f"show_ed_stk_{real_idx}"] = True
+
+                if st.session_state.get(f"show_ed_stk_{real_idx}"):
+                    ed_c1, ed_c2 = st.columns([1, 1])
+                    with ed_c2:
+                        s_zoom = st.slider("🔍 Zoom", 1.0, 2.0, event.get('stk_zoom', 1.0), 0.05, key=f"sz_{real_idx}")
+                        s_strx = st.slider("↔️ Allungamento Orizzontale (Stretch)", 1.0, 1.05, event.get('stk_strx', 1.0), 0.01, key=f"str_{real_idx}")
+                        s_offx = st.slider("↔️ Spostamento Orizzontale X", -300, 300, event.get('stk_offx', 0), 10, key=f"sx_{real_idx}")
+                        s_offy = st.slider("↕️ Spostamento Verticale Y", -300, 300, event.get('stk_offy', 0), 10, key=f"sy_{real_idx}")
+                        
+                        img_path = event.get('image_path', '')
+                        img_preview = None
+                        if getattr(st.session_state, f"preview_btn_{real_idx}", False) or True: # Live preview is fast enough
+                             img_preview = create_single_sticker(
+                                img_path, mask_w_mm=57, mask_h_mm=80,
+                                zoom=s_zoom, stretch_x=s_strx, offset_x=s_offx, offset_y=s_offy,
+                                preview_mode=True
+                             )
+                        
+                        if st.button("💾 Salva Figurina", type="primary", key=f"save_stk_{real_idx}"):
+                            # Genera versione pulita da salvare (senza bordo rosso)
+                            img_clean = create_single_sticker(
+                                img_path, mask_w_mm=57, mask_h_mm=80,
+                                zoom=s_zoom, stretch_x=s_strx, offset_x=s_offx, offset_y=s_offy,
+                                preview_mode=False
+                            )
+                            if img_clean:
+                                base_name = os.path.splitext(os.path.basename(img_path))[0]
+                                out_dir = os.path.join(OUTPUT_DIR, "images_album")
+                                os.makedirs(out_dir, exist_ok=True)
+                                tgt_path = os.path.join(out_dir, f"{base_name}_sticker.jpg")
+                                # Converte in RGB e salva come JPG ottimizzato (molto più leggero di PNG)
+                                img_clean.convert("RGB").save(tgt_path, "JPEG", quality=85, optimize=True)
+                                
+                                events_list[real_idx]['sticker_processed'] = True
+                                events_list[real_idx]['sticker_image_path'] = tgt_path
+                                # Salva parametri per dopo
+                                events_list[real_idx]['stk_zoom'] = s_zoom
+                                events_list[real_idx]['stk_strx'] = s_strx
+                                events_list[real_idx]['stk_offx'] = s_offx
+                                events_list[real_idx]['stk_offy'] = s_offy
+                                
+                                save_events_to_disk()
+                                st.session_state[f"show_ed_stk_{real_idx}"] = False
+                                st.rerun()
+                                
+                    with ed_c1:
+                        if img_preview:
+                            st.caption("Anteprima Figurina (Sfondo Trasparente)")
+                            # Usa st.image direttamente con PIL (molto più veloce di base64)
+                            st.image(img_preview, width='content')
+                            # Anteprima istantanea
+                            pass
+                            
+                st.divider()
 
                 # ===== INIZIALIZZAZIONE WIDGET STATE SICURA =====
                 def init_widget(key, default):
@@ -1122,9 +1316,7 @@ with tab2:
                                 st.session_state[widget_k] = st.session_state[mic_buffer_key]
                                 event[final_field] = st.session_state[mic_buffer_key]
 
-                                with open(DATA_FILE, 'w', encoding='utf-8') as f:
-                                    json.dump(events_list, f, ensure_ascii=False, indent=2)
-
+                                save_events_to_disk()
                                 del st.session_state[mic_buffer_key]
                                 st.success("Campo aggiornato!")
                                 # st.rerun()
@@ -1138,7 +1330,7 @@ with tab2:
                 image_path = os.path.normpath(event.get('image_path', ''))
 
                 if image_path and os.path.exists(image_path):
-                    c1.image(Image.open(image_path), **IMG_WIDTH_ARG)
+                    c1.image(image_path, **IMG_WIDTH_ARG)
                 else:
                     c1.error(f"Immagine non trovata: {image_path}")
 
@@ -1171,8 +1363,7 @@ with tab2:
                             'description': n_desc
                         })
 
-                        with open(DATA_FILE, 'w', encoding='utf-8') as f:
-                            json.dump(events_list, f, ensure_ascii=False, indent=2)
+                        save_events_to_disk()
 
                         st.success("Aggiornato!")
                         # st.rerun()
@@ -1181,16 +1372,14 @@ with tab2:
                     if event.get('is_new'):
                         if col_b2.button("🚫 Rimuovi Etichetta", key=f"unew_{real_idx}", help="Rimuove l'etichetta NEW da questo evento"):
                             events_list[real_idx]['is_new'] = False
-                            with open(DATA_FILE, 'w', encoding='utf-8') as f:
-                                json.dump(events_list, f, ensure_ascii=False, indent=2)
+                            save_events_to_disk()
                             # st.rerun()
                     else:
                          col_b2.write("") # Spacer se non c'è il pulsante
 
                     if col_b3.button("🗑️ Elimina", key=f"del_{real_idx}", type="primary"):
                         events_list.pop(real_idx)
-                        with open(DATA_FILE, 'w', encoding='utf-8') as f:
-                            json.dump(events_list, f, ensure_ascii=False, indent=2)
+                        save_events_to_disk()
                         st.rerun()
 
 # --- TAB 3: EXPORT ---
@@ -1207,15 +1396,20 @@ with tab3:
         horizontal=True
     )
     
-    now = datetime.now()
+    # Refresh metadata se necesario (es. dopo aggiunta rapida)
+    refresh_event_metadata()
+    
+    now_date = datetime.now().date()
+    
+    # Filtraggio ottimizzato (senza ricalcolare date)
     if filter_choice == "Solo attivi (non scaduti)":
-        events_list_exp = [ev for ev in events_list_all if WordGenerator.get_sort_date(ev).date() >= now.date()]
+        events_list_exp = [ev for ev in events_list_all if ev.get('_dt', datetime.max).date() >= now_date]
     elif filter_choice == "Solo i NEW":
         events_list_exp = [ev for ev in events_list_all if ev.get('is_new')]
     elif filter_choice == "Solo Provincia di Genova":
-        events_list_exp = [ev for ev in events_list_all if WordGenerator.get_province(ev) == "GENOVA"]
+        events_list_exp = [ev for ev in events_list_all if ev.get('_prov') == "GENOVA"]
     elif filter_choice == "Solo Provincia di La Spezia":
-        events_list_exp = [ev for ev in events_list_all if WordGenerator.get_province(ev) == "LA SPEZIA"]
+        events_list_exp = [ev for ev in events_list_all if ev.get('_prov') == "LA SPEZIA"]
     else:
         events_list_exp = events_list_all
 
@@ -1257,6 +1451,141 @@ with tab3:
                     )
                 st.success("Documento pronto!")
 
+@st.cache_data(show_spinner=False)
+def compute_statistics(events_list_stats):
+    import pandas as pd
+    total_ev = len(events_list_stats)
+    now = datetime.now()
+    
+    expired_count = 0
+    new_count = 0
+    active_count = 0
+    
+    PROV_TO_REG = {
+        'GENOVA': 'LIGURIA', 'LA SPEZIA': 'LIGURIA', 'SAVONA': 'LIGURIA', 
+        'IMPERIA': 'LIGURIA', 'MASSA': 'TOSCANA'
+    }
+    
+    stats_geo = {
+        'LIGURIA': {'total': 0, 'provinces': {'GENOVA': 0, 'LA SPEZIA': 0, 'SAVONA': 0, 'IMPERIA': 0}},
+        'TOSCANA': {'total': 0, 'provinces': {'MASSA': 0}},
+        'ALTRO': {'total': 0, 'cities': {}}
+    }
+    
+    all_locations = {}
+    time_data = []
+    
+    check_filename = {}
+    check_datetime = {}
+    check_address = {}
+
+    events_with_dates = []
+
+    for ev in events_list_stats:
+        # Usa dati pre-calcolati (o calcola se mancano)
+        ev_date = ev.get('_dt')
+        if not ev_date: ev_date = WordGenerator.get_sort_date(ev)
+        
+        events_with_dates.append((ev, ev_date))
+        
+        if ev.get('is_new'):
+            new_count += 1
+        
+        if ev_date != datetime.max and ev_date.date() < now.date():
+            expired_count += 1
+        else:
+            active_count += 1
+
+        prov_found = ev.get('_prov')
+        if not prov_found: prov_found = WordGenerator.get_province(ev)
+        
+        loc = ev.get('location', 'N/D').strip().upper()
+        
+        reg = PROV_TO_REG.get(prov_found)
+        if reg:
+            stats_geo[reg]['total'] += 1
+            if prov_found in stats_geo[reg]['provinces']:
+                stats_geo[reg]['provinces'][prov_found] += 1
+        else:
+            stats_geo['ALTRO']['total'] += 1
+            stats_geo['ALTRO']['cities'][loc] = stats_geo['ALTRO']['cities'].get(loc, 0) + 1
+            
+        all_locations[loc] = all_locations.get(loc, 0) + 1
+        
+        if ev_date != datetime.max:
+            time_data.append(ev_date.date())
+
+        title = ev.get('title', 'N/D')
+        
+        img_rel_path = ev.get('image_path', '')
+        if img_rel_path:
+            fname = os.path.basename(img_rel_path)
+            if fname not in check_filename: check_filename[fname] = []
+            check_filename[fname].append(title)
+        
+        d_raw = ev.get('date', '').strip().upper()
+        t_raw = ev.get('time', '').strip().upper()
+        if d_raw and t_raw:
+            dt_key = f"{d_raw} alle {t_raw}"
+            if dt_key not in check_datetime: check_datetime[dt_key] = []
+            check_datetime[dt_key].append(title)
+        
+        addr_raw = ev.get('address', '').strip().upper()
+        if addr_raw and len(addr_raw) > 5:
+            if addr_raw not in check_address: check_address[addr_raw] = []
+            check_address[addr_raw].append(title)
+
+    sorted_events = [x[0] for x in sorted(events_with_dates, key=lambda item: item[1])]
+    
+    daily_stats = []
+    if time_data:
+        min_date = min(time_data)
+        max_date = max(time_data)
+        all_days = pd.date_range(start=min_date, end=max_date).date
+        
+        time_series = pd.Series(time_data)
+        date_counts = time_series.value_counts().to_dict()
+        
+        total_time_events = len(time_data)
+        cumulative = 0
+        for d in all_days:
+            count_today = date_counts.get(d, 0)
+            cumulative += count_today
+            active_at_d = total_time_events - cumulative + count_today
+            
+            daily_stats.append({
+                "Data": d,
+                "Eventi Giornalieri": count_today,
+                "Totale Progressivo": cumulative,
+                "Eventi Attivi": active_at_d
+            })
+
+    table_rows = []
+    for ev in sorted_events:
+        table_rows.append({
+            "Data": ev.get('date', ''),
+            "Titolo": ev.get('title', ''),
+            "Località": ev.get('location', ''),
+            "Provincia": WordGenerator.get_province(ev),
+            "Indirizzo": ev.get('address', ''),
+            "Orario": ev.get('time', ''),
+            "NEW": "⭐" if ev.get('is_new') else ""
+        })
+
+    return {
+        "total_ev": total_ev,
+        "active_count": active_count,
+        "expired_count": expired_count,
+        "new_count": new_count,
+        "stats_geo": stats_geo,
+        "all_locations": all_locations,
+        "daily_stats": daily_stats,
+        "table_rows": table_rows,
+        "check_filename": check_filename,
+        "check_datetime": check_datetime,
+        "check_address": check_address
+    }
+
 # --- TAB 4: STATISTICHE ---
 with tab4:
     st.subheader("📊 Analisi e Distribuzione Eventi")
@@ -1266,58 +1595,24 @@ with tab4:
     if not events_list_stats:
         st.info("Nessun dato disponibile per le statistiche. Carica degli eventi per iniziare.")
     else:
-        # Calcoli di base
-        total_ev = len(events_list_stats)
-        now = datetime.now()
+        # SOLUZIONE RADICALE: Calcolo solo su richiesta o se non presente
+        if 'last_stats' not in st.session_state or st.button("📊 Aggiorna Statistiche"):
+            with st.spinner("Elaborazione dati in corso..."):
+                refresh_event_metadata()
+                st.session_state.last_stats = compute_statistics(events_list_stats)
         
-        expired_count = 0
-        new_count = 0
-        active_count = 0
+        stats = st.session_state.last_stats
         
-        for ev in events_list_stats:
-            ev_date = WordGenerator.get_sort_date(ev)
-            if ev.get('is_new'):
-                new_count += 1
-            
-            if ev_date != datetime.max and ev_date.date() < now.date():
-                expired_count += 1
-            else:
-                active_count += 1
-
         # Metriche principali
         m1, m2, m3, m4 = st.columns(4)
-        m1.metric("Totale Eventi", total_ev)
-        m2.metric("Attivi (Futuri)", active_count)
-        m3.metric("Scaduti", expired_count)
-        m4.metric("Nuovi (NEW)", new_count)
+        m1.metric("Totale Eventi", stats['total_ev'])
+        m2.metric("Attivi (Futuri)", stats['active_count'])
+        m3.metric("Scaduti", stats['expired_count'])
+        m4.metric("Nuovi (NEW)", stats['new_count'])
         
         st.divider()
         
-        # Mappatura Province/Regioni (Stessa logica del WordGenerator)
-        PROV_TO_REG = {
-            'GENOVA': 'LIGURIA', 'LA SPEZIA': 'LIGURIA', 'SAVONA': 'LIGURIA', 
-            'IMPERIA': 'LIGURIA', 'MASSA': 'TOSCANA'
-        }
-        
-        stats_geo = {
-            'LIGURIA': {'total': 0, 'provinces': {'GENOVA': 0, 'LA SPEZIA': 0, 'SAVONA': 0, 'IMPERIA': 0}},
-            'TOSCANA': {'total': 0, 'provinces': {'MASSA': 0}},
-            'ALTRO': {'total': 0, 'cities': {}}
-        }
-
-        # Elaborazione Geografica
-        for ev in events_list_stats:
-            prov_found = WordGenerator.get_province(ev)
-            loc = ev.get('location', 'N/D').strip().upper()
-            
-            reg = PROV_TO_REG.get(prov_found)
-            if reg:
-                stats_geo[reg]['total'] += 1
-                if prov_found in stats_geo[reg]['provinces']:
-                    stats_geo[reg]['provinces'][prov_found] += 1
-            else:
-                stats_geo['ALTRO']['total'] += 1
-                stats_geo['ALTRO']['cities'][loc] = stats_geo['ALTRO']['cities'].get(loc, 0) + 1
+        stats_geo = stats['stats_geo']
 
         # --- GRAFICI INTERATTIVI ---
         #import pandas as pd
@@ -1390,10 +1685,7 @@ with tab4:
         
         with col_g3:
             st.markdown("#### 📍 Top 10 Località")
-            all_locations = {}
-            for ev in events_list_stats:
-                loc = ev.get('location', 'N/D').strip().upper()
-                all_locations[loc] = all_locations.get(loc, 0) + 1
+            all_locations = stats['all_locations']
             
             loc_df = pd.DataFrame([{"Località": k, "Eventi": v} for k, v in all_locations.items()])
             loc_df = loc_df.sort_values(by="Eventi", ascending=False).head(10)
@@ -1414,7 +1706,7 @@ with tab4:
             st.markdown("#### 📊 Stato Archivio")
             status_df = pd.DataFrame({
                 "Stato": ["Attivi", "Scaduti", "NEW"],
-                "Conteggio": [active_count, expired_count, new_count]
+                "Conteggio": [stats['active_count'], stats['expired_count'], stats['new_count']]
             })
             st.data_editor(
                 status_df,
@@ -1432,38 +1724,8 @@ with tab4:
         # --- ANALISI TEMPORALE ---
         st.markdown("### 📈 Andamento Temporale")
         
-        # Prepariamo i dati temporali
-        time_data = []
-        for ev in events_list_stats:
-            d = WordGenerator.get_sort_date(ev)
-            if d != datetime.max:
-                time_data.append(d.date())
-        
-        if time_data:
-            df_dates_raw = pd.DataFrame({"Data": time_data})
-            min_date = min(time_data)
-            max_date = max(time_data)
-            
-            # Creiamo un range completo di giorni per non avere buchi nel grafico
-            all_days = pd.date_range(start=min_date, end=max_date).date
-            date_counts = df_dates_raw["Data"].value_counts().to_dict()
-            
-            daily_stats = []
-            cumulative = 0
-            for d in all_days:
-                count_today = date_counts.get(d, 0)
-                cumulative += count_today
-                # Eventi "Attivi" per quel giorno specifico: eventi con data >= d
-                active_at_d = len([x for x in time_data if x >= d])
-                
-                daily_stats.append({
-                    "Data": d,
-                    "Eventi Giornalieri": count_today,
-                    "Totale Progressivo": cumulative,
-                    "Eventi Attivi": active_at_d
-                })
-            
-            df_time = pd.DataFrame(daily_stats)
+        if stats['daily_stats']:
+            df_time = pd.DataFrame(stats['daily_stats'])
             
             # 1. Grafico Andamento (Cumulativo e Attivi)
             df_melted = df_time.melt(id_vars=["Data"], value_vars=["Totale Progressivo", "Eventi Attivi"], 
@@ -1502,20 +1764,7 @@ with tab4:
         # --- TABELLA RIASSUNTIVA ---
         st.markdown("### 📋 Elenco Riepilogativo Eventi")
         
-        # Prepariamo i dati per la tabella (ordinati cronologicamente)
-        table_rows = []
-        sorted_stats = sorted(events_list_stats, key=WordGenerator.get_sort_date)
-        
-        for ev in sorted_stats:
-            table_rows.append({
-                "Data": ev.get('date', ''),
-                "Titolo": ev.get('title', ''),
-                "Località": ev.get('location', ''),
-                "Provincia": WordGenerator.get_province(ev),
-                "Indirizzo": ev.get('address', ''),
-                "Orario": ev.get('time', ''),
-                "NEW": "⭐" if ev.get('is_new') else ""
-            })
+        table_rows = stats['table_rows']
         
         if table_rows:
             st.dataframe(
@@ -1534,40 +1783,9 @@ with tab4:
         # --- CONTROLLO INTEGRITÀ E DUPLICATI ---
         st.markdown("### ⚠️ Avvisi Integrità e Conflitti")
         
-        check_filename = {}
-        check_size = {}
-        check_datetime = {}
-        check_address = {}
-        
-        for ev in events_list_stats:
-            title = ev.get('title', 'N/D')
-            
-            # 1. Filename
-            img_rel_path = ev.get('image_path', '')
-            if img_rel_path:
-                fname = os.path.basename(img_rel_path)
-                if fname not in check_filename: check_filename[fname] = []
-                check_filename[fname].append(title)
-                
-                # 2. Size (Controllo effettivo sul disco)
-                if os.path.exists(img_rel_path):
-                    fsize = os.path.getsize(img_rel_path)
-                    if fsize not in check_size: check_size[fsize] = []
-                    check_size[fsize].append(title)
-            
-            # 3. Date-Time (Stesso giorno e stessa ora)
-            d_raw = ev.get('date', '').strip().upper()
-            t_raw = ev.get('time', '').strip().upper()
-            if d_raw and t_raw:
-                dt_key = f"{d_raw} alle {t_raw}"
-                if dt_key not in check_datetime: check_datetime[dt_key] = []
-                check_datetime[dt_key].append(title)
-            
-            # 4. Indirizzo (Stesso indirizzo anche su giorni diversi)
-            addr_raw = ev.get('address', '').strip().upper()
-            if addr_raw and len(addr_raw) > 5: # Evitiamo stringhe troppo corte o generiche
-                if addr_raw not in check_address: check_address[addr_raw] = []
-                check_address[addr_raw].append(title)
+        check_filename = stats['check_filename']
+        check_datetime = stats['check_datetime']
+        check_address = stats['check_address']
         
         any_warning = False
         
@@ -1577,14 +1795,27 @@ with tab4:
                 st.warning(f"🖼️ **Stessa Immagine (Filename):** Il file `{fname}` è usato da:\n" + "".join([f"- {t}\n" for t in titles]))
                 any_warning = True
         
-        # Visualizzazione Avvisi Size (solo se non sono lo stesso filename, per evitare ridondanza)
-        for fsize, titles in check_size.items():
-            if len(titles) > 1:
-                filenames = set([os.path.basename(ev.get('image_path','')) for ev in events_list_stats if ev.get('title') in titles])
-                if len(filenames) > 1:
-                    st.warning(f"⚖️ **Immagini Sospette (Stessa Size):** Immagini diverse con dimensione `{fsize} bytes` in:\n" + "".join([f"- {t}\n" for t in titles]))
-                    any_warning = True
-
+        # Controllo Dimensioni su disco ONDEMAND
+        if st.button("🔍 Controlla Integrità File (Dimensioni/Doppioni su Disco)"):
+            with st.spinner("Scansionando disco..."):
+                check_size = {}
+                for ev in events_list_stats:
+                    img_path = ev.get('image_path', '')
+                    if img_path and os.path.exists(img_path):
+                        fsize = os.path.getsize(img_path)
+                        if fsize not in check_size: check_size[fsize] = []
+                        check_size[fsize].append(ev.get('title', 'N/D'))
+                
+                size_warning = False
+                for fsize, titles in check_size.items():
+                    if len(titles) > 1:
+                        filenames = set([os.path.basename(ev.get('image_path','')) for ev in events_list_stats if ev.get('title') in titles])
+                        if len(filenames) > 1:
+                            st.warning(f"⚖️ **Immagini Sospette (Stessa Size):** Immagini diverse con dimensione `{fsize} bytes` in:\n" + "".join([f"- {t}\n" for t in titles]))
+                            size_warning = True
+                if not size_warning:
+                    st.success("Tutte le immagini su disco hanno pesi regolari, nessun duplicato sospetto trovato.")
+                
         # Visualizzazione Avvisi Indirizzo (Stesso indirizzo)
         for addr, titles in check_address.items():
             if len(titles) > 1:
@@ -1632,8 +1863,15 @@ with tab5:
     if not events_album:
         st.warning("⚠️ Nessun evento disponibile. Carica delle locandine per creare l'album.")
     else:
-        # Conta solo eventi con immagine valida
-        valid_album_events = [ev for ev in events_album if ev.get('image_path') and os.path.exists(ev.get('image_path', ''))]
+        # Conta solo eventi con immagine valida (risoluzione robusta)
+        def _check_img_path(p):
+            if not p: return False
+            p = p.replace('\\', '/')
+            if os.path.exists(p): return True
+            if os.path.exists(os.path.join(os.getcwd(), p)): return True
+            return False
+
+        valid_album_events = [ev for ev in events_album if _check_img_path(ev.get('image_path'))]
         total_figurine = len(valid_album_events)
         
         if total_figurine == 0:
@@ -1703,19 +1941,40 @@ with tab5:
                     key="album_show_banner"
                 )
 
-            album_transparent_stickers = st.checkbox(
-                "🎴 Sfondo figurine trasparente (visibile trama album)",
-                value=True,
-                help="Se attivo, lo sfondo della figurina sarà trasparente (mostra lo sfondo della pagina), mantenendo opaca solo l'area della didascalia.",
-                key="album_transparent_stickers"
+            sticker_fill_mode = st.radio(
+                "🎴 Modalità riempimento figurina",
+                options=["trasparente", "espansione", "opaco"],
+                format_func=lambda x: {
+                    "opaco": "🟨 Opaco — Sfondo crema classico",
+                    "trasparente": "📸 Trasparente — Si vede la trama dell’album",
+                    "espansione": "✨ Espansione intelligente — Riempie con sfondo sfocato"
+                }.get(x, x),
+                index=0,
+                help=(
+                    "▪ **Trasparente**: lo sfondo della figurina è trasparente, mostra la trama dell’album sotto.\n"
+                    "▪ **Espansione intelligente**: allarga lo sfondo con una versione sfocata dell’immagine stessa "
+                    "senza deformare il soggetto, perfetto per riempire il formato 57×82mm.\n"
+                    "▪ **Opaco**: sfondo classico color crema pieno."
+                ),
+                key="album_fill_mode"
             )
 
-            album_force_aspect_ratio = st.checkbox(
-                "📏 Forza proporzione classica 57×82",
-                value=False,
-                help="Se attivo, ridimensiona le immagini per rispettare fedelmente la proporzione di una figurina classica. Gli spazi vuoti vengono riempiti con sfondo trasparente.",
-                key="album_force_aspect_ratio"
-            )
+            col_ratio1, col_ratio2 = st.columns([1, 1])
+            with col_ratio1:
+                album_force_aspect_ratio = st.checkbox(
+                    "📏 Forza proporzione figurina",
+                    value=False,
+                    help="Forza le immagini a rispettare la proporzione classica 57×Hmm. Gli spazi vuoti vengono riempiti secondo la modalità scelta sopra.",
+                    key="album_force_aspect_ratio"
+                )
+            with col_ratio2:
+                sticker_height_mm = st.slider(
+                    "Altezza figurina (mm)",
+                    min_value=76, max_value=80, value=80, step=2,
+                    help="57mm è la larghezza fissa. L'altezza va da 76 a 80mm. Riducendola, l'immagine verrà tagliata leggermente ai bordi.",
+                    key="album_sticker_height",
+                    disabled=not album_force_aspect_ratio
+                )
             
             st.divider()
 
@@ -1736,6 +1995,16 @@ with tab5:
                     value=False,
                     help="Genera anche un archivio ZIP con tutte le singole figurine esatte fuso con la trama di sfondo per poterle stampare a parte ed incollarle."
                 )
+            
+            album_preprocess = st.checkbox(
+                "🖼️ Ignora elaborazioni manuali e ricalcola tutto",
+                value=False,
+                help=(
+                    "Se attivato, verranno ricalcolate e ignorate tutte le elaborazioni grafiche per ciascuna maschera "
+                    "effettuate nella sezione Modifica Dati, e tutto verrà ricalcolato usando le immagini originali."
+                ),
+                key="album_preprocess"
+            )
             
             st.divider()
             
@@ -1798,24 +2067,28 @@ with tab5:
             with col_opt2:
                 album_filter = st.selectbox(
                     "🔍 Filtra Eventi",
-                    ["Tutti", "Solo Attivi", "Solo NEW"],
+                    ["Tutti", "Solo Attivi", "Solo NEW", "Solo Elaborati (OK)"],
                     key="album_filter_sel"
                 )
             
-            # Applicazione ordinamento
+            # Applicazione ordinamento (usando _dt pre-calcolato)
+            refresh_event_metadata()
             sorted_album_events = list(valid_album_events)
+            
             if album_sort == "Cronologico (Data)":
-                sorted_album_events.sort(key=WordGenerator.get_sort_date)
+                sorted_album_events.sort(key=lambda e: e.get('_dt', datetime.max))
             elif album_sort == "Alfabetico (Località)":
                 sorted_album_events.sort(key=lambda e: e.get('location', '').strip().upper())
             
-            # Applicazione filtro
+            # Applicazione filtro (veloce)
             now_album = datetime.now()
             if album_filter == "Solo Attivi":
                 sorted_album_events = [ev for ev in sorted_album_events 
-                                       if WordGenerator.get_sort_date(ev).date() >= now_album.date()]
+                                       if ev.get('_dt', datetime.max).date() >= now_album.date()]
             elif album_filter == "Solo NEW":
                 sorted_album_events = [ev for ev in sorted_album_events if ev.get('is_new')]
+            elif album_filter == "Solo Elaborati (OK)":
+                sorted_album_events = [ev for ev in sorted_album_events if ev.get('sticker_processed')]
             
             if not sorted_album_events:
                 st.warning("Nessun evento corrisponde ai filtri selezionati.")
@@ -1836,6 +2109,17 @@ with tab5:
                     album_output_dir = os.path.join(OUTPUT_DIR, "album")
                     
                     with st.spinner("🎨 Creazione dell'album in stile Panini... Attendere prego."):
+                        # Sostituisci i path nelle copie degli eventi
+                        album_events_to_use = []
+                        for ev in sorted_album_events:
+                            ev_copy = dict(ev)
+                            stk_p = ev_copy.get('sticker_image_path', '').replace('\\', '/')
+                            stk_exists = os.path.exists(stk_p) or (stk_p and os.path.exists(os.path.join(os.getcwd(), stk_p)))
+                            
+                            if not album_preprocess and ev_copy.get('sticker_processed') and stk_exists:
+                                ev_copy['image_path'] = stk_p
+                            album_events_to_use.append(ev_copy)
+                        
                         # Prepara immagini custom come PIL Image
                         custom_cover_pil = None
                         custom_back_pil = None
@@ -1864,13 +2148,14 @@ with tab5:
                             logo_cover_white_bg=logo_cover_white_bg,
                             logo_cover_full_page=album_logo_cover_full_page,
                             show_banner=album_show_banner,
-                            transparent_stickers=album_transparent_stickers,
+                            sticker_fill_mode=sticker_fill_mode,
                             force_aspect_ratio=album_force_aspect_ratio,
+                            sticker_height_mm=sticker_height_mm,
                             empty_album_mode=album_empty_mode,
                             export_stickers=album_export_stickers
                         )
                         cover_path, page_paths, pdf_buffer, pdf_empty_buffer, zip_buffer = gen.generate_full_album(
-                            sorted_album_events, output_dir=album_output_dir
+                            album_events_to_use, output_dir=album_output_dir
                         )
                         
                         st.session_state['album_cover'] = cover_path
@@ -1928,7 +2213,7 @@ with tab5:
                     # Copertina
                     st.markdown("#### 🎨 Copertina")
                     if os.path.exists(st.session_state['album_cover']):
-                        st.image(Image.open(st.session_state['album_cover']), caption="Copertina Album", **IMG_WIDTH_ARG)
+                        st.image(st.session_state['album_cover'], caption="Copertina Album", **IMG_WIDTH_ARG)
                     
                     st.divider()
                     
@@ -1953,18 +2238,18 @@ with tab5:
                         # Identifica se è la back cover
                         is_back = (page_select == len(album_pages))
                         caption = "Pagina Finale (Retro)" if is_back else f"Pagina {page_select} di {len(album_pages)}"
-                        st.image(Image.open(page_path), caption=caption, **IMG_WIDTH_ARG)
+                        st.image(page_path, caption=caption, **IMG_WIDTH_ARG)
                     
                     # Griglia miniature
                     if len(album_pages) > 1:
                         st.divider()
-                        st.markdown("#### 🗂️ Tutte le Pagine (Miniature)")
-                        n_thumb_cols = min(4, len(album_pages))
-                        thumb_cols = st.columns(n_thumb_cols)
-                        for idx, pg_path in enumerate(album_pages):
-                            with thumb_cols[idx % n_thumb_cols]:
-                                if os.path.exists(pg_path):
-                                    is_back = (idx == len(album_pages) - 1)
-                                    cap = "Retro" if is_back else f"Pag. {idx + 1}"
-                                    st.image(Image.open(pg_path), caption=cap, width=280)
+                        with st.expander("🗂️ Visualizza tutte le Miniature (Miniature)", expanded=False):
+                            n_thumb_cols = min(4, len(album_pages))
+                            thumb_cols = st.columns(n_thumb_cols)
+                            for idx, pg_path in enumerate(album_pages):
+                                with thumb_cols[idx % n_thumb_cols]:
+                                    if os.path.exists(pg_path):
+                                        is_back = (idx == len(album_pages) - 1)
+                                        cap = "Retro" if is_back else f"Pag. {idx + 1}"
+                                        st.image(pg_path, caption=cap, width=280)
 
