@@ -409,15 +409,49 @@ if 'github_manager' not in st.session_state and GITHUB_TOKEN:
         st.warning(f"⚠️ Impossibile connettersi a GitHub all'avvio. Funzionalità cloud disabilitate. Errore: {e}")
         st.session_state.github_manager = None
 
-# --- AUTO-SYNC CLOUD ALL'AVVIO ---
+# --- AUTO-SYNC CLOUD ALL'AVVIO (INTELLIGENTE) ---
 if GITHUB_TOKEN and 'data_initialized' not in st.session_state:
     if st.session_state.get('github_manager'):
         with st.spinner("Sincronizzazione dati dal cloud..."):
             try:
-                # Tenta di scaricare l'ultimo stato da GitHub
+                # 1. Conta eventi locali PRIMA di sovrascrivere
+                local_event_count = 0
+                if os.path.exists(DATA_FILE):
+                    try:
+                        with open(DATA_FILE, 'r', encoding='utf-8') as f:
+                            local_data = json.load(f)
+                            if isinstance(local_data, list):
+                                local_event_count = len(local_data)
+                    except:
+                        pass
+                
+                # 2. Scarica backup dal cloud
                 zip_content = st.session_state.github_manager.download_backup()
-                st.session_state.github_manager.restore_from_zip(zip_content)
-                st.toast("✅ Dati sincronizzati dal cloud!", icon="☁️")
+                
+                # 3. Conta eventi nel cloud (leggi data.json dallo zip senza estrarre)
+                cloud_event_count = 0
+                for name, zdata in zip_content.items():
+                    try:
+                        zf = zipfile.ZipFile(io.BytesIO(zdata))
+                        if 'data.json' in zf.namelist():
+                            cloud_data = json.loads(zf.read('data.json'))
+                            if isinstance(cloud_data, list):
+                                cloud_event_count = max(cloud_event_count, len(cloud_data))
+                        zf.close()
+                    except:
+                        pass
+                
+                # 4. Decisione intelligente: sovrascrivi SOLO se il cloud ha più eventi o uguale
+                if cloud_event_count >= local_event_count:
+                    st.session_state.github_manager.restore_from_zip(zip_content)
+                    st.toast(f"✅ Dati sincronizzati dal cloud! ({cloud_event_count} eventi)", icon="☁️")
+                else:
+                    # Il locale è più completo: NON sovrascrivere!
+                    st.warning(
+                        f"⚠️ Dati locali più completi del cloud! "
+                        f"Locale: {local_event_count} eventi, Cloud: {cloud_event_count} eventi. "
+                        f"Dati locali MANTENUTI. Usa '🚀 Salva su GitHub' per aggiornare il cloud."
+                    )
             except Exception as e:
                 # Se è il primo avvio assoluto o il backup non esiste, ignoriamo l'errore
                 if "404" not in str(e):

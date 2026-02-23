@@ -85,28 +85,50 @@ class GithubManager:
                         errors.append(f"Errore durante creazione {path}: {e2}")
                 else:
                     errors.append(f"Errore durante aggiornamento {path}: {e}")
+        
+        # --- PULIZIA: Elimina il vecchio backup monolitico legacy se esiste ---
+        try:
+            old_backup = self.repo.get_contents(self.backup_filename)  # "github_backup.zip"
+            self.repo.delete_file(
+                self.backup_filename,
+                f"Rimosso backup monolitico legacy ({self.backup_filename}) dopo migrazione a multi-pacchetto",
+                old_backup.sha
+            )
+        except:
+            pass  # Se non esiste, niente da fare
                     
         if errors:
             return False, "\n".join(errors)
         return True, "Pacchetti Backup (Multiplo) aggiornati su GitHub!"
 
     def download_backup(self):
-        """Scarica i/il file backup.zip dal repository GitHub. Tenta il download di tutti i frammenti o della versione legacy."""
+        """Scarica i/il file backup.zip dal repository GitHub. Preferisce i nuovi split; usa il legacy solo come fallback."""
         zips_dict = {}
         import requests
         headers = {"Authorization": f"token {self.auth.token}"}
         
-        # Cerchiamo sia i nuovi archivi separati, sia il possibile backup singolo monolitico storico
-        targets = ['github_backup_main.zip', 'github_backup_album.zip', 'github_backup.zip']
+        # 1. Prova prima i nuovi archivi separati (strategia multi-pacchetto)
+        new_targets = ['github_backup_main.zip', 'github_backup_album.zip']
         
-        for path in targets:
+        for path in new_targets:
             try:
                 contents = self.repo.get_contents(path)
                 response = requests.get(contents.download_url, headers=headers, timeout=120)
                 if response.status_code == 200:
                     zips_dict[path] = response.content
             except:
-                pass # file opzionale o non ancora creato
+                pass  # file opzionale o non ancora creato
+        
+        # 2. SOLO se NON abbiamo trovato il backup main (nuovo), proviamo il legacy monolitico
+        #    IMPORTANTE: NON scaricare il legacy se i nuovi esistono, altrimenti sovrascrive data.json!
+        if 'github_backup_main.zip' not in zips_dict:
+            try:
+                contents = self.repo.get_contents('github_backup.zip')
+                response = requests.get(contents.download_url, headers=headers, timeout=120)
+                if response.status_code == 200:
+                    zips_dict['github_backup.zip'] = response.content
+            except:
+                pass
                 
         if not zips_dict:
             raise Exception("Nessun frammento di backup trovato su GitHub.")
