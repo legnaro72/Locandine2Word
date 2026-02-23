@@ -7,12 +7,17 @@ import zipfile
 import io
 import base64
 import math
+import warnings
 from github_manager import GithubManager
 from datetime import datetime
 from PIL import Image
 from ocr_engine import LocandineOCR
 from word_generator import WordGenerator
 from album_generator import AlbumGenerator, create_single_sticker
+
+# Suppress PyTorch warnings about pin_memory when no GPU is present
+warnings.filterwarnings("ignore", message=".*'pin_memory' argument is set as true but no accelerator is found.*")
+
 # Versione: 1.0.1 (Forza reload per reset_city_cache)
 
 def safe_reset_city_cache():
@@ -471,12 +476,15 @@ if 'events' not in st.session_state:
                         for key_path in ['image_path', 'sticker_image_path']:
                             if ev.get(key_path):
                                 ev[key_path] = ev[key_path].replace('\\', '/')
-                                # Auto-healer: se il file .png è in JSON ma su disco c'è un .jpg (da ottimizzazione)
-                                if ev[key_path].lower().endswith('.png'):
-                                    alt_jpg = ev[key_path][:-4] + ".jpg"
-                                    if not os.path.exists(ev[key_path]) and os.path.exists(alt_jpg):
-                                        ev[key_path] = alt_jpg
-                                        needs_save = True
+                                # Auto-healer: se il file non esiste, prova varianti di estensione
+                                if not os.path.exists(ev[key_path]):
+                                    base_no_ext = os.path.splitext(ev[key_path])[0]
+                                    for alt_ext in ['.jpg', '.jpeg', '.png']:
+                                        alt_path = base_no_ext + alt_ext
+                                        if os.path.exists(alt_path):
+                                            ev[key_path] = alt_path
+                                            needs_save = True
+                                            break
 
                         if 'date' in ev:
                             ev['date'] = normalize_date_to_italian(ev['date'])
@@ -757,97 +765,153 @@ with st.sidebar:
 
         st.divider()
         
-        if st.button("⚡ Ottimizza Archivio Esistente", help="Ridimensiona tutte le immagini e converti le figurine in JPG leggero per risparmiare spazio."):
-            # 0. Trova immagini attive (referenziate dagli eventi)
-            active_images = set()
-            for ev in st.session_state.events:
+        # --- Report Ottimizzazione (persistente dopo rerun) ---
+        if 'optimize_report' in st.session_state:
+            st.success(st.session_state['optimize_report'])
+            if st.button("🆗 OK, ho letto", key="dismiss_opt_report"):
+                del st.session_state['optimize_report']
+                st.rerun()
+        
+        if st.button("⚡ Ottimizza Archivio Esistente", help="Ridimensiona tutte le immagini, converti PNG→JPG, elimina orfani e aggiorna il JSON."):
+            events_list = st.session_state.events
+            album_dir = "output/images_album"
+            
+            # === FASE 0: Costruisci set di file attivi ===
+            active_uploads = set()
+            active_stickers = set()
+            for ev in events_list:
                 img_p = ev.get('image_path', '')
                 if img_p:
-                    active_images.add(os.path.basename(img_p))
+                    active_uploads.add(os.path.basename(img_p))
+                stk_p = ev.get('sticker_image_path', '')
+                if stk_p:
+                    active_stickers.add(os.path.basename(stk_p))
             
-            # 1. Trova file in uploads (SOLO quelli attivi)
-            all_uploads = [f for f in os.listdir(UPLOADS_DIR) if f.lower().endswith(('.png', '.jpg', '.jpeg'))]
-            files_uploads = [(UPLOADS_DIR, f) for f in all_uploads if f in active_images]
-            orphan_files = [f for f in all_uploads if f not in active_images]
+            # === FASE 1: Inventario file su disco ===
+            all_uploads = [f for f in os.listdir(UPLOADS_DIR) if f.lower().endswith(('.png', '.jpg', '.jpeg'))] if os.path.exists(UPLOADS_DIR) else []
+            all_album = [f for f in os.listdir(album_dir) if f.lower().endswith(('.png', '.jpg', '.jpeg'))] if os.path.exists(album_dir) else []
             
-            # 2. Trova file in album
-            album_dir = "output/images_album"
-            files_album = []
-            if os.path.exists(album_dir):
-                files_album = [f for f in os.listdir(album_dir) if f.lower().endswith(('.png', '.jpg', '.jpeg'))]
+            orphan_uploads = [f for f in all_uploads if f not in active_uploads]
+            orphan_album = [f for f in all_album if f not in active_stickers]
+            active_upload_files = [f for f in all_uploads if f in active_uploads]
+            active_album_files = [f for f in all_album if f in active_stickers]
             
-            if not files_uploads and not files_album:
+            total_to_do = len(active_upload_files) + len(active_album_files)
+            
+            if total_to_do == 0 and not orphan_uploads and not orphan_album:
                 st.warning("Nessuna immagine trovata da ottimizzare.")
             else:
                 processed = 0
+                converted_png = 0
                 errors = 0
                 orphans_removed = 0
+                json_updated = False
                 pbar = st.progress(0)
-                total_to_do = len(files_uploads) + len(files_album)
                 
-                # --- 0. Rimuovi immagini orfane ---
-                for orphan in orphan_files:
+                # === FASE 2: Rimuovi orfani UPLOADS ===
+                for orphan in orphan_uploads:
                     try:
                         os.remove(os.path.join(UPLOADS_DIR, orphan))
                         orphans_removed += 1
                     except:
                         pass
                 
-                # --- A. Ottimizza Uploads (solo attivi, sovrascrivi esistenti) ---
-                for i, (folder, filename) in enumerate(files_uploads):
-                    img_path = os.path.join(folder, filename)
-                    # Forza salvataggio anche se esiste
+                # === FASE 3: Rimuovi orfani ALBUM ===
+                for orphan in orphan_album:
+                    try:
+                        os.remove(os.path.join(album_dir, orphan))
+                        orphans_removed += 1
+                    except:
+                        pass
+                
+                # === FASE 4: Ottimizza UPLOADS (+ conversione PNG->JPG con rinomina e aggiornamento JSON) ===
+                for i, filename in enumerate(active_upload_files):
+                    img_path = os.path.join(UPLOADS_DIR, filename)
                     try:
                         img = Image.open(img_path)
-                        if img.mode in ("RGBA", "P"): img = img.convert("RGB")
-                        img.save(img_path, "JPEG", quality=80, optimize=True)
-                        processed += 1
-                    except: errors += 1
-                    pbar.progress((i + 1) / total_to_do)
-                
-                # --- B. Converti figurine PNG -> JPG e aggiorna JSON ---
-                json_updated = False
-                events_list = st.session_state.events
-                
-                start_idx_album = len(files_uploads)
-                for i, filename in enumerate(files_album):
-                    old_path = os.path.join(album_dir, filename)
-                    if filename.lower().endswith('.png'):
-                        new_filename = filename.rsplit('.', 1)[0] + ".jpg"
-                        new_path = os.path.join(album_dir, new_filename)
+                        if img.mode in ("RGBA", "P"):
+                            img = img.convert("RGB")
                         
-                        try:
-                            img = Image.open(old_path)
-                            img.convert("RGB").save(new_path, "JPEG", quality=85, optimize=True)
+                        if filename.lower().endswith('.png'):
+                            new_filename = os.path.splitext(filename)[0] + ".jpg"
+                            new_path = os.path.join(UPLOADS_DIR, new_filename)
+                            img.save(new_path, "JPEG", quality=80, optimize=True)
                             
-                            # Aggiorna Database
+                            old_ref = f"{UPLOADS_DIR}/{filename}"
+                            new_ref = f"{UPLOADS_DIR}/{new_filename}"
                             for ev in events_list:
-                                if ev.get('sticker_image_path', '') == old_path:
-                                    ev['sticker_image_path'] = new_path
+                                if ev.get('image_path', '') == old_ref:
+                                    ev['image_path'] = new_ref
                                     json_updated = True
                             
-                            os.remove(old_path)
+                            if os.path.exists(new_path):
+                                os.remove(img_path)
+                            
+                            converted_png += 1
                             processed += 1
-                        except: errors += 1
-                    else:
-                        # Se è già JPG, lo comprimiamo ulteriormente
-                        try:
-                            img = Image.open(old_path)
-                            img.convert("RGB").save(old_path, "JPEG", quality=85, optimize=True)
+                        else:
+                            img.save(img_path, "JPEG", quality=80, optimize=True)
                             processed += 1
-                        except: errors += 1
-                        
-                    pbar.progress((start_idx_album + i + 1) / total_to_do)
+                    except Exception:
+                        errors += 1
+                    
+                    if total_to_do > 0:
+                        pbar.progress((i + 1) / total_to_do)
                 
+                # === FASE 5: Ottimizza ALBUM (+ conversione PNG->JPG con rinomina e aggiornamento JSON) ===
+                start_idx = len(active_upload_files)
+                for i, filename in enumerate(active_album_files):
+                    old_path = os.path.join(album_dir, filename)
+                    try:
+                        img = Image.open(old_path)
+                        if img.mode in ("RGBA", "P"):
+                            img = img.convert("RGB")
+                        
+                        if filename.lower().endswith('.png'):
+                            new_filename = os.path.splitext(filename)[0] + ".jpg"
+                            new_path = os.path.join(album_dir, new_filename)
+                            img.save(new_path, "JPEG", quality=85, optimize=True)
+                            
+                            old_ref_fwd = f"output/images_album/{filename}"
+                            new_ref_fwd = f"output/images_album/{new_filename}"
+                            for ev in events_list:
+                                stk = ev.get('sticker_image_path', '')
+                                if stk and os.path.basename(stk) == filename:
+                                    ev['sticker_image_path'] = new_ref_fwd
+                                    json_updated = True
+                            
+                            if os.path.exists(new_path):
+                                os.remove(old_path)
+                            
+                            converted_png += 1
+                            processed += 1
+                        else:
+                            img.save(old_path, "JPEG", quality=85, optimize=True)
+                            processed += 1
+                    except Exception:
+                        errors += 1
+                    
+                    if total_to_do > 0:
+                        pbar.progress((start_idx + i + 1) / total_to_do)
+                
+                # === FASE 6: Salva JSON se modificato ===
                 if json_updated:
                     save_events_to_disk()
                 
-                msg = f"✅ Ottimizzazione completa! Elaborati {processed} file ({len(files_uploads)} locandine + {len(files_album)} figurine). Errori: {errors}."
+                # === FASE 7: Report finale ===
+                report_lines = [f"Ottimizzazione completa! Elaborati {processed} file ({len(active_upload_files)} locandine + {len(active_album_files)} figurine)."]
+                if converted_png > 0:
+                    report_lines.append(f"Convertiti {converted_png} file PNG a JPG (JSON aggiornato).")
                 if orphans_removed > 0:
-                    msg += f"\n🗑️ Rimosse {orphans_removed} immagini orfane (non referenziate da nessun evento)."
-                st.success(msg)
-                st.info("Le figurine sono state convertite in JPG e i vecchi PNG eliminati.")
-                safe_media_rerun()
+                    report_lines.append(f"Rimosse {orphans_removed} immagini orfane ({len(orphan_uploads)} da uploads, {len(orphan_album)} da album).")
+                if errors > 0:
+                    report_lines.append(f"Errori: {errors}.")
+                
+                st.session_state['optimize_report'] = " | ".join(report_lines)
+                
+                # NON usare safe_media_rerun() perche' cancella data_initialized
+                # e ri-triggera il cloud sync che sovrascrive il lavoro appena fatto!
+                st.rerun()
 
 
 
@@ -1208,7 +1272,14 @@ with tab2:
                 content = (ev.get('title', '') + ev.get('description', '') + ev.get('location', '') + ev.get('venue', '')).lower()
                 m_t = search_query in content
             
-            if m_s and m_g and m_t:
+            # D. Locandina Album
+            m_a = True
+            if album_filter == "Con Locandina Album":
+                m_a = bool(ev.get('sticker_image_path', ''))
+            elif album_filter == "Senza Locandina Album":
+                m_a = not bool(ev.get('sticker_image_path', ''))
+            
+            if m_s and m_g and m_t and m_a:
                 indexed_view_events.append((i, ev))
 
         sorted_view_events = sorted(indexed_view_events, key=lambda x: WordGenerator.get_sort_date(x[1]))
