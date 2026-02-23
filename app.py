@@ -639,7 +639,8 @@ with st.sidebar:
                                 count += 1
                         
                         # Salva unione
-                        save_events_to_disk()
+                        with open(DATA_FILE, 'w', encoding='utf-8') as f:
+                            json.dump(st.session_state.events, f, ensure_ascii=False, indent=2)
                         st.success(f"Aggiunti {count} eventi dal JSON.")
                         st.rerun()
 
@@ -788,7 +789,8 @@ with st.sidebar:
                     pbar.progress((start_idx_album + i + 1) / total_to_do)
                 
                 if json_updated:
-                    save_events_to_disk()
+                    with open(DATA_FILE, 'w', encoding='utf-8') as f:
+                        json.dump(events_list, f, ensure_ascii=False, indent=2)
                 
                 st.success(f"✅ Ottimizzazione completa! Elaborati {processed} file. (Errori: {errors})")
                 st.info("Le figurine sono state convertite in JPG e i vecchi PNG eliminati.")
@@ -963,7 +965,9 @@ with tab1:
                                 }
                                 st.session_state.events.append(new_event)
                                 # Salva su disco
-                                save_events_to_disk()
+                                with open(DATA_FILE, 'w', encoding='utf-8') as f:
+                                    json.dump(st.session_state.events, f, ensure_ascii=False, indent=2)
+                                
                                 st.success("Evento salvato correttamente! Vai al Tab 'Modifica Dati' per vederlo.")
                                 # Pulisce lo stato temp
                                 del st.session_state[f'temp_data_{idx}']
@@ -1086,7 +1090,8 @@ with tab2:
                             if k_tit in st.session_state:
                                 st.session_state[k_tit] = new_title
 
-                save_events_to_disk()
+                with open(DATA_FILE, 'w', encoding='utf-8') as f:
+                    json.dump(events_list, f, ensure_ascii=False, indent=2)
                 st.success("Titoli aggiornati!")
                 st.rerun()
 
@@ -1100,7 +1105,8 @@ with tab2:
                 if c_y.button("✅ Confermo", key="y_clear_new"):
                     for ev in events_list:
                         ev['is_new'] = False
-                    save_events_to_disk()
+                    with open(DATA_FILE, 'w', encoding='utf-8') as f:
+                        json.dump(events_list, f, ensure_ascii=False, indent=2)
                     st.session_state.confirm_clear_new = False
                     st.success("Etichette NEW rimosse!")
                     # st.rerun()
@@ -1111,7 +1117,8 @@ with tab2:
         with col_m4:
             if st.button("🔄 Riordina Date"):
                 events_list.sort(key=WordGenerator.get_sort_date)
-                save_events_to_disk()
+                with open(DATA_FILE, 'w', encoding='utf-8') as f:
+                    json.dump(events_list, f, ensure_ascii=False, indent=2)
                 st.success("Eventi riordinati!")
                 # st.rerun()
 
@@ -2245,4 +2252,3 @@ with tab5:
                                         is_back = (idx == len(album_pages) - 1)
                                         cap = "Retro" if is_back else f"Pag. {idx + 1}"
                                         st.image(pg_path, caption=cap, width=280)
-
