@@ -74,6 +74,12 @@
     {
         "page_number": 13,
         "image": "images/page_13.jpg",
+        "type": "carta",
+        "dpi": 300
+    },
+	    {
+        "page_number": 14,
+        "image": "images/page_13.jpg",
         "type": "cartone",
         "dpi": 300
     }
