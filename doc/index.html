@@ -1,0 +1,71 @@
+<!DOCTYPE html>
+<html lang="it">
+<head>
+<meta charset="UTF-8">
+<title>Flipbook Album</title>
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/stpageflip/dist/css/stpageflip.css">
+<style>
+body {
+    background: #2c2c2c;
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    height: 100vh;
+}
+#book {
+    width: 90%;
+    max-width: 900px;
+}
+.page {
+    background-size: cover;
+    background-position: center;
+}
+.cartone {
+    box-shadow: inset 0 0 20px rgba(0,0,0,0.5);
+}
+</style>
+</head>
+<body>
+
+<div id="book"></div>
+
+<audio id="flipSound" src="flip.mp3"></audio>
+
+<script src="https://cdn.jsdelivr.net/npm/stpageflip/dist/js/stpageflip.js"></script>
+<script>
+fetch('pages.json')
+.then(response => response.json())
+.then(pages => {
+
+    const pageFlip = new St.PageFlip(
+        document.getElementById("book"),
+        {
+            width: 600,
+            height: 800,
+            size: "stretch",
+            minWidth: 315,
+            maxWidth: 1000,
+            minHeight: 400,
+            maxHeight: 1533,
+            showCover: true,
+            mobileScrollSupport: false
+        }
+    );
+
+    const pageElements = pages.map(p => {
+        const div = document.createElement("div");
+        div.className = "page " + p.type;
+        div.style.backgroundImage = `url(${p.image})`;
+        return div;
+    });
+
+    pageFlip.loadFromHTML(pageElements);
+
+    pageFlip.on("flip", () => {
+        document.getElementById("flipSound").play();
+    });
+});
+</script>
+
+</body>
+</html>
