@@ -3,7 +3,6 @@
 <head>
 <meta charset="UTF-8">
 <title>Flipbook Album</title>
-<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/stpageflip/dist/css/stpageflip.css">
 <style>
 body {
     background: #2c2c2c;
@@ -11,6 +10,8 @@ body {
     justify-content: center;
     align-items: center;
     height: 100vh;
+    margin: 0;
+    overflow: hidden;
 }
 #book {
     width: 90%;
@@ -19,6 +20,7 @@ body {
 .page {
     background-size: cover;
     background-position: center;
+    background-color: white;
 }
 .cartone {
     box-shadow: inset 0 0 20px rgba(0,0,0,0.5);
@@ -31,12 +33,14 @@ body {
 
 <audio id="flipSound" src="flip.mp3"></audio>
 
-<script src="https://cdn.jsdelivr.net/npm/stpageflip/dist/js/stpageflip.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/page-flip/dist/js/page-flip.browser.min.js"></script>
 <script>
 fetch('pages.json')
-.then(response => response.json())
+.then(response => {
+    if (!response.ok) throw new Error("Errore nel caricamento del JSON");
+    return response.json();
+})
 .then(pages => {
-
     const pageFlip = new St.PageFlip(
         document.getElementById("book"),
         {
@@ -62,8 +66,15 @@ fetch('pages.json')
     pageFlip.loadFromHTML(pageElements);
 
     pageFlip.on("flip", () => {
-        document.getElementById("flipSound").play();
+        const audio = document.getElementById("flipSound");
+        audio.currentTime = 0;
+        audio.play().catch(e => console.log("Audio aut-play bloccato dal browser"));
     });
+})
+.catch(error => {
+    // Questo messaggio apparirà solo se apri il file in locale o ci sono errori di rete
+    document.getElementById("book").innerHTML = `<h3 style="color: white; text-align: center; font-family: sans-serif; margin: 40px;">⚠️ Errore di caricamento.<br><br>Se stai aprendo questo file con un doppio clic dal tuo PC, il browser sta bloccando le immagini per sicurezza.<br><br>Devi caricare la cartella su GitHub Pages per vederlo funzionare!</h3>`;
+    console.error(error);
 });
 </script>
 
