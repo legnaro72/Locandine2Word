@@ -18,9 +18,8 @@ body {
     max-width: 900px;
 }
 .page {
-    background-size: cover;
-    background-position: center;
     background-color: white;
+    overflow: hidden;
 }
 .cartone {
     box-shadow: inset 0 0 20px rgba(0,0,0,0.5);
@@ -34,28 +33,33 @@ body {
 <audio id="flipSound" src="flip.mp3"></audio>
 
 <script src="https://cdn.jsdelivr.net/npm/page-flip/dist/js/page-flip.browser.min.js"></script>
+
 <script>
 fetch('pages.json')
 .then(response => {
-    if (!response.ok) throw new Error("File pages.json non trovato sul server!");
+    if (!response.ok) throw new Error("File pages.json non trovato!");
     return response.json();
 })
 .then(pages => {
     const bookDiv = document.getElementById("book");
     
-    // 1. Inseriamo le pagine fisicamente nell'HTML *prima* di inizializzare l'album
     pages.forEach(p => {
         const div = document.createElement("div");
         div.className = "page " + p.type;
-        div.style.backgroundImage = `url(${p.image})`;
-        
-        // La libreria richiede questo per l'effetto copertina rigida!
         div.setAttribute("data-density", p.type === "cartone" ? "hard" : "soft");
         
+        // LA SOLUZIONE: Usiamo un tag immagine vero e proprio!
+        const img = document.createElement("img");
+        img.src = p.image;
+        img.style.width = "100%";
+        img.style.height = "100%";
+        // "contain" assicura che la locandina non venga tagliata ai bordi
+        img.style.objectFit = "contain"; 
+        
+        div.appendChild(img);
         bookDiv.appendChild(div);
     });
 
-    // 2. Ora inizializziamo la libreria
     const pageFlip = new St.PageFlip(
         bookDiv,
         {
@@ -71,7 +75,6 @@ fetch('pages.json')
         }
     );
 
-    // 3. Carichiamo le pagine che ora esistono e hanno una dimensione
     pageFlip.loadFromHTML(document.querySelectorAll('.page'));
 
     pageFlip.on("flip", () => {
@@ -83,8 +86,7 @@ fetch('pages.json')
     });
 })
 .catch(error => {
-    // Se qualcosa va storto, non vedrai più tutto nero ma questo messaggio di errore
-    document.getElementById("book").innerHTML = `<h3 style="color: white; text-align: center; font-family: sans-serif; margin-top: 50px;">⚠️ Errore:<br><br>${error.message}</h3>`;
+    document.getElementById("book").innerHTML = `<h3 style="color: white; text-align: center; margin-top: 50px;">⚠️ Errore:<br><br>${error.message}</h3>`;
     console.error(error);
 });
 </script>
