@@ -1,0 +1,80 @@
+[
+    {
+        "page_number": 1,
+        "image": "images/page_1.jpg",
+        "type": "cartone",
+        "dpi": 300
+    },
+    {
+        "page_number": 2,
+        "image": "images/page_2.jpg",
+        "type": "carta",
+        "dpi": 300
+    },
+    {
+        "page_number": 3,
+        "image": "images/page_3.jpg",
+        "type": "carta",
+        "dpi": 300
+    },
+    {
+        "page_number": 4,
+        "image": "images/page_4.jpg",
+        "type": "carta",
+        "dpi": 300
+    },
+    {
+        "page_number": 5,
+        "image": "images/page_5.jpg",
+        "type": "carta",
+        "dpi": 300
+    },
+    {
+        "page_number": 6,
+        "image": "images/page_6.jpg",
+        "type": "carta",
+        "dpi": 300
+    },
+    {
+        "page_number": 7,
+        "image": "images/page_7.jpg",
+        "type": "carta",
+        "dpi": 300
+    },
+    {
+        "page_number": 8,
+        "image": "images/page_8.jpg",
+        "type": "carta",
+        "dpi": 300
+    },
+    {
+        "page_number": 9,
+        "image": "images/page_9.jpg",
+        "type": "carta",
+        "dpi": 300
+    },
+    {
+        "page_number": 10,
+        "image": "images/page_10.jpg",
+        "type": "carta",
+        "dpi": 300
+    },
+    {
+        "page_number": 11,
+        "image": "images/page_11.jpg",
+        "type": "carta",
+        "dpi": 300
+    },
+    {
+        "page_number": 12,
+        "image": "images/page_12.jpg",
+        "type": "carta",
+        "dpi": 300
+    },
+    {
+        "page_number": 13,
+        "image": "images/page_13.jpg",
+        "type": "cartone",
+        "dpi": 300
+    }
+]
