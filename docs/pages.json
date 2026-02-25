@@ -80,6 +80,18 @@
     {
         "page_number": 14,
         "image": "images/page_14.jpg",
+        "type": "carta",
+        "dpi": 300
+    },
+    {
+        "page_number": 15,
+        "image": "images/page_15.jpg",
+        "type": "carta",
+        "dpi": 300
+    },
+    {
+        "page_number": 16,
+        "image": "images/page_16.jpg",
         "type": "cartone",
         "dpi": 300
     }
