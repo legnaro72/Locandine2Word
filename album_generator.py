@@ -478,11 +478,16 @@ class AlbumGenerator:
                         off_p_y = (box_h - new_ph) // 2
                         final_poster.paste(poster_resized, (off_p_x, off_p_y), poster_resized)
                         
-                        poster_to_draw = final_poster
-                        draw_w, draw_h = box_w, box_h
                     else:
-                        poster_to_draw = poster_resized
-                        draw_w, draw_h = new_pw, new_ph
+                        # Trasparente o Opaco: canvas vuoto
+                        fill_color = (0, 0, 0, 0)
+                        final_poster = Image.new("RGBA", (box_w, box_h), fill_color)
+                        off_p_x = (box_w - new_pw) // 2
+                        off_p_y = (box_h - new_ph) // 2
+                        final_poster.paste(poster_resized, (off_p_x, off_p_y), poster_resized)
+                        
+                    poster_to_draw = final_poster
+                    draw_w, draw_h = box_w, box_h
 
                 offset_x = img_x + (img_max_w - draw_w) // 2
                 offset_y = img_y + (img_max_h - draw_h) // 2
