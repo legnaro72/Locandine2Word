@@ -13,32 +13,57 @@ body {
     min-height: 100vh;
     margin: 0;
 }
+
 #book-wrapper {
     width: 90%;
     max-width: 900px;
     height: 90vh;
-    overflow: auto; /* Permette lo scroll quando zoomato */
-    touch-action: pinch-zoom pan-x pan-y;
-    -webkit-overflow-scrolling: touch; /* Smooth scroll su iOS */
+    overflow: hidden;
+    touch-action: pan-x pan-y;
+    position: relative;
 }
+
 #book {
     width: 100%;
     height: 100%;
 }
+
 .page {
     background-color: white;
     overflow: hidden;
     position: relative;
 }
+
 .cartone {
     box-shadow: inset 0 0 20px rgba(0,0,0,0.5);
 }
+
 .page img {
     width: 100%;
     height: 100%;
     object-fit: contain;
-    touch-action: none; /* Evita conflitti sui gesti dell'immagine */
     user-select: none;
+}
+
+/* Pulsanti di zoom */
+.zoom-btn {
+    position: fixed;
+    bottom: 20px;
+    font-size: 24px;
+    z-index: 999;
+    padding: 10px;
+    background: rgba(255,255,255,0.8);
+    border: none;
+    border-radius: 8px;
+    cursor: pointer;
+}
+
+#zoom-in {
+    right: 60px;
+}
+
+#zoom-out {
+    right: 20px;
 }
 </style>
 </head>
@@ -47,6 +72,9 @@ body {
 <div id="book-wrapper">
     <div id="book"></div>
 </div>
+
+<button id="zoom-in" class="zoom-btn">➕</button>
+<button id="zoom-out" class="zoom-btn">➖</button>
 
 <audio id="flipSound" src="flip.mp3"></audio>
 
@@ -84,7 +112,7 @@ fetch('pages.json')
             minHeight: 400,
             maxHeight: 1533,
             showCover: true,
-            mobileScrollSupport: true // ✅ Abilitato scroll per mobile
+            mobileScrollSupport: true
         }
     );
 
@@ -101,6 +129,25 @@ fetch('pages.json')
 .catch(error => {
     document.getElementById("book").innerHTML = `<h3 style="color: white; text-align: center; margin-top: 50px;">⚠️ Errore:<br><br>${error.message}</h3>`;
     console.error(error);
+});
+
+// --- SCRIPT ZOOM ---
+let scale = 1;
+const zoomStep = 0.2;
+const minScale = 1;
+const maxScale = 3;
+const bookWrapper = document.getElementById("book-wrapper");
+
+document.getElementById("zoom-in").addEventListener("click", () => {
+    scale = Math.min(scale + zoomStep, maxScale);
+    bookWrapper.style.transform = `scale(${scale})`;
+    bookWrapper.style.transformOrigin = "center center";
+});
+
+document.getElementById("zoom-out").addEventListener("click", () => {
+    scale = Math.max(scale - zoomStep, minScale);
+    bookWrapper.style.transform = `scale(${scale})`;
+    bookWrapper.style.transformOrigin = "center center";
 });
 </script>
 
