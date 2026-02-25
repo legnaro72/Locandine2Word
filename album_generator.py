@@ -829,7 +829,9 @@ class AlbumGenerator:
         """Genera una pagina di 'cartone' (sfondo album) con il logo centrale."""
         page = Image.new("RGBA", (self.PAGE_W, self.PAGE_H), (255, 255, 255, 255))
         self._apply_bg_to_page(page)
-        self._draw_page_frame(page)
+        
+        draw = ImageDraw.Draw(page)
+        self._draw_page_frame(draw)
         
         # Prepara il logo grande centrale
         if self.logo_image:
