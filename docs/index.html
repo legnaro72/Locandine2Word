@@ -172,6 +172,30 @@
                 display: flex;
             }
         }
+
+        /* Dimensioni PC/Desktop: Bottoni più piccoli e più trasparenti */
+        @media screen and (min-width: 1025px) {
+            .zoom-btn {
+                padding: 7px 9px;
+                font-size: 14px;
+                background: rgba(255, 255, 255, 0.2);
+            }
+
+            .zoom-btn:hover {
+                background: rgba(255, 255, 255, 0.4);
+            }
+
+            .nav-btn {
+                width: 30px;
+                height: 30px;
+                font-size: 20px;
+                background: rgba(255, 255, 255, 0.2);
+            }
+
+            .nav-btn:hover {
+                background: rgba(255, 255, 255, 0.4);
+            }
+        }
     </style>
 </head>
 
@@ -209,6 +233,8 @@
     </div>
 
     <audio id="flipSound" src="flip.mp3"></audio>
+    <audio id="openSound" src="open.mp3"></audio>
+    <audio id="closeSound" src="close.mp3"></audio>
     <audio id="bgMusic" src="GiustoDireNo.mp3" loop
         onerror="console.error('⚠️ ALARM FILE MANCANTE! Il file non è stato trovato dal server a questo indirizzo: ' + this.src); alert('Errore: impossibile caricare GiustoDireNo.mp3 on line. Controlla maiuscole/minuscole su GitHub!');"></audio>
 
@@ -542,13 +568,31 @@
 
                 pageFlip.loadFromHTML(document.querySelectorAll('.page'));
 
-                /* ==== SUONO FLIP ==== */
+                /* ==== SUONO FLIP, APERTURA E CHIUSURA ==== */
                 const flipAudio = document.getElementById("flipSound");
+                const openAudio = document.getElementById("openSound");
+                const closeAudio = document.getElementById("closeSound");
+
+                let currentPage = 0;
+
                 pageFlip.on('flip', (e) => {
-                    // Controlla se la pagina è effettivamente sfogliata (non ultima a dx o prima a sx senza successo)
-                    if (flipAudio) {
-                        flipAudio.currentTime = 0;
-                        flipAudio.play().catch(err => console.log("Audio play blocked by browser:", err));
+                    const targetPage = e.data;
+                    let audioToPlay = flipAudio;
+
+                    // Se eravamo alla pagina 0 (copertina chiusa) e andiamo avanti -> Apriamo l'album
+                    if (currentPage === 0 && targetPage > 0 && openAudio) {
+                        audioToPlay = openAudio;
+                    }
+                    // Se ritorniamo alla pagina 0 -> Chiudiamo l'album
+                    else if (targetPage === 0 && closeAudio) {
+                        audioToPlay = closeAudio;
+                    }
+
+                    currentPage = targetPage;
+
+                    if (audioToPlay) {
+                        audioToPlay.currentTime = 0;
+                        audioToPlay.play().catch(err => console.log("Audio play blocked by browser:", err));
                     }
                 });
 
