@@ -2,105 +2,89 @@
 <html lang="it">
 <head>
 <meta charset="UTF-8">
-<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=5.0, user-scalable=yes">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>Flipbook Album</title>
 
 <style>
 body {
     margin: 0;
     background: #2c2c2c;
-    overflow: hidden;
     font-family: sans-serif;
+    overflow: hidden;
 }
 
-/* Wrapper */
+/* WRAPPER */
 #book-wrapper {
     width: 100vw;
     height: 100vh;
     background: #1a1a1a;
     position: relative;
+    overflow: hidden;
 }
 
-/* Viewport scrollabile */
+/* VIEWPORT (PC scroll) */
 #book-viewport {
     width: 100%;
     height: 100%;
-    overflow: scroll;
-    -webkit-overflow-scrolling: touch;
-    touch-action: pan-x pan-y;
+    overflow: auto;
+    position: relative;
 }
 
-/* Scrollbar sempre visibili */
+/* Scrollbar desktop */
 #book-viewport::-webkit-scrollbar {
     width: 18px;
     height: 18px;
 }
-
-#book-viewport::-webkit-scrollbar-track {
-    background: rgba(255,255,255,0.1);
-}
-
 #book-viewport::-webkit-scrollbar-thumb {
     background: rgba(255,255,255,0.6);
     border-radius: 10px;
 }
-
 #book-viewport {
     scrollbar-width: auto;
-    scrollbar-color: rgba(255,255,255,0.6) rgba(255,255,255,0.1);
 }
 
-/* Layer zoom */
+/* ZOOM LAYER */
 #zoom-layer {
     width: 1200px;
     height: 800px;
-    transform-origin: top left;
+    transform-origin: 0 0;
+    position: absolute;
+    top: 0;
+    left: 0;
 }
 
-/* Book */
+/* BOOK */
 #book {
     width: 1200px;
     height: 800px;
 }
 
-/* Pagine */
+/* PAGE */
 .page {
     background: white;
     overflow: hidden;
 }
-
-.cartone {
-    box-shadow: inset 0 0 20px rgba(0,0,0,0.5);
-}
-
 .page img {
     width: 100%;
     height: 100%;
     object-fit: contain;
     pointer-events: none;
-    user-select: none;
 }
 
-/* Pulsanti */
+/* BUTTONS */
 .zoom-btn {
     position: fixed;
     bottom: 20px;
     z-index: 9999;
-    padding: 16px 20px;
-    font-size: 22px;
-    background: rgba(255,255,255,0.95);
+    padding: 14px 18px;
+    font-size: 20px;
+    background: white;
     border: none;
-    border-radius: 12px;
+    border-radius: 10px;
     cursor: pointer;
-    box-shadow: 0 5px 15px rgba(0,0,0,0.4);
 }
-
 #zoom-in { right: 90px; }
 #zoom-out { right: 20px; }
-
-.zoom-btn:active {
-    transform: scale(0.95);
-}
 
 #zoom-indicator {
     position: fixed;
@@ -110,7 +94,6 @@ body {
     background: rgba(0,0,0,0.6);
     padding: 6px 12px;
     border-radius: 8px;
-    font-size: 14px;
 }
 </style>
 </head>
@@ -138,57 +121,125 @@ const BASE_WIDTH = 1200;
 const BASE_HEIGHT = 800;
 
 let scale = 1;
-let minScale = 0.2;   // ora può scendere MOLTO sotto
-const maxScale = 4;
-const zoomStep = 0.2;
+let minScale = 0.2;
+let maxScale = 4;
+
+let posX = 0;
+let posY = 0;
 
 const zoomLayer = document.getElementById("zoom-layer");
 const viewport = document.getElementById("book-viewport");
+const wrapper = document.getElementById("book-wrapper");
 const zoomIndicator = document.getElementById("zoom-indicator");
 
-/* Calcolo zoom iniziale per mostrare tutto */
-function calculateMinScale() {
-    const scaleX = viewport.clientWidth / BASE_WIDTH;
-    const scaleY = viewport.clientHeight / BASE_HEIGHT;
-
-    minScale = Math.min(scaleX, scaleY);
-    scale = minScale;
-
-    applyZoom();
-}
-
-/* Zoom con transform reale */
-function applyZoom() {
-    zoomLayer.style.transform = `scale(${scale})`;
+function updateTransform() {
+    zoomLayer.style.transform =
+        `translate(${posX}px, ${posY}px) scale(${scale})`;
     zoomIndicator.innerText = Math.round(scale * 100) + "%";
 }
 
-/* Pulsanti */
-document.getElementById("zoom-in").addEventListener("click", () => {
-    scale = Math.min(scale + zoomStep, maxScale);
-    applyZoom();
-});
+/* ==== DESKTOP ==== */
 
-document.getElementById("zoom-out").addEventListener("click", () => {
-    scale = Math.max(scale - zoomStep, 0.1); // nessun limite verso il basso reale
-    applyZoom();
-});
+/* Zoom con pulsanti */
+document.getElementById("zoom-in").onclick = () => {
+    scale = Math.min(scale + 0.2, maxScale);
+    updateTransform();
+};
+document.getElementById("zoom-out").onclick = () => {
+    scale = Math.max(scale - 0.2, minScale);
+    updateTransform();
+};
 
-/* Rotellina */
-viewport.addEventListener("wheel", (e) => {
+/* Rotellina mouse */
+viewport.addEventListener("wheel", e => {
     if (e.ctrlKey) return;
     e.preventDefault();
-    const delta = e.deltaY < 0 ? zoomStep : -zoomStep;
-    scale = Math.min(Math.max(scale + delta, 0.1), maxScale);
-    applyZoom();
-}, { passive: false });
+    const delta = e.deltaY < 0 ? 0.2 : -0.2;
+    scale = Math.min(Math.max(scale + delta, minScale), maxScale);
+    updateTransform();
+}, { passive:false });
 
-/* Caricamento pagine */
+/* ==== MOBILE ==== */
+
+let isDragging = false;
+let startX, startY;
+
+/* Drag */
+wrapper.addEventListener("touchstart", e => {
+    if (e.touches.length === 1) {
+        isDragging = true;
+        startX = e.touches[0].clientX - posX;
+        startY = e.touches[0].clientY - posY;
+    }
+});
+
+wrapper.addEventListener("touchmove", e => {
+    if (isDragging && e.touches.length === 1) {
+        posX = e.touches[0].clientX - startX;
+        posY = e.touches[0].clientY - startY;
+        updateTransform();
+    }
+}, { passive:false });
+
+wrapper.addEventListener("touchend", () => {
+    isDragging = false;
+});
+
+/* Pinch */
+let initialDistance = null;
+
+wrapper.addEventListener("touchstart", e => {
+    if (e.touches.length === 2) {
+        initialDistance = getDistance(e.touches);
+    }
+});
+
+wrapper.addEventListener("touchmove", e => {
+    if (e.touches.length === 2 && initialDistance) {
+        let newDistance = getDistance(e.touches);
+        let delta = (newDistance - initialDistance) / 200;
+        scale = Math.min(Math.max(scale + delta, minScale), maxScale);
+        updateTransform();
+        initialDistance = newDistance;
+    }
+}, { passive:false });
+
+function getDistance(t) {
+    const dx = t[0].clientX - t[1].clientX;
+    const dy = t[0].clientY - t[1].clientY;
+    return Math.sqrt(dx*dx + dy*dy);
+}
+
+/* Doppio tap centrato */
+let lastTap = 0;
+
+wrapper.addEventListener("touchend", e => {
+    const now = Date.now();
+    if (now - lastTap < 300) {
+
+        const rect = wrapper.getBoundingClientRect();
+        const tapX = e.changedTouches[0].clientX - rect.left;
+        const tapY = e.changedTouches[0].clientY - rect.top;
+
+        const newScale = scale < 1.5 ? 2 : 1;
+
+        const offsetX = (tapX - posX) / scale;
+        const offsetY = (tapY - posY) / scale;
+
+        scale = newScale;
+
+        posX = tapX - offsetX * scale;
+        posY = tapY - offsetY * scale;
+
+        updateTransform();
+    }
+    lastTap = now;
+});
+
+/* ==== PAGE FLIP ==== */
+
 fetch('pages.json')
-.then(r => {
-    if (!r.ok) throw new Error("File pages.json non trovato!");
-    return r.json();
-})
+.then(r => r.json())
 .then(pages => {
 
     const bookDiv = document.getElementById("book");
@@ -196,7 +247,6 @@ fetch('pages.json')
     pages.forEach(p => {
         const div = document.createElement("div");
         div.className = "page " + p.type;
-        div.setAttribute("data-density", p.type === "cartone" ? "hard" : "soft");
 
         const img = document.createElement("img");
         img.src = p.image;
@@ -210,57 +260,12 @@ fetch('pages.json')
         height: 800,
         size: "fixed",
         showCover: true,
-        mobileScrollSupport: false,
-        useMouseEvents: true
+        mobileScrollSupport: false
     });
 
     pageFlip.loadFromHTML(document.querySelectorAll('.page'));
 
-    pageFlip.on("flip", () => {
-        const audio = document.getElementById("flipSound");
-        if(audio) {
-            audio.currentTime = 0;
-            audio.play().catch(() => {});
-        }
-    });
-
-    calculateMinScale();
-})
-.catch(err => {
-    document.getElementById("book").innerHTML =
-    `<h3 style="color:white;text-align:center;margin-top:50px;">
-        ⚠️ Errore:<br><br>${err.message}
-    </h3>`;
 });
-
-/* Responsive */
-window.addEventListener("resize", calculateMinScale);
-
-/* Pinch Zoom mobile */
-let initialDistance = null;
-
-viewport.addEventListener("touchstart", e => {
-    if (e.touches.length === 2) {
-        initialDistance = getDistance(e.touches);
-    }
-});
-
-viewport.addEventListener("touchmove", e => {
-    if (e.touches.length === 2 && initialDistance) {
-        e.preventDefault();
-        const newDistance = getDistance(e.touches);
-        const delta = (newDistance - initialDistance) / 250;
-        scale = Math.min(Math.max(scale + delta, 0.1), maxScale);
-        applyZoom();
-        initialDistance = newDistance;
-    }
-}, { passive: false });
-
-function getDistance(touches) {
-    const dx = touches[0].clientX - touches[1].clientX;
-    const dy = touches[0].clientY - touches[1].clientY;
-    return Math.sqrt(dx*dx + dy*dy);
-}
 </script>
 
 </body>
