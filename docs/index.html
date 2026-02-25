@@ -208,7 +208,8 @@
     </div>
 
     <audio id="flipSound" src="flip.mp3"></audio>
-    <audio id="bgMusic" src="GiustoDireNo.MP3" loop></audio>
+    <audio id="bgMusic" src="GiustoDireNo.mp3" loop
+        onerror="console.error('⚠️ ALARM FILE MANCANTE! Il file non è stato trovato dal server a questo indirizzo: ' + this.src); alert('Errore: impossibile caricare GiustoDireNo.mp3 on line. Controlla maiuscole/minuscole su GitHub!');"></audio>
 
     <script src="https://cdn.jsdelivr.net/npm/page-flip/dist/js/page-flip.browser.min.js"></script>
 
