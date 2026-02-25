@@ -2,21 +2,32 @@
 <html lang="it">
 <head>
 <meta charset="UTF-8">
-<meta name="viewport" content="width=device-width, initial-scale=1.0">
+
+<!-- VIEWPORT OTTIMIZZATO MOBILE -->
+<meta name="viewport" 
+      content="width=device-width, 
+               initial-scale=1.0, 
+               maximum-scale=1.0, 
+               user-scalable=no, 
+               viewport-fit=cover">
+
 <title>Flipbook Album</title>
 
-    
 <style>
-body {
+html, body {
     margin: 0;
+    padding: 0;
+    width: 100%;
+    height: 100dvh; /* usa dynamic viewport height */
     background: #2c2c2c;
     font-family: sans-serif;
     overflow: hidden;
+    touch-action: none;
 }
 
 #book-wrapper {
     width: 100vw;
-    height: 100vh;
+    height: 100dvh; /* IMPORTANTISSIMO per landscape mobile */
     background: #1a1a1a;
     position: relative;
     overflow: hidden;
@@ -28,6 +39,7 @@ body {
     height: 800px;
     transform-origin: 0 0;
     position: absolute;
+    will-change: transform; /* migliora performance mobile */
 }
 
 #book {
@@ -275,6 +287,13 @@ fetch('pages.json')
 window.addEventListener("resize", () => {
     calculateInitialScale();
     updateTransform();
+});
+
+window.addEventListener("orientationchange", () => {
+    setTimeout(() => {
+        calculateInitialScale();
+        updateTransform();
+    }, 300); // attesa stabilizzazione viewport
 });
 </script>
 
