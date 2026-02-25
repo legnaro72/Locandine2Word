@@ -171,6 +171,7 @@
     <div id="zoom-indicator">100%</div>
 
     <div class="controls-container">
+        <button id="audio-toggle" class="zoom-btn" title="Mute/Unmute Musica">🔊</button>
         <button id="fullscreen-toggle" class="zoom-btn" title="Full Screen">⛶</button>
         <button id="zoom-reset" class="zoom-btn" title="Mostra 2 Pagine">🏚️</button>
         <button id="zoom-in" class="zoom-btn">➕</button>
@@ -195,6 +196,7 @@
     </div>
 
     <audio id="flipSound" src="flip.mp3"></audio>
+    <audio id="bgMusic" src="GiustoDireNo.MP3" loop></audio>
 
     <script src="https://cdn.jsdelivr.net/npm/page-flip/dist/js/page-flip.browser.min.js"></script>
 
@@ -482,7 +484,41 @@
                 calculateInitialScale();
                 updateTransform();
 
-                // Gestione Mobile e Fullscreen automatico
+                // --- AUDIO BACKGROUND E MOBILE START ---
+                const bgMusic = document.getElementById("bgMusic");
+                const audioToggleBtn = document.getElementById("audio-toggle");
+                let musicStarted = false;
+
+                function startMusic() {
+                    if (!musicStarted) {
+                        bgMusic.play().then(() => {
+                            musicStarted = true;
+                            audioToggleBtn.innerText = "🔊";
+                        }).catch(err => {
+                            console.log("Audio autoplay blocked, requires manual interaction.", err);
+                        });
+                    }
+                }
+
+                audioToggleBtn.onclick = (e) => {
+                    e.stopPropagation();
+                    if (!musicStarted) {
+                        startMusic();
+                        return;
+                    }
+                    if (bgMusic.paused) {
+                        bgMusic.play();
+                        audioToggleBtn.innerText = "🔊";
+                    } else {
+                        bgMusic.pause();
+                        audioToggleBtn.innerText = "🔇";
+                    }
+                };
+
+                // Gestione PC (interazione utente sblocca l'audio)
+                document.body.addEventListener('click', startMusic, { once: true });
+                document.body.addEventListener('touchstart', startMusic, { once: true });
+
                 const isMobile = /iPhone|iPad|iPod|Android/i.test(navigator.userAgent);
                 const startOverlay = document.getElementById("mobile-start-overlay");
 
@@ -490,6 +526,7 @@
                     startOverlay.style.display = "flex";
                     document.getElementById("start-app").onclick = () => {
                         toggleFullScreen();
+                        startMusic();
                         startOverlay.style.display = "none";
                     };
                 }
