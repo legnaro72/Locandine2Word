@@ -135,6 +135,32 @@ class GithubManager:
             
         return zips_dict
 
+    def upload_file(self, repo_path, file_content, commit_message=None):
+        """
+        Carica un singolo file (binario o testo) nel repository GitHub al path specificato.
+        Args:
+            repo_path: percorso nel repo (es. 'docs/images/page_1.jpg')
+            file_content: bytes del file
+            commit_message: messaggio di commit (opzionale)
+        Returns:
+            (success: bool, message: str)
+        """
+        if commit_message is None:
+            commit_message = f"Upload {repo_path} - {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}"
+        try:
+            # Verifica se il file esiste già
+            try:
+                contents = self.repo.get_contents(repo_path)
+                self.repo.update_file(repo_path, commit_message, file_content, contents.sha)
+            except Exception as e:
+                if "404" in str(e) or "Not Found" in str(e):
+                    self.repo.create_file(repo_path, commit_message, file_content)
+                else:
+                    raise e
+            return True, f"File {repo_path} caricato con successo."
+        except Exception as e:
+            return False, f"Errore upload {repo_path}: {e}"
+
     def restore_from_zip(self, zips_dict):
         """Estrae i contenuti di tutti gli zip passati nella directory corrente."""
         for name, zip_content in zips_dict.items():

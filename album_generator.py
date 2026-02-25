@@ -451,10 +451,38 @@ class AlbumGenerator:
 
                 else:
                     # Comportamento classico: sfrutta massimo spazio
-                    ratio = min(img_max_w / p_w, img_max_h / p_h)
-                    draw_w = int(p_w * ratio)
-                    draw_h = int(p_h * ratio)
-                    poster_to_draw = poster.resize((draw_w, draw_h), Image.LANCZOS)
+                    box_w, box_h = img_max_w, img_max_h
+                    ratio = min(box_w / p_w, box_h / p_h)
+                    new_pw = int(p_w * ratio)
+                    new_ph = int(p_h * ratio)
+                    poster_resized = poster.resize((new_pw, new_ph), Image.LANCZOS)
+                    
+                    if self.sticker_fill_mode == "espansione" and (new_pw < box_w or new_ph < box_h):
+                        # === ESPANSIONE INTELLIGENTE (sfocatura) ===
+                        cover_ratio = max(box_w / p_w, box_h / p_h)
+                        cover_w = int(p_w * cover_ratio)
+                        cover_h = int(p_h * cover_ratio)
+                        bg_img = poster.resize((cover_w, cover_h), Image.LANCZOS)
+                        
+                        cx = (cover_w - box_w) // 2
+                        cy = (cover_h - box_h) // 2
+                        bg_img = bg_img.crop((cx, cy, cx + box_w, cy + box_h))
+                        
+                        blur_radius = 6 if self.preview_mode else 18
+                        bg_img = bg_img.filter(ImageFilter.GaussianBlur(radius=blur_radius))
+                        enhancer = ImageEnhance.Brightness(bg_img)
+                        bg_img = enhancer.enhance(0.65)
+                        
+                        final_poster = bg_img.convert("RGBA")
+                        off_p_x = (box_w - new_pw) // 2
+                        off_p_y = (box_h - new_ph) // 2
+                        final_poster.paste(poster_resized, (off_p_x, off_p_y), poster_resized)
+                        
+                        poster_to_draw = final_poster
+                        draw_w, draw_h = box_w, box_h
+                    else:
+                        poster_to_draw = poster_resized
+                        draw_w, draw_h = new_pw, new_ph
 
                 offset_x = img_x + (img_max_w - draw_w) // 2
                 offset_y = img_y + (img_max_h - draw_h) // 2

@@ -2342,6 +2342,126 @@ with tab5:
                                 key="btn_download_album_zip"
                             )
                     
+                    # =============================================
+                    # SEZIONE 5b: CREA FLIPBOOK
+                    # =============================================
+                    st.divider()
+                    if st.button("📚 Create Flipbook", type="secondary", key="btn_create_flipbook",
+                                 help="Estrae le pagine dal PDF come immagini JPG, crea pages.json e salva tutto localmente e su GitHub (docs/)."):
+                        pdf_data = st.session_state.get('album_pdf')
+                        if not pdf_data:
+                            st.error("❌ Nessun PDF disponibile. Genera prima l'album.")
+                        else:
+                            with st.spinner("📚 Creazione Flipbook in corso... Estrazione pagine dal PDF a 300 DPI"):
+                                try:
+                                    import fitz  # PyMuPDF
+                                    
+                                    # Prepara cartelle locali
+                                    flipbook_images_dir = os.path.join("docs", "images")
+                                    flipbook_docs_dir = "docs"
+                                    os.makedirs(flipbook_images_dir, exist_ok=True)
+                                    
+                                    # Apri il PDF dal buffer
+                                    pdf_data.seek(0)
+                                    pdf_bytes = pdf_data.read()
+                                    pdf_data.seek(0)  # Reset per usi futuri
+                                    
+                                    doc = fitz.open(stream=pdf_bytes, filetype="pdf")
+                                    total_pdf_pages = len(doc)
+                                    
+                                    progress_bar = st.progress(0, text="Estraendo pagine...")
+                                    
+                                    pages_json = []
+                                    github_mgr = st.session_state.get('github_manager')
+                                    upload_errors = []
+                                    
+                                    for page_idx in range(total_pdf_pages):
+                                        page_num = page_idx + 1
+                                        progress_bar.progress(
+                                            page_num / (total_pdf_pages + 1),
+                                            text=f"Estraendo pagina {page_num} di {total_pdf_pages}..."
+                                        )
+                                        
+                                        # Renderizza la pagina a 300 DPI
+                                        page = doc.load_page(page_idx)
+                                        # 300 DPI / 72 DPI default = ~4.17x zoom
+                                        zoom = 300.0 / 72.0
+                                        mat = fitz.Matrix(zoom, zoom)
+                                        pix = page.get_pixmap(matrix=mat)
+                                        
+                                        # Converti in PIL Image e salva come JPEG
+                                        img = Image.frombytes("RGB", [pix.width, pix.height], pix.samples)
+                                        
+                                        img_filename = f"page_{page_num}.jpg"
+                                        img_local_path = os.path.join(flipbook_images_dir, img_filename)
+                                        img.save(img_local_path, "JPEG", quality=90, dpi=(300, 300))
+                                        
+                                        # Determina tipo: prima e ultima = "cartone", centrali = "carta"
+                                        if page_num == 1 or page_num == total_pdf_pages:
+                                            page_type = "cartone"
+                                        else:
+                                            page_type = "carta"
+                                        
+                                        pages_json.append({
+                                            "page_number": page_num,
+                                            "image": f"images/page_{page_num}.jpg",
+                                            "type": page_type,
+                                            "dpi": 300
+                                        })
+                                        
+                                        # Upload immagine su GitHub
+                                        if github_mgr:
+                                            with open(img_local_path, "rb") as f_img:
+                                                img_bytes = f_img.read()
+                                            repo_path = f"docs/images/{img_filename}"
+                                            ok, msg = github_mgr.upload_file(
+                                                repo_path, img_bytes,
+                                                commit_message=f"Flipbook: upload {img_filename}"
+                                            )
+                                            if not ok:
+                                                upload_errors.append(msg)
+                                    
+                                    doc.close()
+                                    
+                                    # Salva pages.json localmente
+                                    pages_json_path = os.path.join(flipbook_docs_dir, "pages.json")
+                                    pages_json_content = json.dumps(pages_json, ensure_ascii=False, indent=4)
+                                    with open(pages_json_path, "w", encoding="utf-8") as f_json:
+                                        f_json.write(pages_json_content)
+                                    
+                                    # Upload pages.json su GitHub
+                                    if github_mgr:
+                                        ok, msg = github_mgr.upload_file(
+                                            "docs/pages.json",
+                                            pages_json_content.encode("utf-8"),
+                                            commit_message=f"Flipbook: upload pages.json ({total_pdf_pages} pagine)"
+                                        )
+                                        if not ok:
+                                            upload_errors.append(msg)
+                                    
+                                    progress_bar.progress(1.0, text="Completato!")
+                                    
+                                    # Report finale
+                                    st.success(
+                                        f"✅ Flipbook creato con successo!\n\n"
+                                        f"📄 **{total_pdf_pages}** pagine estratte a 300 DPI\n\n"
+                                        f"💾 Immagini salvate in `docs/images/`\n\n"
+                                        f"📋 `pages.json` salvato in `docs/`\n\n"
+                                        f"{'☁️ File caricati su GitHub' if github_mgr else '⚠️ GitHub non configurato, salvato solo localmente'}"
+                                    )
+                                    
+                                    if upload_errors:
+                                        st.warning("⚠️ Alcuni upload su GitHub hanno avuto problemi:\n" + "\n".join(upload_errors))
+                                    
+                                except ImportError:
+                                    st.error(
+                                        "❌ **PyMuPDF non installato!**\n\n"
+                                        "Per usare il Flipbook è necessario installare PyMuPDF:\n\n"
+                                        "```\npip install PyMuPDF\n```"
+                                    )
+                                except Exception as e:
+                                    st.error(f"❌ Errore creazione Flipbook: {e}")
+                    
                     st.divider()
                     
                     # Copertina
