@@ -25,15 +25,15 @@
         }
 
         #zoom-layer {
-            width: 1200px;
-            height: 800px;
+            width: 2400px;
+            height: 1600px;
             transform-origin: 0 0;
             position: absolute;
         }
 
         #book {
-            width: 1200px;
-            height: 800px;
+            width: 2400px;
+            height: 1600px;
         }
 
         .page {
@@ -199,8 +199,9 @@
     <script src="https://cdn.jsdelivr.net/npm/page-flip/dist/js/page-flip.browser.min.js"></script>
 
     <script>
-        const BASE_WIDTH = 1200;
-        const BASE_HEIGHT = 800;
+        // Risoluzione aumentata (doppia rispetto a prima per maggiore nitidezza)
+        const BASE_WIDTH = 2400;
+        const BASE_HEIGHT = 1600;
 
         let scale = 1;
         let maxScale = 8;
@@ -375,6 +376,66 @@
             isDragging = false;
         });
 
+        /* ==== PINCH TO ZOOM ==== */
+        let initialPinchDistance = null;
+        let initialScale = 1;
+        let pinchCenter = { x: 0, y: 0 };
+
+        wrapper.addEventListener('touchstart', (e) => {
+            if (e.touches.length === 2) {
+                isDragging = false;
+                dragOccurred = true; // prevent double tap zoom
+
+                initialPinchDistance = Math.hypot(
+                    e.touches[0].clientX - e.touches[1].clientX,
+                    e.touches[0].clientY - e.touches[1].clientY
+                );
+                initialScale = scale;
+
+                // Calculate center point of the pinch
+                pinchCenter = {
+                    x: (e.touches[0].clientX + e.touches[1].clientX) / 2,
+                    y: (e.touches[0].clientY + e.touches[1].clientY) / 2
+                };
+            }
+        });
+
+        wrapper.addEventListener('touchmove', (e) => {
+            if (e.touches.length === 2) {
+                // e.preventDefault() here might be needed if passive: false is set, but pointer events handle most
+                const currentDistance = Math.hypot(
+                    e.touches[0].clientX - e.touches[1].clientX,
+                    e.touches[0].clientY - e.touches[1].clientY
+                );
+
+                if (initialPinchDistance) {
+                    const pinchScale = currentDistance / initialPinchDistance;
+                    let newScale = Math.min(Math.max(initialScale * pinchScale, 0.05), maxScale);
+
+                    // Zoom toward pinch center
+                    const rect = wrapper.getBoundingClientRect();
+                    const centerX = pinchCenter.x - rect.left;
+                    const centerY = pinchCenter.y - rect.top;
+
+                    // Calculate offset from current transform origin (posX, posY)
+                    const offsetX = (centerX - posX) / scale;
+                    const offsetY = (centerY - posY) / scale;
+
+                    scale = newScale;
+                    posX = centerX - offsetX * scale;
+                    posY = centerY - offsetY * scale;
+
+                    updateTransform();
+                }
+            }
+        });
+
+        wrapper.addEventListener('touchend', (e) => {
+            if (e.touches.length < 2) {
+                initialPinchDistance = null;
+            }
+        });
+
         /* ==== FRECCE ==== */
         document.getElementById("next").onclick = () => pageFlip.flipNext();
         document.getElementById("prev").onclick = () => pageFlip.flipPrev();
@@ -398,8 +459,8 @@
                 });
 
                 pageFlip = new St.PageFlip(bookDiv, {
-                    width: 600,
-                    height: 800,
+                    width: 1200, // Dimensione aumentata per maggiore risoluzione (metà di BASE_WIDTH)
+                    height: 1600, // Dimensione aumentata 
                     size: "fixed",
                     showCover: true,
                     mobileScrollSupport: false,
@@ -407,6 +468,16 @@
                 });
 
                 pageFlip.loadFromHTML(document.querySelectorAll('.page'));
+
+                /* ==== SUONO FLIP ==== */
+                const flipAudio = document.getElementById("flipSound");
+                pageFlip.on('flip', (e) => {
+                    // Controlla se la pagina è effettivamente sfogliata (non ultima a dx o prima a sx senza successo)
+                    if (flipAudio) {
+                        flipAudio.currentTime = 0;
+                        flipAudio.play().catch(err => console.log("Audio play blocked by browser:", err));
+                    }
+                });
 
                 calculateInitialScale();
                 updateTransform();
