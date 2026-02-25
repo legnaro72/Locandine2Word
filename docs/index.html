@@ -1,7 +1,6 @@
 <!DOCTYPE html>
 <html lang="it">
 
-    
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
@@ -578,14 +577,19 @@
 
                 pageFlip.on('flip', (e) => {
                     const targetPage = e.data;
+                    const totalPages = pages.length;
                     let audioToPlay = flipAudio;
 
-                    // Se eravamo alla pagina 0 (copertina chiusa) e andiamo avanti -> Apriamo l'album
+                    // Se eravamo alla pagina 0 (copertina chiusa frontale) e andiamo avanti -> Apriamo l'album
                     if (currentPage === 0 && targetPage > 0 && openAudio) {
                         audioToPlay = openAudio;
                     }
-                    // Se ritorniamo alla pagina 0 -> Chiudiamo l'album
-                    else if (targetPage === 0 && closeAudio) {
+                    // Se eravamo all'ultima pagina (copertina chiusa posteriore) e torniamo indietro -> Apriamo l'album dal retro
+                    else if (currentPage >= totalPages - 1 && targetPage < currentPage && openAudio) {
+                        audioToPlay = openAudio;
+                    }
+                    // Se ritorniamo alla pagina 0 (chiusura frontale) o andiamo all'ultima (chiusura posteriore) -> Chiudiamo
+                    else if ((targetPage === 0 || targetPage >= totalPages - 1) && closeAudio) {
                         audioToPlay = closeAudio;
                     }
 
@@ -599,11 +603,7 @@
 
                 calculateInitialScale();
                 updateTransform();
-
-                calculateInitialScale();
-                updateTransform();
             });
-
         window.addEventListener("resize", () => {
             // Non ricalcolare la scala automaticamente se l'utente ha zoomato manualimente
             // ma ricalcola se siamo alla scala iniziale (auto-fit)
