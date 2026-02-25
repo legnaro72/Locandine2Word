@@ -326,33 +326,26 @@ class AlbumGenerator:
         sticker_rect = [2, 2, sticker_w + 2, sticker_h + 2]
         
         # === MODALITA' FIGURINA NORMALE O ALBUM VUOTO (Condivisa) ===
-        if self.sticker_fill_mode in ("trasparente", "espansione"):
-            # Rettangolo base trasparente (sia per trasparente che per espansione)
-            # L'espansione riempirà SOLO l'area immagine interna con sfocatura
-            alpha_bg = 60 if not empty else 0
-            draw.rounded_rectangle(sticker_rect, radius=self.CORNER_RADIUS,
-                                  fill=(0, 0, 0, alpha_bg),
-                                  outline=self.COLOR_STICKER_BORDER,
-                                  width=1 if empty else self.BORDER_WIDTH)
-            
-            # Area didascalia solida in basso per la leggibilità
-            caption_h_calc = min(55, max(35, sticker_h // 10))
-            caption_bg_h = caption_h_calc + 14
-            caption_bg_bottom = sticker_h + 2 - self.BORDER_WIDTH
-            caption_bg_top = caption_bg_bottom - caption_bg_h
-            
-            draw.rounded_rectangle(
-                [self.STICKER_PADDING + 4, caption_bg_top, sticker_w + 2 - self.STICKER_PADDING - 4, caption_bg_bottom],
-                radius=6, fill=self.COLOR_STICKER_BG,
-                outline=(self.COLOR_STICKER_BORDER[0], self.COLOR_STICKER_BORDER[1], self.COLOR_STICKER_BORDER[2], 120),
-                width=1
-            )
-        else:
-            # Rettangolo base opaco (solo "opaco")
-            draw.rounded_rectangle(sticker_rect, radius=self.CORNER_RADIUS,
-                                  fill=self.COLOR_STICKER_BG,
-                                  outline=self.COLOR_STICKER_BORDER,
-                                  width=self.BORDER_WIDTH)
+        # Rettangolo base trasparente (sia per trasparente, espansione e opaco)
+        # Il colore crema comparirà solo DIETRO all'area dell'immagine in modalità 'opaco'
+        alpha_bg = 60 if not empty else 0
+        draw.rounded_rectangle(sticker_rect, radius=self.CORNER_RADIUS,
+                              fill=(0, 0, 0, alpha_bg),
+                              outline=self.COLOR_STICKER_BORDER,
+                              width=1 if empty else self.BORDER_WIDTH)
+        
+        # Area didascalia solida in basso per la leggibilità
+        caption_h_calc = min(55, max(35, sticker_h // 10))
+        caption_bg_h = caption_h_calc + 14
+        caption_bg_bottom = sticker_h + 2 - self.BORDER_WIDTH
+        caption_bg_top = caption_bg_bottom - caption_bg_h
+        
+        draw.rounded_rectangle(
+            [self.STICKER_PADDING + 4, caption_bg_top, sticker_w + 2 - self.STICKER_PADDING - 4, caption_bg_bottom],
+            radius=6, fill=self.COLOR_STICKER_BG,
+            outline=(self.COLOR_STICKER_BORDER[0], self.COLOR_STICKER_BORDER[1], self.COLOR_STICKER_BORDER[2], 120),
+            width=1
+        )
 
         # --- Bordo interno decorativo ---
         inner_rect = [
@@ -439,8 +432,12 @@ class AlbumGenerator:
                             off_p_y = (box_h - new_ph) // 2
                             final_poster.paste(poster_resized, (off_p_x, off_p_y), poster_resized)
                         else:
-                            # Trasparente o Opaco: canvas vuoto
-                            fill_color = (0, 0, 0, 0)
+                            # Trasparente o Opaco: canvas vuoto per l'immagine
+                            if self.sticker_fill_mode == "opaco":
+                                fill_color = self.COLOR_STICKER_BG  # Riempi di crema
+                            else:
+                                fill_color = (0, 0, 0, 0) # Trasparente
+                            
                             final_poster = Image.new("RGBA", (box_w, box_h), fill_color)
                             off_p_x = (box_w - new_pw) // 2
                             off_p_y = (box_h - new_ph) // 2
@@ -479,8 +476,12 @@ class AlbumGenerator:
                         final_poster.paste(poster_resized, (off_p_x, off_p_y), poster_resized)
                         
                     else:
-                        # Trasparente o Opaco: canvas vuoto
-                        fill_color = (0, 0, 0, 0)
+                        # Trasparente o Opaco: canvas vuoto per l'immagine
+                        if self.sticker_fill_mode == "opaco":
+                            fill_color = self.COLOR_STICKER_BG  # Riempi di crema
+                        else:
+                            fill_color = (0, 0, 0, 0) # Trasparente
+                            
                         final_poster = Image.new("RGBA", (box_w, box_h), fill_color)
                         off_p_x = (box_w - new_pw) // 2
                         off_p_y = (box_h - new_ph) // 2
