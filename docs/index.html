@@ -129,7 +129,8 @@
             width: 100vw;
             height: 100vh;
             background: rgba(0, 0, 0, 0.8);
-            display: none;
+            display: flex;
+            /* VERO DISPLAY DI DEFAULT */
             flex-direction: column;
             align-items: center;
             justify-content: center;
@@ -463,6 +464,51 @@
             }
         });
 
+        /* ==== AUDIO BACKGROUND E MOBILE/PC START ==== */
+        const bgMusic = document.getElementById("bgMusic");
+        const audioToggleBtn = document.getElementById("audio-toggle");
+        const startOverlay = document.getElementById("mobile-start-overlay");
+        let musicStarted = false;
+
+        const isMobile = /iPhone|iPad|iPod|Android/i.test(navigator.userAgent);
+
+        function startMusic() {
+            if (!musicStarted) {
+                console.log("▶️ Tentativo di avvio audio...");
+                bgMusic.play().then(() => {
+                    console.log("✅ Audio avviato con successo!");
+                    musicStarted = true;
+                    audioToggleBtn.innerText = "🔊";
+                }).catch(err => {
+                    console.log("⚠️ Audio autoplay bloccato dal browser (richiede interazione utente).", err);
+                });
+            }
+        }
+
+        audioToggleBtn.onclick = (e) => {
+            e.stopPropagation();
+            if (!musicStarted) {
+                startMusic();
+                return;
+            }
+            if (bgMusic.paused) {
+                bgMusic.play();
+                audioToggleBtn.innerText = "🔊";
+            } else {
+                bgMusic.pause();
+                audioToggleBtn.innerText = "🔇";
+            }
+        };
+
+        // Click sul pulsantone gigante INIZIA!
+        document.getElementById("start-app").onclick = () => {
+            if (isMobile) {
+                toggleFullScreen();
+            }
+            startMusic();
+            startOverlay.style.display = "none";
+        };
+
         /* ==== FRECCE ==== */
         document.getElementById("next").onclick = () => pageFlip.flipNext();
         document.getElementById("prev").onclick = () => pageFlip.flipPrev();
@@ -509,53 +555,8 @@
                 calculateInitialScale();
                 updateTransform();
 
-                // --- AUDIO BACKGROUND E MOBILE START ---
-                const bgMusic = document.getElementById("bgMusic");
-                const audioToggleBtn = document.getElementById("audio-toggle");
-                let musicStarted = false;
-
-                function startMusic() {
-                    console.log("▶️ Tentativo di avvio audio...");
-                    if (!musicStarted) {
-                        bgMusic.play().then(() => {
-                            console.log("✅ Audio avviato con successo!");
-                            musicStarted = true;
-                            audioToggleBtn.innerText = "🔊";
-                        }).catch(err => {
-                            console.log("⚠️ Audio autoplay bloccato dal browser (richiede interazione utente).", err);
-                        });
-                    }
-                }
-
-                audioToggleBtn.onclick = (e) => {
-                    e.stopPropagation();
-                    if (!musicStarted) {
-                        startMusic();
-                        return;
-                    }
-                    if (bgMusic.paused) {
-                        bgMusic.play();
-                        audioToggleBtn.innerText = "🔊";
-                    } else {
-                        bgMusic.pause();
-                        audioToggleBtn.innerText = "🔇";
-                    }
-                };
-
-                // Mostra la finestra di avvio "INIZIA" SEMPRE, sia su Mobile che su PC
-                // Questo è il modo migliore per aggirare il blocco Autoplay del Browser (Click Esplicito)
-                const startOverlay = document.getElementById("mobile-start-overlay");
-                const isMobile = /iPhone|iPad|iPod|Android/i.test(navigator.userAgent);
-
-                startOverlay.style.display = "flex";
-
-                document.getElementById("start-app").onclick = () => {
-                    if (isMobile) {
-                        toggleFullScreen();
-                    }
-                    startMusic();
-                    startOverlay.style.display = "none";
-                };
+                calculateInitialScale();
+                updateTransform();
             });
 
         window.addEventListener("resize", () => {
