@@ -2,148 +2,171 @@
 <html lang="it">
 <head>
 <meta charset="UTF-8">
-
-      
-<meta name="viewport"
-      content="width=device-width,
-               initial-scale=1,
-               maximum-scale=1,
-               user-scalable=no">
-
-<title>Flip Album</title>
+<meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+<title>Flipbook Album</title>
 
 <style>
 html, body {
     margin: 0;
     padding: 0;
     height: 100%;
-    background: #111;
+    background: #1a1a1a;
     overflow: hidden;
+    touch-action: none;
 }
 
-#viewer {
+#book-wrapper {
     width: 100vw;
     height: 100vh;
-    display: flex;
-    justify-content: center;
-    align-items: center;
     position: relative;
     overflow: hidden;
 }
 
-#album-wrapper {
-    display: flex;
-    justify-content: center;
-    align-items: center;
-    transform-origin: center center;
-}
-
-#album {
-    display: flex;
-    gap: 10px;
-}
-
-.page {
-    width: 42vw;
-    height: 60vh;
-    max-width: 500px;
-    background: #fff;
-    background-size: contain;
-    background-repeat: no-repeat;
-    background-position: center;
-    box-shadow: 0 0 20px rgba(0,0,0,0.6);
-}
-
-/* Frecce */
-.arrow {
+#zoom-layer {
+    width: 1200px;
+    height: 800px;
+    transform-origin: 0 0;
     position: absolute;
+}
+
+#book {
+    width: 1200px;
+    height: 800px;
+}
+
+.page img {
+    width: 100%;
+    height: 100%;
+    object-fit: contain;
+    pointer-events: none;
+}
+
+/* UI */
+button {
+    position: fixed;
+    z-index: 9999;
+    background: white;
+    border: none;
+    border-radius: 10px;
+    padding: 12px 16px;
+    font-size: 18px;
+}
+
+#zoom-in { bottom: 20px; right: 100px; }
+#zoom-out { bottom: 20px; right: 20px; }
+#reset { bottom: 20px; left: 20px; }
+#fullscreen { top: 15px; left: 15px; }
+
+.nav {
     top: 50%;
     transform: translateY(-50%);
-    font-size: 40px;
-    color: white;
-    background: rgba(0,0,0,0.4);
-    padding: 10px 16px;
+    font-size: 35px;
+    width: 60px;
+    height: 60px;
     border-radius: 50%;
-    user-select: none;
-    cursor: pointer;
 }
 
 #prev { left: 20px; }
 #next { right: 20px; }
+
+#zoom-indicator {
+    position: fixed;
+    top: 15px;
+    right: 20px;
+    color: white;
+}
 </style>
 </head>
 <body>
 
-<div id="viewer">
-    <div id="album-wrapper">
-        <div id="album">
-            <div class="page" id="page-left"></div>
-            <div class="page" id="page-right"></div>
-        </div>
+<div id="book-wrapper">
+    <div id="zoom-layer">
+        <div id="book"></div>
     </div>
-
-    <div id="prev" class="arrow">&#10094;</div>
-    <div id="next" class="arrow">&#10095;</div>
 </div>
 
+<div id="zoom-indicator">100%</div>
+
+<button id="zoom-in">➕</button>
+<button id="zoom-out">➖</button>
+<button id="reset">⤾</button>
+<button id="fullscreen">⛶</button>
+
+<button id="prev" class="nav">⟨</button>
+<button id="next" class="nav">⟩</button>
+
+<audio id="flipSound" src="flip.mp3"></audio>
+
+<script src="https://cdn.jsdelivr.net/npm/page-flip/dist/js/page-flip.browser.min.js"></script>
+
 <script>
-/* ---------- IMMAGINI ---------- */
-const images = [
-    "page1.jpg",
-    "page2.jpg",
-    "page3.jpg",
-    "page4.jpg"
-];
-
-let index = 0;
-
-const left = document.getElementById("page-left");
-const right = document.getElementById("page-right");
-
-function render() {
-    left.style.backgroundImage = `url(${images[index]})`;
-    right.style.backgroundImage = `url(${images[index+1] || ""})`;
-}
-render();
-
-/* ---------- FRECCE ---------- */
-document.getElementById("next").onclick = () => {
-    if (index < images.length - 2) {
-        index += 2;
-        render();
-    }
-};
-
-document.getElementById("prev").onclick = () => {
-    if (index > 0) {
-        index -= 2;
-        render();
-    }
-};
-
-/* ---------- FULLSCREEN ---------- */
-let fsDone = false;
-
-function enableFullscreen() {
-    const el = document.documentElement;
-    if (el.requestFullscreen) el.requestFullscreen();
-    else if (el.webkitRequestFullscreen) el.webkitRequestFullscreen();
-}
-
-document.addEventListener("touchstart", () => {
-    if (!fsDone) {
-        enableFullscreen();
-        fsDone = true;
-    }
-}, { once: true });
-
-/* ---------- ZOOM STABILE ---------- */
-const wrapper = document.getElementById("album-wrapper");
+const BASE_WIDTH = 1200;
+const BASE_HEIGHT = 800;
 
 let scale = 1;
 let lastScale = 1;
+let maxScale = window.innerWidth < 900 ? 12 : 8;
+let posX = 0;
+let posY = 0;
 let startDist = 0;
-let lastTap = 0;
+let pageFlip;
+
+const wrapper = document.getElementById("book-wrapper");
+const zoomLayer = document.getElementById("zoom-layer");
+const zoomIndicator = document.getElementById("zoom-indicator");
+const flipSound = document.getElementById("flipSound");
+
+/* ===== AUTO LOAD page_1.jpg, page_2.jpg... ===== */
+
+const TOTAL_PAGES = 20; // <-- METTI QUI IL NUMERO ESATTO
+
+const bookDiv = document.getElementById("book");
+
+for (let i = 1; i <= TOTAL_PAGES; i++) {
+    const div = document.createElement("div");
+    div.className = "page";
+
+    const img = document.createElement("img");
+    img.src = `page_${i}.jpg`;
+
+    div.appendChild(img);
+    bookDiv.appendChild(div);
+}
+
+pageFlip = new St.PageFlip(bookDiv, {
+    width: 600,
+    height: 800,
+    size: "fixed",
+    showCover: true,
+    usePortrait: false,
+    mobileScrollSupport: false,
+    useMouseEvents: false
+});
+
+pageFlip.loadFromHTML(document.querySelectorAll(".page"));
+
+/* ===== CENTER ===== */
+
+function center() {
+    const scaleX = wrapper.clientWidth / BASE_WIDTH;
+    const scaleY = wrapper.clientHeight / BASE_HEIGHT;
+    scale = Math.min(scaleX, scaleY);
+    lastScale = scale;
+
+    posX = (wrapper.clientWidth - BASE_WIDTH * scale) / 2;
+    posY = (wrapper.clientHeight - BASE_HEIGHT * scale) / 2;
+
+    update();
+}
+
+function update() {
+    zoomLayer.style.transform = `translate(${posX}px, ${posY}px) scale(${scale})`;
+    zoomIndicator.innerText = Math.round(scale * 100) + "%";
+}
+
+center();
+
+/* ===== PINCH ZOOM ===== */
 
 function getDistance(touches) {
     return Math.hypot(
@@ -152,47 +175,92 @@ function getDistance(touches) {
     );
 }
 
-function update() {
-    wrapper.style.transform = `scale(${scale})`;
-}
-
-/* PINCH */
 wrapper.addEventListener("touchstart", e => {
     if (e.touches.length === 2) {
         startDist = getDistance(e.touches);
     }
-
-    /* DOUBLE TAP */
-    const now = Date.now();
-    if (now - lastTap < 300) {
-        if (scale === 1) {
-            scale = 2;
-        } else {
-            scale = 1;
-        }
-        lastScale = scale;
-        update();
-    }
-    lastTap = now;
-
 }, { passive: true });
 
 wrapper.addEventListener("touchmove", e => {
     if (e.touches.length === 2) {
         const newDist = getDistance(e.touches);
         scale = lastScale * (newDist / startDist);
-        if (scale < 1) scale = 1;
+        scale = Math.max(0.5, Math.min(scale, maxScale));
         update();
     }
 }, { passive: true });
 
-wrapper.addEventListener("touchend", e => {
+wrapper.addEventListener("touchend", () => {
     lastScale = scale;
-
-    if (scale === 1) {
-        wrapper.style.transform = "scale(1)";
-    }
 });
+
+/* ===== DOUBLE TAP ===== */
+
+let lastTap = 0;
+wrapper.addEventListener("pointerup", e => {
+    const now = Date.now();
+    if (now - lastTap < 300) {
+        if (scale < maxScale)
+            scale *= 2;
+        else
+            center();
+        lastScale = scale;
+        update();
+    }
+    lastTap = now;
+});
+
+/* ===== BUTTONS ===== */
+
+document.getElementById("zoom-in").onclick = () => {
+    scale = Math.min(scale + 0.3, maxScale);
+    lastScale = scale;
+    update();
+};
+
+document.getElementById("zoom-out").onclick = () => {
+    scale = Math.max(scale - 0.3, 0.5);
+    lastScale = scale;
+    update();
+};
+
+document.getElementById("reset").onclick = center;
+
+document.getElementById("fullscreen").onclick = () => {
+    if (!document.fullscreenElement) {
+        document.documentElement.requestFullscreen().catch(()=>{});
+    } else {
+        document.exitFullscreen();
+    }
+};
+
+document.getElementById("next").onclick = () => {
+    pageFlip.flipNext();
+    playFeedback();
+};
+
+document.getElementById("prev").onclick = () => {
+    pageFlip.flipPrev();
+    playFeedback();
+};
+
+function playFeedback() {
+    flipSound.currentTime = 0;
+    flipSound.play().catch(()=>{});
+    if (navigator.vibrate) navigator.vibrate(20);
+}
+
+/* ===== AUTO FULLSCREEN MOBILE ===== */
+
+if (window.innerWidth < 900) {
+    document.addEventListener("click", () => {
+        if (!document.fullscreenElement) {
+            document.documentElement.requestFullscreen().catch(()=>{});
+        }
+    }, { once: true });
+}
+
+window.addEventListener("resize", center);
 </script>
 
 </body>
