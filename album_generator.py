@@ -59,14 +59,27 @@ def create_single_sticker(img_path, mask_w_mm=57, mask_h_mm=80,
     
     img_resized = original.resize((scaled_w, scaled_h), Image.LANCZOS)
     
-    canvas = Image.new("RGBA", (mask_w, mask_h), (0, 0, 0, 0))
+    # === SFONDO SFOCATO (TIPO INSTAGRAM) AL POSTO DEL NERO/TRASPARENTE ===
+    cover_ratio = max(mask_w / orig_w, mask_h / orig_h)
+    cover_w = int(orig_w * cover_ratio)
+    cover_h = int(orig_h * cover_ratio)
+    bg_img = original.resize((cover_w, cover_h), Image.LANCZOS)
+    
+    cx = (cover_w - mask_w) // 2
+    cy = (cover_h - mask_h) // 2
+    bg_img = bg_img.crop((cx, cy, cx + mask_w, cy + mask_h))
+    
+    from PIL import ImageFilter, ImageEnhance
+    blur_radius = 6 if preview_mode else 18
+    bg_img = bg_img.filter(ImageFilter.GaussianBlur(radius=blur_radius))
+    enhancer = ImageEnhance.Brightness(bg_img)
+    canvas = enhancer.enhance(0.65).convert("RGBA")
     
     # Centratura base + offset utente
     paste_x = (mask_w - scaled_w) // 2 + offset_x
     paste_y = (mask_h - scaled_h) // 2 + offset_y
     
-    # Se l'immagine è più grande della maschera, paste() di PIL ritaglia automaticamente
-    # le parti fuori dal canvas, ma possiamo gestire tutto con un blend diretto.
+    # Incolla l'immagine ritagliata/scalata sopra lo sfondo sfocato
     canvas.paste(img_resized, (paste_x, paste_y), img_resized)
     
     if preview_mode:
