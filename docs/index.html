@@ -194,8 +194,8 @@
     <button id="next" class="nav-btn">⟩</button>
 
     <div id="mobile-start-overlay">
-        <h2>Album Flipbook</h2>
-        <p>Tocca per visualizzare in modalità panoramica</p>
+        <h2>Album Giusto dire NO</h2>
+        <p>Clicca per avviare l'album e la musica!</p>
         <button id="start-app">INIZIA</button>
     </div>
 
@@ -542,21 +542,20 @@
                     }
                 };
 
-                // Gestione PC (interazione utente sblocca l'audio)
-                document.body.addEventListener('click', startMusic, { once: true });
-                document.body.addEventListener('touchstart', startMusic, { once: true });
-
-                const isMobile = /iPhone|iPad|iPod|Android/i.test(navigator.userAgent);
+                // Mostra la finestra di avvio "INIZIA" SEMPRE, sia su Mobile che su PC
+                // Questo è il modo migliore per aggirare il blocco Autoplay del Browser (Click Esplicito)
                 const startOverlay = document.getElementById("mobile-start-overlay");
+                const isMobile = /iPhone|iPad|iPod|Android/i.test(navigator.userAgent);
 
-                if (isMobile) {
-                    startOverlay.style.display = "flex";
-                    document.getElementById("start-app").onclick = () => {
+                startOverlay.style.display = "flex";
+
+                document.getElementById("start-app").onclick = () => {
+                    if (isMobile) {
                         toggleFullScreen();
-                        startMusic();
-                        startOverlay.style.display = "none";
-                    };
-                }
+                    }
+                    startMusic();
+                    startOverlay.style.display = "none";
+                };
             });
 
         window.addEventListener("resize", () => {
