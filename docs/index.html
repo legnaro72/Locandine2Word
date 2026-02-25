@@ -1,854 +1,3 @@
-
-
-
-Riscatta l'offerta
-Hai detto:
-<!DOCTYPE html>
-<html lang="it">
-<head>
-<meta charset="UTF-8">
-<meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>Flipbook Album</title>
-
-    
-<style>
-body {
-    margin: 0;
-    background: #2c2c2c;
-    font-family: sans-serif;
-    overflow: hidden;
-}
-
-#book-wrapper {
-    width: 100vw;
-    height: 100vh;
-    background: #1a1a1a;
-    position: relative;
-    overflow: hidden;
-    touch-action: none;
-}
-
-#zoom-layer {
-    width: 1200px;
-    height: 800px;
-    transform-origin: 0 0;
-    position: absolute;
-}
-
-#book {
-    width: 1200px;
-    height: 800px;
-}
-
-.page {
-    background: white;
-    overflow: hidden;
-}
-
-.page img {
-    width: 100%;
-    height: 100%;
-    object-fit: contain;
-    pointer-events: none;
-}
-
-/* Pulsanti zoom */
-.zoom-btn {
-    position: fixed;
-    bottom: 20px;
-    z-index: 9999;
-    padding: 14px 18px;
-    font-size: 20px;
-    background: white;
-    border: none;
-    border-radius: 10px;
-    cursor: pointer;
-}
-#zoom-in { right: 90px; }
-#zoom-out { right: 20px; }
-
-/* Frecce navigazione */
-.nav-btn {
-    position: fixed;
-    top: 50%;
-    transform: translateY(-50%);
-    z-index: 9999;
-    font-size: 40px;
-    background: rgba(255,255,255,0.9);
-    border: none;
-    border-radius: 50%;
-    width: 60px;
-    height: 60px;
-    cursor: pointer;
-}
-#prev { left: 15px; }
-#next { right: 15px; }
-
-#zoom-indicator {
-    position: fixed;
-    top: 15px;
-    right: 20px;
-    color: white;
-    background: rgba(0,0,0,0.6);
-    padding: 6px 12px;
-    border-radius: 8px;
-}
-</style>
-</head>
-
-<body>
-
-<div id="book-wrapper">
-    <div id="zoom-layer">
-        <div id="book"></div>
-    </div>
-</div>
-
-<div id="zoom-indicator">100%</div>
-
-<button id="zoom-in" class="zoom-btn">➕</button>
-<button id="zoom-out" class="zoom-btn">➖</button>
-
-<button id="prev" class="nav-btn">⟨</button>
-<button id="next" class="nav-btn">⟩</button>
-
-<audio id="flipSound" src="flip.mp3"></audio>
-
-<script src="https://cdn.jsdelivr.net/npm/page-flip/dist/js/page-flip.browser.min.js"></script>
-
-<script>
-const BASE_WIDTH = 1200;
-const BASE_HEIGHT = 800;
-
-let scale = 1;
-let maxScale = 8;
-
-let posX = 0;
-let posY = 0;
-
-let pageFlip;
-
-const zoomLayer = document.getElementById("zoom-layer");
-const wrapper = document.getElementById("book-wrapper");
-const zoomIndicator = document.getElementById("zoom-indicator");
-
-/* ==== AUTO FIT INIZIALE ==== */
-function calculateInitialScale() {
-    const scaleX = wrapper.clientWidth / BASE_WIDTH;
-    const scaleY = wrapper.clientHeight / BASE_HEIGHT;
-    scale = Math.min(scaleX, scaleY);
-    centerContent();
-}
-
-function centerContent() {
-    const scaledWidth = BASE_WIDTH * scale;
-    const scaledHeight = BASE_HEIGHT * scale;
-
-    posX = (wrapper.clientWidth - scaledWidth) / 2;
-    posY = (wrapper.clientHeight - scaledHeight) / 2;
-}
-
-function clampPosition() {
-    const scaledWidth = BASE_WIDTH * scale;
-    const scaledHeight = BASE_HEIGHT * scale;
-
-    const minX = wrapper.clientWidth - scaledWidth;
-    const minY = wrapper.clientHeight - scaledHeight;
-
-    if (scaledWidth > wrapper.clientWidth) {
-        posX = Math.min(0, Math.max(minX, posX));
-    } else {
-        posX = (wrapper.clientWidth - scaledWidth) / 2;
-    }
-
-    if (scaledHeight > wrapper.clientHeight) {
-        posY = Math.min(0, Math.max(minY, posY));
-    } else {
-        posY = (wrapper.clientHeight - scaledHeight) / 2;
-    }
-}
-
-function updateTransform() {
-    clampPosition();
-    zoomLayer.style.transform =
-        translate(${posX}px, ${posY}px) scale(${scale});
-    zoomIndicator.innerText = Math.round(scale * 100) + "%";
-}
-
-/* ==== ZOOM BUTTONS ==== */
-document.getElementById("zoom-in").onclick = () => {
-    scale += 0.2;
-    updateTransform();
-};
-document.getElementById("zoom-out").onclick = () => {
-    scale = Math.max(scale - 0.2, 0.05);
-    updateTransform();
-};
-
-/* ==== DOUBLE CLICK / TAP CON ZOOM CENTRATO ==== */
-let lastTap = 0;
-
-wrapper.addEventListener("pointerup", e => {
-    const now = Date.now();
-    if (now - lastTap < 300) {
-
-        const rect = wrapper.getBoundingClientRect();
-        const clickX = e.clientX - rect.left;
-        const clickY = e.clientY - rect.top;
-
-        const offsetX = (clickX - posX) / scale;
-        const offsetY = (clickY - posY) / scale;
-
-        if (scale < 2) scale = 2;
-        else if (scale < 4) scale = 4;
-        else if (scale < 6) scale = 6;
-        else if (scale < 8) scale = 8;
-        else {
-            calculateInitialScale();
-            updateTransform();
-            lastTap = now;
-            return;
-        }
-
-        posX = clickX - offsetX * scale;
-        posY = clickY - offsetY * scale;
-
-        updateTransform();
-    }
-    lastTap = now;
-});
-
-/* ==== DRAG ==== */
-let isDragging = false;
-let startX, startY;
-
-wrapper.addEventListener("pointerdown", e => {
-    isDragging = true;
-    startX = e.clientX - posX;
-    startY = e.clientY - posY;
-});
-
-wrapper.addEventListener("pointermove", e => {
-    if (isDragging) {
-        posX = e.clientX - startX;
-        posY = e.clientY - startY;
-        updateTransform();
-    }
-});
-
-wrapper.addEventListener("pointerup", () => {
-    isDragging = false;
-});
-
-/* ==== FRECCE ==== */
-document.getElementById("next").onclick = () => pageFlip.flipNext();
-document.getElementById("prev").onclick = () => pageFlip.flipPrev();
-
-/* ==== LOAD BOOK ==== */
-fetch('pages.json')
-.then(r => r.json())
-.then(pages => {
-
-    const bookDiv = document.getElementById("book");
-
-    pages.forEach(p => {
-        const div = document.createElement("div");
-        div.className = "page " + p.type;
-
-        const img = document.createElement("img");
-        img.src = p.image;
-
-        div.appendChild(img);
-        bookDiv.appendChild(div);
-    });
-
-    pageFlip = new St.PageFlip(bookDiv, {
-        width: 600,
-        height: 800,
-        size: "fixed",
-        showCover: true,
-        mobileScrollSupport: false,
-        useMouseEvents: false
-    });
-
-    pageFlip.loadFromHTML(document.querySelectorAll('.page'));
-
-    calculateInitialScale();
-    updateTransform();
-});
-
-window.addEventListener("resize", () => {
-    calculateInitialScale();
-    updateTransform();
-});
-</script>
-
-</body>
-</html>
-
-
-modifica lindex.html per abilitare il landscape su cellulare poi valutalo e dimmi senza farli possibili interventi correttivi per migliorare l esperienza utente sopratutto da cellulare 
-
-ChatGPT ha detto:
-Perfetto Massimiliano 👍
-Ti modifico l’index.html per:
-
-✅ Abilitare correttamente il landscape su cellulare
-
-✅ Forzare una gestione viewport stabile
-
-✅ Evitare problemi con le UI bar mobili (Safari / Chrome mobile)
-
-✅ Rendere l’esperienza più fluida su touch
-
-Poi sotto ti faccio una valutazione tecnica UX mobile con suggerimenti concreti.
-
-✅ VERSIONE MODIFICATA (Landscape abilitato e ottimizzato mobile)
-🔧 Modifiche fatte:
-Meta viewport migliorata
-
-Forzata altezza reale mobile (100dvh)
-
-Ottimizzazione touch
-
-Migliorata stabilità durante rotazione
-
-Sostituisci la parte <head> e il CSS iniziale con questo:
-
-<head>
-<meta charset="UTF-8">
-
-<!-- VIEWPORT OTTIMIZZATO MOBILE -->
-<meta name="viewport" 
-      content="width=device-width, 
-               initial-scale=1.0, 
-               maximum-scale=1.0, 
-               user-scalable=no, 
-               viewport-fit=cover">
-
-<title>Flipbook Album</title>
-
-<style>
-html, body {
-    margin: 0;
-    padding: 0;
-    width: 100%;
-    height: 100dvh; /* usa dynamic viewport height */
-    background: #2c2c2c;
-    font-family: sans-serif;
-    overflow: hidden;
-    touch-action: none;
-}
-
-#book-wrapper {
-    width: 100vw;
-    height: 100dvh; /* IMPORTANTISSIMO per landscape mobile */
-    background: #1a1a1a;
-    position: relative;
-    overflow: hidden;
-    touch-action: none;
-}
-
-#zoom-layer {
-    width: 1200px;
-    height: 800px;
-    transform-origin: 0 0;
-    position: absolute;
-    will-change: transform; /* migliora performance mobile */
-}
-
-#book {
-    width: 1200px;
-    height: 800px;
-}
-
-.page {
-    background: white;
-    overflow: hidden;
-}
-
-.page img {
-    width: 100%;
-    height: 100%;
-    object-fit: contain;
-    pointer-events: none;
-}
-🔁 Miglioramento gestione rotazione
-Aggiungi questo sotto il resize listener:
-
-window.addEventListener("orientationchange", () => {
-    setTimeout(() => {
-        calculateInitialScale();
-        updateTransform();
-    }, 300); // attesa stabilizzazione viewport
-});
-Questo evita il problema classico:
-
-ruoto → viewport cambia → scala sbagliata
-
-📊 VALUTAZIONE UX MOBILE (Analisi seria)
-Adesso ti faccio una valutazione tecnica da prodotto reale.
-
-👍 Cosa funziona bene
-✔ Zoom centrato su doppio tap
-✔ Drag fluido
-✔ Frecce grandi
-✔ Zoom senza limite inferiore
-✔ Niente scroll verticale fastidioso
-
-La base è solida.
-
-🚨 Criticità UX su cellulare
-1️⃣ Pulsanti troppo piccoli in landscape
-In orizzontale su smartphone:
-
-60px di freccia è borderline
-
-Pulsanti zoom in basso possono essere difficili da cliccare
-
-👉 Suggerimento:
-Portali a 70–80px su mobile.
-
-2️⃣ Zoom step fisso (0.2) poco naturale
-Su mobile lo zoom a step può sembrare “meccanico”.
-
-Molto più naturale sarebbe:
-
-pinch to zoom (se vuoi)
-oppure
-
-step dinamico proporzionale alla scala
-
-3️⃣ Doppio tap non immediatamente intuitivo
-Molti utenti:
-
-provano a pinchare
-
-non provano doppio tap
-
-👉 UX migliorativa:
-Mostrare un micro tooltip al primo avvio tipo:
-
-Doppio tap per zoom
-Che sparisce dopo 3 secondi.
-
-4️⃣ Niente feedback visivo quando sei a zoom massimo
-Quando arrivi a 800% non si capisce che sei al limite.
-
-👉 Migliorabile mostrando:
-
-indicatore colore rosso
-oppure
-
-piccolo effetto bounce
-
-5️⃣ Frecce sempre visibili
-In mobile occupano spazio visivo.
-
-UX moderna:
-
-auto hide dopo 3 secondi
-
-riappaiono al tap
-
-🔥 Miglioramenti che ti consiglierei davvero
-Se vuoi esperienza tipo app nativa:
-
-⭐ 1. Nascondere UI quando zoom > 1
-Quando l’utente sta leggendo zoomato, nascondi:
-
-frecce
-
-zoom buttons
-
-Riappaiono al tap.
-
-⭐ 2. In landscape su telefono mostra sempre doppia pagina
-Adesso PageFlip è a 600x800 fixed.
-Potresti adattare:
-
-usePortrait: false
-E sfruttare meglio lo spazio orizzontale.
-
-⭐ 3. Haptic feedback (Android)
-Piccola vibrazione su cambio pagina.
-Esperienza molto più premium.
-
-⭐ 4. Su mobile aumentare maxScale dinamico
-Su telefono 8x può non bastare.
-Puoi fare:
-
-if (window.innerWidth < 900) {
-    maxScale = 12;
-}
-🎯 Valutazione complessiva
-Struttura: ⭐⭐⭐⭐☆
-Esperienza mobile: ⭐⭐⭐☆☆
-Con le migliorie sopra: ⭐⭐⭐⭐⭐
-
-Se vuoi ti preparo:
-
-🔥 versione PRO ottimizzata mobile-first
-
-oppure versione “App-like” stile Panini digitale
-
-oppure UI minimal senza pulsanti visibili
-
-Dimmi che direzione vuoi prendere 👌
-
-
-Hai detto:
-ti allego script attuale dammi file completo senza omissis che gestisce 
-⭐ 1. Nascondere UI quando zoom > 1
-
-Quando l’utente sta leggendo zoomato, nascondi:
-
-frecce
-
-zoom buttons
-
-Riappaiono al tap.
-
-⭐ 2. In landscape su telefono mostra sempre doppia pagina
-
-Adesso PageFlip è a 600x800 fixed.
-Potresti adattare:
-
-usePortrait: false
-
-E sfruttare meglio lo spazio orizzontale.
-
-⭐ 3. Haptic feedback (Android)
-
-Piccola vibrazione su cambio pagina.
-Esperienza molto più premium.
-
-⭐ 4. Su mobile aumentare maxScale dinamico
-
-Su telefono 8x può non bastare.
-Puoi fare:
-
-if (window.innerWidth < 900) {
-    maxScale = 12;
-}
-
-riabilita il flip.mp3 allla pressione della freccia 
-
-<!DOCTYPE html>
-<html lang="it">
-<head>
-<meta charset="UTF-8">
-
-<!-- VIEWPORT OTTIMIZZATO MOBILE -->
-<meta name="viewport" 
-      content="width=device-width, 
-               initial-scale=1.0, 
-               maximum-scale=1.0, 
-               user-scalable=no, 
-               viewport-fit=cover">
-
-<title>Flipbook Album</title>
-
-<style>
-html, body {
-    margin: 0;
-    padding: 0;
-    width: 100%;
-    height: 100dvh; /* usa dynamic viewport height */
-    background: #2c2c2c;
-    font-family: sans-serif;
-    overflow: hidden;
-    touch-action: none;
-}
-
-#book-wrapper {
-    width: 100vw;
-    height: 100dvh; /* IMPORTANTISSIMO per landscape mobile */
-    background: #1a1a1a;
-    position: relative;
-    overflow: hidden;
-    touch-action: none;
-}
-
-#zoom-layer {
-    width: 1200px;
-    height: 800px;
-    transform-origin: 0 0;
-    position: absolute;
-    will-change: transform; /* migliora performance mobile */
-}
-
-#book {
-    width: 1200px;
-    height: 800px;
-}
-
-.page {
-    background: white;
-    overflow: hidden;
-}
-
-.page img {
-    width: 100%;
-    height: 100%;
-    object-fit: contain;
-    pointer-events: none;
-}
-
-/* Pulsanti zoom */
-.zoom-btn {
-    position: fixed;
-    bottom: 20px;
-    z-index: 9999;
-    padding: 14px 18px;
-    font-size: 20px;
-    background: white;
-    border: none;
-    border-radius: 10px;
-    cursor: pointer;
-}
-#zoom-in { right: 90px; }
-#zoom-out { right: 20px; }
-
-/* Frecce navigazione */
-.nav-btn {
-    position: fixed;
-    top: 50%;
-    transform: translateY(-50%);
-    z-index: 9999;
-    font-size: 40px;
-    background: rgba(255,255,255,0.9);
-    border: none;
-    border-radius: 50%;
-    width: 60px;
-    height: 60px;
-    cursor: pointer;
-}
-#prev { left: 15px; }
-#next { right: 15px; }
-
-#zoom-indicator {
-    position: fixed;
-    top: 15px;
-    right: 20px;
-    color: white;
-    background: rgba(0,0,0,0.6);
-    padding: 6px 12px;
-    border-radius: 8px;
-}
-</style>
-</head>
-
-<body>
-
-<div id="book-wrapper">
-    <div id="zoom-layer">
-        <div id="book"></div>
-    </div>
-</div>
-
-<div id="zoom-indicator">100%</div>
-
-<button id="zoom-in" class="zoom-btn">➕</button>
-<button id="zoom-out" class="zoom-btn">➖</button>
-
-<button id="prev" class="nav-btn">⟨</button>
-<button id="next" class="nav-btn">⟩</button>
-
-<audio id="flipSound" src="flip.mp3"></audio>
-
-<script src="https://cdn.jsdelivr.net/npm/page-flip/dist/js/page-flip.browser.min.js"></script>
-
-<script>
-const BASE_WIDTH = 1200;
-const BASE_HEIGHT = 800;
-
-let scale = 1;
-let maxScale = 8;
-
-let posX = 0;
-let posY = 0;
-
-let pageFlip;
-
-const zoomLayer = document.getElementById("zoom-layer");
-const wrapper = document.getElementById("book-wrapper");
-const zoomIndicator = document.getElementById("zoom-indicator");
-
-/* ==== AUTO FIT INIZIALE ==== */
-function calculateInitialScale() {
-    const scaleX = wrapper.clientWidth / BASE_WIDTH;
-    const scaleY = wrapper.clientHeight / BASE_HEIGHT;
-    scale = Math.min(scaleX, scaleY);
-    centerContent();
-}
-
-function centerContent() {
-    const scaledWidth = BASE_WIDTH * scale;
-    const scaledHeight = BASE_HEIGHT * scale;
-
-    posX = (wrapper.clientWidth - scaledWidth) / 2;
-    posY = (wrapper.clientHeight - scaledHeight) / 2;
-}
-
-function clampPosition() {
-    const scaledWidth = BASE_WIDTH * scale;
-    const scaledHeight = BASE_HEIGHT * scale;
-
-    const minX = wrapper.clientWidth - scaledWidth;
-    const minY = wrapper.clientHeight - scaledHeight;
-
-    if (scaledWidth > wrapper.clientWidth) {
-        posX = Math.min(0, Math.max(minX, posX));
-    } else {
-        posX = (wrapper.clientWidth - scaledWidth) / 2;
-    }
-
-    if (scaledHeight > wrapper.clientHeight) {
-        posY = Math.min(0, Math.max(minY, posY));
-    } else {
-        posY = (wrapper.clientHeight - scaledHeight) / 2;
-    }
-}
-
-function updateTransform() {
-    clampPosition();
-    zoomLayer.style.transform =
-        translate(${posX}px, ${posY}px) scale(${scale});
-    zoomIndicator.innerText = Math.round(scale * 100) + "%";
-}
-
-/* ==== ZOOM BUTTONS ==== */
-document.getElementById("zoom-in").onclick = () => {
-    scale += 0.2;
-    updateTransform();
-};
-document.getElementById("zoom-out").onclick = () => {
-    scale = Math.max(scale - 0.2, 0.05);
-    updateTransform();
-};
-
-/* ==== DOUBLE CLICK / TAP CON ZOOM CENTRATO ==== */
-let lastTap = 0;
-
-wrapper.addEventListener("pointerup", e => {
-    const now = Date.now();
-    if (now - lastTap < 300) {
-
-        const rect = wrapper.getBoundingClientRect();
-        const clickX = e.clientX - rect.left;
-        const clickY = e.clientY - rect.top;
-
-        const offsetX = (clickX - posX) / scale;
-        const offsetY = (clickY - posY) / scale;
-
-        if (scale < 2) scale = 2;
-        else if (scale < 4) scale = 4;
-        else if (scale < 6) scale = 6;
-        else if (scale < 8) scale = 8;
-        else {
-            calculateInitialScale();
-            updateTransform();
-            lastTap = now;
-            return;
-        }
-
-        posX = clickX - offsetX * scale;
-        posY = clickY - offsetY * scale;
-
-        updateTransform();
-    }
-    lastTap = now;
-});
-
-/* ==== DRAG ==== */
-let isDragging = false;
-let startX, startY;
-
-wrapper.addEventListener("pointerdown", e => {
-    isDragging = true;
-    startX = e.clientX - posX;
-    startY = e.clientY - posY;
-});
-
-wrapper.addEventListener("pointermove", e => {
-    if (isDragging) {
-        posX = e.clientX - startX;
-        posY = e.clientY - startY;
-        updateTransform();
-    }
-});
-
-wrapper.addEventListener("pointerup", () => {
-    isDragging = false;
-});
-
-/* ==== FRECCE ==== */
-document.getElementById("next").onclick = () => pageFlip.flipNext();
-document.getElementById("prev").onclick = () => pageFlip.flipPrev();
-
-/* ==== LOAD BOOK ==== */
-fetch('pages.json')
-.then(r => r.json())
-.then(pages => {
-
-    const bookDiv = document.getElementById("book");
-
-    pages.forEach(p => {
-        const div = document.createElement("div");
-        div.className = "page " + p.type;
-
-        const img = document.createElement("img");
-        img.src = p.image;
-
-        div.appendChild(img);
-        bookDiv.appendChild(div);
-    });
-
-    pageFlip = new St.PageFlip(bookDiv, {
-        width: 600,
-        height: 800,
-        size: "fixed",
-        showCover: true,
-        mobileScrollSupport: false,
-        useMouseEvents: false
-    });
-
-    pageFlip.loadFromHTML(document.querySelectorAll('.page'));
-
-    calculateInitialScale();
-    updateTransform();
-});
-
-window.addEventListener("resize", () => {
-    calculateInitialScale();
-    updateTransform();
-});
-
-window.addEventListener("orientationchange", () => {
-    setTimeout(() => {
-        calculateInitialScale();
-        updateTransform();
-    }, 300); // attesa stabilizzazione viewport
-});
-</script>
-
-</body>
-</html>
-
-ChatGPT ha detto:
-Perfetto.
-Qui sotto trovi FILE COMPLETO SENZA OMISSIS con:
-
-✅ UI nascosta automaticamente quando zoom > 1
-✅ UI che riappare con TAP singolo
-✅ Doppia pagina forzata in landscape (usePortrait:false)
-✅ maxScale dinamico (12 su mobile)
-✅ Haptic feedback Android su cambio pagina
-✅ flip.mp3 riattivato su frecce
-✅ UI che si nasconde anche dopo 3s di inattività
-
-✅ INDEX.HTML COMPLETO
 <!DOCTYPE html>
 <html lang="it">
 <head>
@@ -1029,8 +178,194 @@ function hideUI() {
     zoomOutBtn.classList.add("hidden-ui");
     prevBtn.classList.add("hidden-ui");
     nextBtn.classList.add("hidden-ui");
-    zoomIndicator.classList.add("h
+    zoomIndicator.classList.add("hidden-ui");
+}
 
+/* ================= SCALE ================= */
 
+function calculateInitialScale() {
+    const scaleX = wrapper.clientWidth / BASE_WIDTH;
+    const scaleY = wrapper.clientHeight / BASE_HEIGHT;
+    scale = Math.min(scaleX, scaleY);
+    centerContent();
+}
 
-ChatGPT sta ancora generando una risposta…
+function centerContent() {
+    const scaledWidth = BASE_WIDTH * scale;
+    const scaledHeight = BASE_HEIGHT * scale;
+
+    posX = (wrapper.clientWidth - scaledWidth) / 2;
+    posY = (wrapper.clientHeight - scaledHeight) / 2;
+}
+
+function clampPosition() {
+    const scaledWidth = BASE_WIDTH * scale;
+    const scaledHeight = BASE_HEIGHT * scale;
+
+    const minX = wrapper.clientWidth - scaledWidth;
+    const minY = wrapper.clientHeight - scaledHeight;
+
+    if (scaledWidth > wrapper.clientWidth)
+        posX = Math.min(0, Math.max(minX, posX));
+    else
+        posX = (wrapper.clientWidth - scaledWidth) / 2;
+
+    if (scaledHeight > wrapper.clientHeight)
+        posY = Math.min(0, Math.max(minY, posY));
+    else
+        posY = (wrapper.clientHeight - scaledHeight) / 2;
+}
+
+function updateTransform() {
+    clampPosition();
+    zoomLayer.style.transform =
+        `translate(${posX}px, ${posY}px) scale(${scale})`;
+    zoomIndicator.innerText = Math.round(scale * 100) + "%";
+
+    if (scale > 1) hideUI();
+    else showUI();
+}
+
+/* ================= ZOOM BUTTONS ================= */
+
+zoomInBtn.onclick = () => {
+    scale = Math.min(scale + 0.3, maxScale);
+    updateTransform();
+};
+
+zoomOutBtn.onclick = () => {
+    scale = Math.max(scale - 0.3, 0.05);
+    updateTransform();
+};
+
+/* ================= TAP ================= */
+
+let lastTap = 0;
+
+wrapper.addEventListener("pointerup", e => {
+    const now = Date.now();
+
+    if (now - lastTap < 300) {
+        const rect = wrapper.getBoundingClientRect();
+        const clickX = e.clientX - rect.left;
+        const clickY = e.clientY - rect.top;
+
+        const offsetX = (clickX - posX) / scale;
+        const offsetY = (clickY - posY) / scale;
+
+        if (scale < maxScale)
+            scale = Math.min(scale * 2, maxScale);
+        else {
+            calculateInitialScale();
+            updateTransform();
+            lastTap = now;
+            return;
+        }
+
+        posX = clickX - offsetX * scale;
+        posY = clickY - offsetY * scale;
+
+        updateTransform();
+    } else {
+        if (scale > 1) showUI();
+    }
+
+    lastTap = now;
+});
+
+/* ================= DRAG ================= */
+
+let isDragging = false;
+let startX, startY;
+
+wrapper.addEventListener("pointerdown", e => {
+    isDragging = true;
+    startX = e.clientX - posX;
+    startY = e.clientY - posY;
+});
+
+wrapper.addEventListener("pointermove", e => {
+    if (isDragging) {
+        posX = e.clientX - startX;
+        posY = e.clientY - startY;
+        updateTransform();
+    }
+});
+
+wrapper.addEventListener("pointerup", () => {
+    isDragging = false;
+});
+
+/* ================= NAVIGATION ================= */
+
+function flipNext() {
+    pageFlip.flipNext();
+    playFlipFeedback();
+}
+
+function flipPrev() {
+    pageFlip.flipPrev();
+    playFlipFeedback();
+}
+
+function playFlipFeedback() {
+    flipSound.currentTime = 0;
+    flipSound.play().catch(() => {});
+    if (navigator.vibrate) navigator.vibrate(20);
+}
+
+nextBtn.onclick = flipNext;
+prevBtn.onclick = flipPrev;
+
+/* ================= LOAD BOOK ================= */
+
+fetch('pages.json')
+.then(r => r.json())
+.then(pages => {
+
+    const bookDiv = document.getElementById("book");
+
+    pages.forEach(p => {
+        const div = document.createElement("div");
+        div.className = "page " + p.type;
+
+        const img = document.createElement("img");
+        img.src = p.image;
+
+        div.appendChild(img);
+        bookDiv.appendChild(div);
+    });
+
+    pageFlip = new St.PageFlip(bookDiv, {
+        width: 600,
+        height: 800,
+        size: "fixed",
+        showCover: true,
+        usePortrait: false,
+        mobileScrollSupport: false,
+        useMouseEvents: false
+    });
+
+    pageFlip.loadFromHTML(document.querySelectorAll('.page'));
+
+    calculateInitialScale();
+    updateTransform();
+});
+
+window.addEventListener("resize", () => {
+    maxScale = window.innerWidth < 900 ? 12 : 8;
+    calculateInitialScale();
+    updateTransform();
+});
+
+window.addEventListener("orientationchange", () => {
+    setTimeout(() => {
+        maxScale = window.innerWidth < 900 ? 12 : 8;
+        calculateInitialScale();
+        updateTransform();
+    }, 300);
+});
+</script>
+
+</body>
+</html>
