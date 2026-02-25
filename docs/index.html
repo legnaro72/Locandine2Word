@@ -4,30 +4,45 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=5.0, user-scalable=yes">
 <title>Flipbook Album</title>
+
 <style>
 body {
     background: #2c2c2c;
     display: flex;
     justify-content: center;
     align-items: center;
-    min-height: 100vh;
+    height: 100vh;
     margin: 0;
+    overflow: hidden;
 }
 
+/* Contenitore esterno */
 #book-wrapper {
-    width: 90%;
-    max-width: 900px;
-    height: 90vh;
+    width: 95%;
+    max-width: 1000px;
+    height: 95vh;
+    position: relative;
+    background: #1a1a1a;
+    border-radius: 10px;
     overflow: hidden;
-    touch-action: pan-x pan-y;
+}
+
+/* Contenitore scrollabile */
+#book-container {
+    width: 100%;
+    height: 100%;
+    overflow: auto; /* Barre di scorrimento attive */
     position: relative;
 }
 
+/* Contenuto scalabile */
 #book {
     width: 100%;
     height: 100%;
+    transform-origin: top left;
 }
 
+/* Pagine */
 .page {
     background-color: white;
     overflow: hidden;
@@ -43,34 +58,43 @@ body {
     height: 100%;
     object-fit: contain;
     user-select: none;
+    pointer-events: none;
 }
 
-/* Pulsanti di zoom */
+/* Pulsanti zoom */
 .zoom-btn {
     position: fixed;
     bottom: 20px;
     font-size: 24px;
-    z-index: 999;
-    padding: 10px;
-    background: rgba(255,255,255,0.8);
+    z-index: 9999;
+    padding: 12px 16px;
+    background: rgba(255,255,255,0.9);
     border: none;
-    border-radius: 8px;
+    border-radius: 10px;
     cursor: pointer;
+    box-shadow: 0 4px 10px rgba(0,0,0,0.4);
 }
 
 #zoom-in {
-    right: 60px;
+    right: 80px;
 }
 
 #zoom-out {
     right: 20px;
 }
+
+.zoom-btn:hover {
+    background: white;
+}
 </style>
 </head>
+
 <body>
 
 <div id="book-wrapper">
-    <div id="book"></div>
+    <div id="book-container">
+        <div id="book"></div>
+    </div>
 </div>
 
 <button id="zoom-in" class="zoom-btn">➕</button>
@@ -88,15 +112,15 @@ fetch('pages.json')
 })
 .then(pages => {
     const bookDiv = document.getElementById("book");
-    
+
     pages.forEach(p => {
         const div = document.createElement("div");
         div.className = "page " + p.type;
         div.setAttribute("data-density", p.type === "cartone" ? "hard" : "soft");
-        
+
         const img = document.createElement("img");
         img.src = p.image;
-        
+
         div.appendChild(img);
         bookDiv.appendChild(div);
     });
@@ -108,9 +132,9 @@ fetch('pages.json')
             height: 800,
             size: "stretch",
             minWidth: 315,
-            maxWidth: 1000,
+            maxWidth: 1200,
             minHeight: 400,
-            maxHeight: 1533,
+            maxHeight: 1600,
             showCover: true,
             mobileScrollSupport: true
         }
@@ -127,28 +151,40 @@ fetch('pages.json')
     });
 })
 .catch(error => {
-    document.getElementById("book").innerHTML = `<h3 style="color: white; text-align: center; margin-top: 50px;">⚠️ Errore:<br><br>${error.message}</h3>`;
+    document.getElementById("book").innerHTML =
+    `<h3 style="color: white; text-align: center; margin-top: 50px;">
+        ⚠️ Errore:<br><br>${error.message}
+    </h3>`;
     console.error(error);
 });
 
-// --- SCRIPT ZOOM ---
+
+// --- SCRIPT ZOOM CORRETTO ---
 let scale = 1;
 const zoomStep = 0.2;
 const minScale = 1;
 const maxScale = 3;
-const bookWrapper = document.getElementById("book-wrapper");
+
+const book = document.getElementById("book");
+const container = document.getElementById("book-container");
 
 document.getElementById("zoom-in").addEventListener("click", () => {
     scale = Math.min(scale + zoomStep, maxScale);
-    bookWrapper.style.transform = `scale(${scale})`;
-    bookWrapper.style.transformOrigin = "center center";
+    applyZoom();
 });
 
 document.getElementById("zoom-out").addEventListener("click", () => {
     scale = Math.max(scale - zoomStep, minScale);
-    bookWrapper.style.transform = `scale(${scale})`;
-    bookWrapper.style.transformOrigin = "center center";
+    applyZoom();
 });
+
+function applyZoom() {
+    book.style.transform = `scale(${scale})`;
+
+    /* Ridimensiona virtualmente il contenuto per attivare scroll */
+    book.style.width = `${100 * scale}%`;
+    book.style.height = `${100 * scale}%`;
+}
 </script>
 
 </body>
