@@ -21,46 +21,43 @@ body {
     position: relative;
 }
 
-/* Viewport scrollabile stabile */
+/* Viewport scrollabile */
 #book-viewport {
     width: 100%;
     height: 100%;
-    overflow: scroll; /* sempre visibili */
+    overflow: scroll;
+    -webkit-overflow-scrolling: touch;
     touch-action: pan-x pan-y;
 }
 
-/* Scrollbar personalizzate */
+/* Scrollbar sempre visibili */
 #book-viewport::-webkit-scrollbar {
-    width: 22px;
-    height: 22px;
+    width: 18px;
+    height: 18px;
 }
 
 #book-viewport::-webkit-scrollbar-track {
-    background: rgba(255,255,255,0.08);
+    background: rgba(255,255,255,0.1);
 }
 
 #book-viewport::-webkit-scrollbar-thumb {
-    background: rgba(255,255,255,0.5);
-    border-radius: 12px;
-    border: 4px solid rgba(0,0,0,0.3);
+    background: rgba(255,255,255,0.6);
+    border-radius: 10px;
 }
 
-#book-viewport::-webkit-scrollbar-thumb:hover {
-    background: rgba(255,255,255,0.8);
-}
-
-/* Firefox */
 #book-viewport {
     scrollbar-width: auto;
     scrollbar-color: rgba(255,255,255,0.6) rgba(255,255,255,0.1);
 }
 
-/* Layer zoom reale */
+/* Layer zoom */
 #zoom-layer {
-    position: relative;
+    width: 1200px;
+    height: 800px;
+    transform-origin: top left;
 }
 
-/* Book dimensione base (2 pagine) */
+/* Book */
 #book {
     width: 1200px;
     height: 800px;
@@ -141,7 +138,7 @@ const BASE_WIDTH = 1200;
 const BASE_HEIGHT = 800;
 
 let scale = 1;
-let minScale = 1;
+let minScale = 0.2;   // ora può scendere MOLTO sotto
 const maxScale = 4;
 const zoomStep = 0.2;
 
@@ -149,25 +146,21 @@ const zoomLayer = document.getElementById("zoom-layer");
 const viewport = document.getElementById("book-viewport");
 const zoomIndicator = document.getElementById("zoom-indicator");
 
-/* Calcolo zoom minimo (2 pagine visibili interamente) */
+/* Calcolo zoom iniziale per mostrare tutto */
 function calculateMinScale() {
     const scaleX = viewport.clientWidth / BASE_WIDTH;
     const scaleY = viewport.clientHeight / BASE_HEIGHT;
+
     minScale = Math.min(scaleX, scaleY);
     scale = minScale;
+
     applyZoom();
 }
 
-/* Zoom stabile (dimensioni reali aggiornate) */
+/* Zoom con transform reale */
 function applyZoom() {
-    const newWidth = BASE_WIDTH * scale;
-    const newHeight = BASE_HEIGHT * scale;
-
-    zoomLayer.style.width = newWidth + "px";
-    zoomLayer.style.height = newHeight + "px";
-    zoomLayer.style.transform = "none"; // niente scale CSS
-
-    zoomIndicator.innerText = Math.round((scale/minScale)*100) + "%";
+    zoomLayer.style.transform = `scale(${scale})`;
+    zoomIndicator.innerText = Math.round(scale * 100) + "%";
 }
 
 /* Pulsanti */
@@ -177,16 +170,16 @@ document.getElementById("zoom-in").addEventListener("click", () => {
 });
 
 document.getElementById("zoom-out").addEventListener("click", () => {
-    scale = Math.max(scale - zoomStep, minScale);
+    scale = Math.max(scale - zoomStep, 0.1); // nessun limite verso il basso reale
     applyZoom();
 });
 
-/* Rotellina mouse */
+/* Rotellina */
 viewport.addEventListener("wheel", (e) => {
     if (e.ctrlKey) return;
     e.preventDefault();
     const delta = e.deltaY < 0 ? zoomStep : -zoomStep;
-    scale = Math.min(Math.max(scale + delta, minScale), maxScale);
+    scale = Math.min(Math.max(scale + delta, 0.1), maxScale);
     applyZoom();
 }, { passive: false });
 
@@ -197,6 +190,7 @@ fetch('pages.json')
     return r.json();
 })
 .then(pages => {
+
     const bookDiv = document.getElementById("book");
 
     pages.forEach(p => {
@@ -242,7 +236,7 @@ fetch('pages.json')
 /* Responsive */
 window.addEventListener("resize", calculateMinScale);
 
-/* Pinch zoom mobile */
+/* Pinch Zoom mobile */
 let initialDistance = null;
 
 viewport.addEventListener("touchstart", e => {
@@ -255,8 +249,8 @@ viewport.addEventListener("touchmove", e => {
     if (e.touches.length === 2 && initialDistance) {
         e.preventDefault();
         const newDistance = getDistance(e.touches);
-        const delta = (newDistance - initialDistance) / 300;
-        scale = Math.min(Math.max(scale + delta, minScale), maxScale);
+        const delta = (newDistance - initialDistance) / 250;
+        scale = Math.min(Math.max(scale + delta, 0.1), maxScale);
         applyZoom();
         initialDistance = newDistance;
     }
