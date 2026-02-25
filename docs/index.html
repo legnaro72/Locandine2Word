@@ -2,6 +2,7 @@
 <html lang="it">
 <head>
 <meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=5.0, user-scalable=yes">
 <title>Flipbook Album</title>
 <style>
 body {
@@ -9,13 +10,15 @@ body {
     display: flex;
     justify-content: center;
     align-items: center;
-    height: 100vh;
+    /* 2. MODIFICATO: min-height invece di height, e rimosso overflow: hidden per permettere lo scorrimento una volta zoomato */
+    min-height: 100vh;
     margin: 0;
-    overflow: hidden;
 }
 #book {
     width: 90%;
     max-width: 900px;
+    /* 3. AGGIUNTO: Istruisce il telefono a dare priorità al "pizzico" per lo zoom prima di girare pagina */
+    touch-action: pan-x pan-y pinch-zoom;
 }
 .page {
     background-color: white;
