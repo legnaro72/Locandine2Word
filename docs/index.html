@@ -13,40 +13,63 @@ body {
     font-family: sans-serif;
 }
 
-/* Wrapper principale */
+/* Wrapper */
 #book-wrapper {
-    position: relative;
     width: 100vw;
     height: 100vh;
     background: #1a1a1a;
-    overflow: hidden;
+    position: relative;
 }
 
-/* Area scrollabile stabile */
+/* Viewport scrollabile stabile */
 #book-viewport {
     width: 100%;
     height: 100%;
-    overflow: auto;
+    overflow: scroll; /* sempre visibili */
     touch-action: pan-x pan-y;
+}
+
+/* Scrollbar personalizzate */
+#book-viewport::-webkit-scrollbar {
+    width: 22px;
+    height: 22px;
+}
+
+#book-viewport::-webkit-scrollbar-track {
+    background: rgba(255,255,255,0.08);
+}
+
+#book-viewport::-webkit-scrollbar-thumb {
+    background: rgba(255,255,255,0.5);
+    border-radius: 12px;
+    border: 4px solid rgba(0,0,0,0.3);
+}
+
+#book-viewport::-webkit-scrollbar-thumb:hover {
+    background: rgba(255,255,255,0.8);
+}
+
+/* Firefox */
+#book-viewport {
+    scrollbar-width: auto;
+    scrollbar-color: rgba(255,255,255,0.6) rgba(255,255,255,0.1);
 }
 
 /* Layer zoom reale */
 #zoom-layer {
     position: relative;
-    transform-origin: top left;
 }
 
-/* Book */
+/* Book dimensione base (2 pagine) */
 #book {
-    width: 1200px;   /* 2 pagine base */
+    width: 1200px;
     height: 800px;
 }
 
 /* Pagine */
 .page {
-    background-color: white;
+    background: white;
     overflow: hidden;
-    position: relative;
 }
 
 .cartone {
@@ -57,8 +80,8 @@ body {
     width: 100%;
     height: 100%;
     object-fit: contain;
-    user-select: none;
     pointer-events: none;
+    user-select: none;
 }
 
 /* Pulsanti */
@@ -66,7 +89,7 @@ body {
     position: fixed;
     bottom: 20px;
     z-index: 9999;
-    padding: 14px 18px;
+    padding: 16px 20px;
     font-size: 22px;
     background: rgba(255,255,255,0.95);
     border: none;
@@ -75,14 +98,13 @@ body {
     box-shadow: 0 5px 15px rgba(0,0,0,0.4);
 }
 
-#zoom-in { right: 80px; }
+#zoom-in { right: 90px; }
 #zoom-out { right: 20px; }
 
 .zoom-btn:active {
     transform: scale(0.95);
 }
 
-/* Indicatore zoom */
 #zoom-indicator {
     position: fixed;
     top: 15px;
@@ -92,7 +114,6 @@ body {
     padding: 6px 12px;
     border-radius: 8px;
     font-size: 14px;
-    z-index: 9999;
 }
 </style>
 </head>
@@ -108,7 +129,6 @@ body {
 </div>
 
 <div id="zoom-indicator">100%</div>
-
 <button id="zoom-in" class="zoom-btn">➕</button>
 <button id="zoom-out" class="zoom-btn">➖</button>
 
@@ -117,7 +137,7 @@ body {
 <script src="https://cdn.jsdelivr.net/npm/page-flip/dist/js/page-flip.browser.min.js"></script>
 
 <script>
-const BASE_WIDTH = 1200;   // 2 pagine
+const BASE_WIDTH = 1200;
 const BASE_HEIGHT = 800;
 
 let scale = 1;
@@ -129,7 +149,7 @@ const zoomLayer = document.getElementById("zoom-layer");
 const viewport = document.getElementById("book-viewport");
 const zoomIndicator = document.getElementById("zoom-indicator");
 
-/* Calcolo zoom minimo per vedere 2 pagine intere */
+/* Calcolo zoom minimo (2 pagine visibili interamente) */
 function calculateMinScale() {
     const scaleX = viewport.clientWidth / BASE_WIDTH;
     const scaleY = viewport.clientHeight / BASE_HEIGHT;
@@ -138,11 +158,14 @@ function calculateMinScale() {
     applyZoom();
 }
 
-/* Applica zoom reale */
+/* Zoom stabile (dimensioni reali aggiornate) */
 function applyZoom() {
-    zoomLayer.style.transform = `scale(${scale})`;
-    zoomLayer.style.width = BASE_WIDTH + "px";
-    zoomLayer.style.height = BASE_HEIGHT + "px";
+    const newWidth = BASE_WIDTH * scale;
+    const newHeight = BASE_HEIGHT * scale;
+
+    zoomLayer.style.width = newWidth + "px";
+    zoomLayer.style.height = newHeight + "px";
+    zoomLayer.style.transform = "none"; // niente scale CSS
 
     zoomIndicator.innerText = Math.round((scale/minScale)*100) + "%";
 }
@@ -158,7 +181,7 @@ document.getElementById("zoom-out").addEventListener("click", () => {
     applyZoom();
 });
 
-/* Zoom con rotellina mouse */
+/* Rotellina mouse */
 viewport.addEventListener("wheel", (e) => {
     if (e.ctrlKey) return;
     e.preventDefault();
@@ -169,9 +192,9 @@ viewport.addEventListener("wheel", (e) => {
 
 /* Caricamento pagine */
 fetch('pages.json')
-.then(response => {
-    if (!response.ok) throw new Error("File pages.json non trovato!");
-    return response.json();
+.then(r => {
+    if (!r.ok) throw new Error("File pages.json non trovato!");
+    return r.json();
 })
 .then(pages => {
     const bookDiv = document.getElementById("book");
@@ -188,17 +211,14 @@ fetch('pages.json')
         bookDiv.appendChild(div);
     });
 
-    const pageFlip = new St.PageFlip(
-        bookDiv,
-        {
-            width: 600,
-            height: 800,
-            size: "fixed",
-            showCover: true,
-            mobileScrollSupport: false,
-            useMouseEvents: true
-        }
-    );
+    const pageFlip = new St.PageFlip(bookDiv, {
+        width: 600,
+        height: 800,
+        size: "fixed",
+        showCover: true,
+        mobileScrollSupport: false,
+        useMouseEvents: true
+    });
 
     pageFlip.loadFromHTML(document.querySelectorAll('.page'));
 
@@ -212,17 +232,17 @@ fetch('pages.json')
 
     calculateMinScale();
 })
-.catch(error => {
+.catch(err => {
     document.getElementById("book").innerHTML =
-    `<h3 style="color: white; text-align: center; margin-top: 50px;">
-        ⚠️ Errore:<br><br>${error.message}
+    `<h3 style="color:white;text-align:center;margin-top:50px;">
+        ⚠️ Errore:<br><br>${err.message}
     </h3>`;
 });
 
-/* Ricalcolo responsivo */
+/* Responsive */
 window.addEventListener("resize", calculateMinScale);
 
-/* Supporto pinch zoom mobile */
+/* Pinch zoom mobile */
 let initialDistance = null;
 
 viewport.addEventListener("touchstart", e => {
