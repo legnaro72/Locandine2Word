@@ -7,39 +7,39 @@
 
 <style>
 body {
-    background: #2c2c2c;
-    display: flex;
-    justify-content: center;
-    align-items: center;
-    height: 100vh;
     margin: 0;
+    background: #2c2c2c;
     overflow: hidden;
+    font-family: sans-serif;
 }
 
-/* Contenitore esterno */
+/* Wrapper principale */
 #book-wrapper {
-    width: 95%;
-    max-width: 1000px;
-    height: 95vh;
     position: relative;
+    width: 100vw;
+    height: 100vh;
     background: #1a1a1a;
-    border-radius: 10px;
     overflow: hidden;
 }
 
-/* Contenitore scrollabile */
-#book-container {
+/* Area scrollabile stabile */
+#book-viewport {
     width: 100%;
     height: 100%;
-    overflow: auto; /* Barre di scorrimento attive */
-    position: relative;
+    overflow: auto;
+    touch-action: pan-x pan-y;
 }
 
-/* Contenuto scalabile */
-#book {
-    width: 100%;
-    height: 100%;
+/* Layer zoom reale */
+#zoom-layer {
+    position: relative;
     transform-origin: top left;
+}
+
+/* Book */
+#book {
+    width: 1200px;   /* 2 pagine base */
+    height: 800px;
 }
 
 /* Pagine */
@@ -61,30 +61,38 @@ body {
     pointer-events: none;
 }
 
-/* Pulsanti zoom */
+/* Pulsanti */
 .zoom-btn {
     position: fixed;
     bottom: 20px;
-    font-size: 24px;
     z-index: 9999;
-    padding: 12px 16px;
-    background: rgba(255,255,255,0.9);
+    padding: 14px 18px;
+    font-size: 22px;
+    background: rgba(255,255,255,0.95);
     border: none;
-    border-radius: 10px;
+    border-radius: 12px;
     cursor: pointer;
-    box-shadow: 0 4px 10px rgba(0,0,0,0.4);
+    box-shadow: 0 5px 15px rgba(0,0,0,0.4);
 }
 
-#zoom-in {
-    right: 80px;
+#zoom-in { right: 80px; }
+#zoom-out { right: 20px; }
+
+.zoom-btn:active {
+    transform: scale(0.95);
 }
 
-#zoom-out {
+/* Indicatore zoom */
+#zoom-indicator {
+    position: fixed;
+    top: 15px;
     right: 20px;
-}
-
-.zoom-btn:hover {
-    background: white;
+    color: white;
+    background: rgba(0,0,0,0.6);
+    padding: 6px 12px;
+    border-radius: 8px;
+    font-size: 14px;
+    z-index: 9999;
 }
 </style>
 </head>
@@ -92,10 +100,14 @@ body {
 <body>
 
 <div id="book-wrapper">
-    <div id="book-container">
-        <div id="book"></div>
+    <div id="book-viewport">
+        <div id="zoom-layer">
+            <div id="book"></div>
+        </div>
     </div>
 </div>
+
+<div id="zoom-indicator">100%</div>
 
 <button id="zoom-in" class="zoom-btn">➕</button>
 <button id="zoom-out" class="zoom-btn">➖</button>
@@ -105,6 +117,57 @@ body {
 <script src="https://cdn.jsdelivr.net/npm/page-flip/dist/js/page-flip.browser.min.js"></script>
 
 <script>
+const BASE_WIDTH = 1200;   // 2 pagine
+const BASE_HEIGHT = 800;
+
+let scale = 1;
+let minScale = 1;
+const maxScale = 4;
+const zoomStep = 0.2;
+
+const zoomLayer = document.getElementById("zoom-layer");
+const viewport = document.getElementById("book-viewport");
+const zoomIndicator = document.getElementById("zoom-indicator");
+
+/* Calcolo zoom minimo per vedere 2 pagine intere */
+function calculateMinScale() {
+    const scaleX = viewport.clientWidth / BASE_WIDTH;
+    const scaleY = viewport.clientHeight / BASE_HEIGHT;
+    minScale = Math.min(scaleX, scaleY);
+    scale = minScale;
+    applyZoom();
+}
+
+/* Applica zoom reale */
+function applyZoom() {
+    zoomLayer.style.transform = `scale(${scale})`;
+    zoomLayer.style.width = BASE_WIDTH + "px";
+    zoomLayer.style.height = BASE_HEIGHT + "px";
+
+    zoomIndicator.innerText = Math.round((scale/minScale)*100) + "%";
+}
+
+/* Pulsanti */
+document.getElementById("zoom-in").addEventListener("click", () => {
+    scale = Math.min(scale + zoomStep, maxScale);
+    applyZoom();
+});
+
+document.getElementById("zoom-out").addEventListener("click", () => {
+    scale = Math.max(scale - zoomStep, minScale);
+    applyZoom();
+});
+
+/* Zoom con rotellina mouse */
+viewport.addEventListener("wheel", (e) => {
+    if (e.ctrlKey) return;
+    e.preventDefault();
+    const delta = e.deltaY < 0 ? zoomStep : -zoomStep;
+    scale = Math.min(Math.max(scale + delta, minScale), maxScale);
+    applyZoom();
+}, { passive: false });
+
+/* Caricamento pagine */
 fetch('pages.json')
 .then(response => {
     if (!response.ok) throw new Error("File pages.json non trovato!");
@@ -130,13 +193,10 @@ fetch('pages.json')
         {
             width: 600,
             height: 800,
-            size: "stretch",
-            minWidth: 315,
-            maxWidth: 1200,
-            minHeight: 400,
-            maxHeight: 1600,
+            size: "fixed",
             showCover: true,
-            mobileScrollSupport: true
+            mobileScrollSupport: false,
+            useMouseEvents: true
         }
     );
 
@@ -146,44 +206,46 @@ fetch('pages.json')
         const audio = document.getElementById("flipSound");
         if(audio) {
             audio.currentTime = 0;
-            audio.play().catch(e => console.log("Audio bloccato"));
+            audio.play().catch(() => {});
         }
     });
+
+    calculateMinScale();
 })
 .catch(error => {
     document.getElementById("book").innerHTML =
     `<h3 style="color: white; text-align: center; margin-top: 50px;">
         ⚠️ Errore:<br><br>${error.message}
     </h3>`;
-    console.error(error);
 });
 
+/* Ricalcolo responsivo */
+window.addEventListener("resize", calculateMinScale);
 
-// --- SCRIPT ZOOM CORRETTO ---
-let scale = 1;
-const zoomStep = 0.2;
-const minScale = 1;
-const maxScale = 3;
+/* Supporto pinch zoom mobile */
+let initialDistance = null;
 
-const book = document.getElementById("book");
-const container = document.getElementById("book-container");
-
-document.getElementById("zoom-in").addEventListener("click", () => {
-    scale = Math.min(scale + zoomStep, maxScale);
-    applyZoom();
+viewport.addEventListener("touchstart", e => {
+    if (e.touches.length === 2) {
+        initialDistance = getDistance(e.touches);
+    }
 });
 
-document.getElementById("zoom-out").addEventListener("click", () => {
-    scale = Math.max(scale - zoomStep, minScale);
-    applyZoom();
-});
+viewport.addEventListener("touchmove", e => {
+    if (e.touches.length === 2 && initialDistance) {
+        e.preventDefault();
+        const newDistance = getDistance(e.touches);
+        const delta = (newDistance - initialDistance) / 300;
+        scale = Math.min(Math.max(scale + delta, minScale), maxScale);
+        applyZoom();
+        initialDistance = newDistance;
+    }
+}, { passive: false });
 
-function applyZoom() {
-    book.style.transform = `scale(${scale})`;
-
-    /* Ridimensiona virtualmente il contenuto per attivare scroll */
-    book.style.width = `${100 * scale}%`;
-    book.style.height = `${100 * scale}%`;
+function getDistance(touches) {
+    const dx = touches[0].clientX - touches[1].clientX;
+    const dy = touches[0].clientY - touches[1].clientY;
+    return Math.sqrt(dx*dx + dy*dy);
 }
 </script>
 
