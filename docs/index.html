@@ -61,14 +61,21 @@
         .zoom-btn {
             padding: 14px 18px;
             font-size: 20px;
-            background: white;
-            border: none;
+            background: rgba(255, 255, 255, 0.5);
+            backdrop-filter: blur(5px);
+            -webkit-backdrop-filter: blur(5px);
+            border: 1px solid rgba(255, 255, 255, 0.3);
             border-radius: 10px;
             cursor: pointer;
             box-shadow: 0 4px 6px rgba(0, 0, 0, 0.3);
             display: flex;
             align-items: center;
             justify-content: center;
+            transition: background 0.2s;
+        }
+
+        .zoom-btn:hover {
+            background: rgba(255, 255, 255, 0.8);
         }
 
         /* Frecce navigazione */
@@ -78,8 +85,10 @@
             transform: translateY(-50%);
             z-index: 9998;
             font-size: 40px;
-            background: rgba(255, 255, 255, 0.7);
-            border: none;
+            background: rgba(255, 255, 255, 0.5);
+            backdrop-filter: blur(5px);
+            -webkit-backdrop-filter: blur(5px);
+            border: 1px solid rgba(255, 255, 255, 0.3);
             border-radius: 50%;
             width: 60px;
             height: 60px;
@@ -87,6 +96,11 @@
             display: flex;
             align-items: center;
             justify-content: center;
+            transition: background 0.2s;
+        }
+
+        .nav-btn:hover {
+            background: rgba(255, 255, 255, 0.8);
         }
 
         #prev {
@@ -174,8 +188,6 @@
         <button id="audio-toggle" class="zoom-btn" title="Mute/Unmute Musica">🔊</button>
         <button id="fullscreen-toggle" class="zoom-btn" title="Full Screen">⛶</button>
         <button id="zoom-reset" class="zoom-btn" title="Mostra 2 Pagine">🏚️</button>
-        <button id="zoom-in" class="zoom-btn">➕</button>
-        <button id="zoom-out" class="zoom-btn">➖</button>
     </div>
 
     <button id="prev" class="nav-btn">⟨</button>
@@ -260,17 +272,29 @@
             zoomIndicator.innerText = Math.round(scale * 100) + "%";
         }
 
-        /* ==== ZOOM CONTROLS ==== */
-        document.getElementById("zoom-in").onclick = (e) => {
-            e.stopPropagation();
-            scale += 0.2;
+        /* ==== ZOOM CONTROLS E ROTTELLA (WHEEL) ==== */
+        wrapper.addEventListener('wheel', (e) => {
+            e.preventDefault();
+
+            // Trova il punto esatto del mouse per zoomare verso di esso
+            const rect = wrapper.getBoundingClientRect();
+            const mouseX = e.clientX - rect.left;
+            const mouseY = e.clientY - rect.top;
+
+            const offsetX = (mouseX - posX) / scale;
+            const offsetY = (mouseY - posY) / scale;
+
+            // Determina la direzione dello zoom dalla rotellina del mouse
+            const zoomAmount = e.deltaY > 0 ? -0.15 : 0.15;
+            let newScale = Math.min(Math.max(scale + zoomAmount, 0.05), maxScale);
+
+            scale = newScale;
+            posX = mouseX - offsetX * scale;
+            posY = mouseY - offsetY * scale;
+
             updateTransform();
-        };
-        document.getElementById("zoom-out").onclick = (e) => {
-            e.stopPropagation();
-            scale = Math.max(scale - 0.2, 0.05);
-            updateTransform();
-        };
+        }, { passive: false });
+
         document.getElementById("zoom-reset").onclick = (e) => {
             e.stopPropagation();
             calculateInitialScale();
@@ -490,12 +514,14 @@
                 let musicStarted = false;
 
                 function startMusic() {
+                    console.log("▶️ Tentativo di avvio audio...");
                     if (!musicStarted) {
                         bgMusic.play().then(() => {
+                            console.log("✅ Audio avviato con successo!");
                             musicStarted = true;
                             audioToggleBtn.innerText = "🔊";
                         }).catch(err => {
-                            console.log("Audio autoplay blocked, requires manual interaction.", err);
+                            console.log("⚠️ Audio autoplay bloccato dal browser (richiede interazione utente).", err);
                         });
                     }
                 }
