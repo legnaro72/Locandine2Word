@@ -3,12 +3,10 @@
 <head>
 <meta charset="UTF-8">
 
-      
 <meta name="viewport" 
       content="width=device-width, 
                initial-scale=1.0, 
-               maximum-scale=1.0, 
-               user-scalable=no, 
+               maximum-scale=1.0,
                viewport-fit=cover">
 
 <title>Flipbook Album</title>
@@ -43,6 +41,7 @@ html, body {
     background: #1a1a1a;
     position: relative;
     overflow: hidden;
+    touch-action: none;
 }
 
 #zoom-layer {
@@ -50,17 +49,11 @@ html, body {
     height: 800px;
     transform-origin: 0 0;
     position: absolute;
-    will-change: transform;
 }
 
 #book {
     width: 1200px;
     height: 800px;
-}
-
-.page {
-    background: white;
-    overflow: hidden;
 }
 
 .page img {
@@ -70,7 +63,6 @@ html, body {
     pointer-events: none;
 }
 
-/* Pulsanti */
 button {
     position: fixed;
     z-index: 9999;
@@ -78,7 +70,7 @@ button {
     cursor: pointer;
 }
 
-/* Zoom */
+/* Pulsanti */
 .zoom-btn {
     bottom: 20px;
     padding: 14px 18px;
@@ -90,7 +82,6 @@ button {
 #zoom-out { right: 80px; }
 #reset-zoom { right: 20px; }
 
-/* Fullscreen */
 #fullscreen-btn {
     top: 15px;
     left: 15px;
@@ -99,7 +90,6 @@ button {
     padding: 8px 12px;
 }
 
-/* Frecce */
 .nav-btn {
     top: 50%;
     transform: translateY(-50%);
@@ -158,52 +148,48 @@ const BASE_HEIGHT = 800;
 
 let scale = 1;
 let maxScale = window.innerWidth < 900 ? 12 : 8;
-
 let posX = 0;
 let posY = 0;
+
 let pageFlip;
+let initialDistance = null;
+let initialScale = 1;
+let fullscreenActivated = false;
 
 const zoomLayer = document.getElementById("zoom-layer");
 const wrapper = document.getElementById("book-wrapper");
 const zoomIndicator = document.getElementById("zoom-indicator");
-const rotateWarning = document.getElementById("rotate-warning");
 const flipSound = document.getElementById("flipSound");
 
 const isMobile = window.innerWidth < 900;
 
-/* ================= LANDSCAPE LOCK ================= */
-
+/* LANDSCAPE LOCK */
 function checkOrientation() {
     if (isMobile && window.innerHeight > window.innerWidth) {
-        rotateWarning.style.display = "flex";
+        document.getElementById("rotate-warning").style.display = "flex";
     } else {
-        rotateWarning.style.display = "none";
+        document.getElementById("rotate-warning").style.display = "none";
     }
 }
-
 window.addEventListener("resize", checkOrientation);
 window.addEventListener("orientationchange", checkOrientation);
 checkOrientation();
 
-/* ================= FULLSCREEN ================= */
-
+/* FULLSCREEN */
 function enterFullscreen() {
-    const el = document.documentElement;
-    if (el.requestFullscreen) el.requestFullscreen();
-    else if (el.webkitRequestFullscreen) el.webkitRequestFullscreen();
+    if (!fullscreenActivated) {
+        const el = document.documentElement;
+        if (el.requestFullscreen) el.requestFullscreen();
+        else if (el.webkitRequestFullscreen) el.webkitRequestFullscreen();
+        fullscreenActivated = true;
+    }
 }
 
-document.getElementById("fullscreen-btn").onclick = enterFullscreen;
+wrapper.addEventListener("pointerdown", () => {
+    if (isMobile) enterFullscreen();
+});
 
-/* Auto fullscreen mobile */
-if (isMobile) {
-    setTimeout(() => {
-        enterFullscreen();
-    }, 500);
-}
-
-/* ================= SCALE ================= */
-
+/* SCALE */
 function calculateInitialScale() {
     const scaleX = wrapper.clientWidth / BASE_WIDTH;
     const scaleY = wrapper.clientHeight / BASE_HEIGHT;
@@ -212,29 +198,16 @@ function calculateInitialScale() {
 }
 
 function centerContent() {
-    const scaledWidth = BASE_WIDTH * scale;
-    const scaledHeight = BASE_HEIGHT * scale;
-
-    posX = (wrapper.clientWidth - scaledWidth) / 2;
-    posY = (wrapper.clientHeight - scaledHeight) / 2;
+    posX = (wrapper.clientWidth - BASE_WIDTH * scale) / 2;
+    posY = (wrapper.clientHeight - BASE_HEIGHT * scale) / 2;
 }
 
 function clampPosition() {
-    const scaledWidth = BASE_WIDTH * scale;
-    const scaledHeight = BASE_HEIGHT * scale;
+    const minX = wrapper.clientWidth - BASE_WIDTH * scale;
+    const minY = wrapper.clientHeight - BASE_HEIGHT * scale;
 
-    const minX = wrapper.clientWidth - scaledWidth;
-    const minY = wrapper.clientHeight - scaledHeight;
-
-    if (scaledWidth > wrapper.clientWidth)
-        posX = Math.min(0, Math.max(minX, posX));
-    else
-        posX = (wrapper.clientWidth - scaledWidth) / 2;
-
-    if (scaledHeight > wrapper.clientHeight)
-        posY = Math.min(0, Math.max(minY, posY));
-    else
-        posY = (wrapper.clientHeight - scaledHeight) / 2;
+    posX = Math.min(0, Math.max(minX, posX));
+    posY = Math.min(0, Math.max(minY, posY));
 }
 
 function updateTransform() {
@@ -244,51 +217,67 @@ function updateTransform() {
     zoomIndicator.innerText = Math.round(scale * 100) + "%";
 }
 
-/* ================= ZOOM ================= */
+/* PINCH ZOOM */
+wrapper.addEventListener("pointermove", e => {
+    if (e.pointerType === "touch" && e.isPrimary === false) {
+        const touches = e.targetTouches || [];
+    }
+});
 
+wrapper.addEventListener("touchstart", e => {
+    if (e.touches.length === 2) {
+        initialDistance = getDistance(e.touches[0], e.touches[1]);
+        initialScale = scale;
+    }
+});
+
+wrapper.addEventListener("touchmove", e => {
+    if (e.touches.length === 2) {
+        const newDistance = getDistance(e.touches[0], e.touches[1]);
+        scale = Math.min(maxScale,
+                Math.max(0.1, initialScale * (newDistance / initialDistance)));
+        updateTransform();
+    }
+});
+
+function getDistance(p1, p2) {
+    return Math.hypot(
+        p2.clientX - p1.clientX,
+        p2.clientY - p1.clientY
+    );
+}
+
+/* DOUBLE TAP */
+let lastTap = 0;
+
+wrapper.addEventListener("touchend", e => {
+    const now = Date.now();
+    if (now - lastTap < 300) {
+        scale = scale > 1 ? 1 : 2;
+        calculateInitialScale();
+        updateTransform();
+    }
+    lastTap = now;
+});
+
+/* ZOOM BUTTONS */
 document.getElementById("zoom-in").onclick = () => {
     scale = Math.min(scale + 0.3, maxScale);
     updateTransform();
 };
-
 document.getElementById("zoom-out").onclick = () => {
-    scale = Math.max(scale - 0.3, 0.05);
+    scale = Math.max(scale - 0.3, 0.1);
     updateTransform();
 };
-
 document.getElementById("reset-zoom").onclick = () => {
     calculateInitialScale();
     updateTransform();
 };
 
-/* ================= DRAG ================= */
-
-let isDragging = false;
-let startX, startY;
-
-wrapper.addEventListener("pointerdown", e => {
-    isDragging = true;
-    startX = e.clientX - posX;
-    startY = e.clientY - posY;
-});
-
-wrapper.addEventListener("pointermove", e => {
-    if (isDragging) {
-        posX = e.clientX - startX;
-        posY = e.clientY - startY;
-        updateTransform();
-    }
-});
-
-wrapper.addEventListener("pointerup", () => {
-    isDragging = false;
-});
-
-/* ================= NAV ================= */
-
+/* NAV */
 function playFlipFeedback() {
     flipSound.currentTime = 0;
-    flipSound.play().catch(() => {});
+    flipSound.play().catch(()=>{});
     if (navigator.vibrate) navigator.vibrate(20);
 }
 
@@ -296,14 +285,12 @@ document.getElementById("next").onclick = () => {
     pageFlip.flipNext();
     playFlipFeedback();
 };
-
 document.getElementById("prev").onclick = () => {
     pageFlip.flipPrev();
     playFlipFeedback();
 };
 
-/* ================= LOAD ================= */
-
+/* LOAD */
 fetch('pages.json')
 .then(r => r.json())
 .then(pages => {
@@ -312,11 +299,9 @@ fetch('pages.json')
 
     pages.forEach(p => {
         const div = document.createElement("div");
-        div.className = "page " + p.type;
-
+        div.className = "page";
         const img = document.createElement("img");
         img.src = p.image;
-
         div.appendChild(img);
         bookDiv.appendChild(div);
     });
