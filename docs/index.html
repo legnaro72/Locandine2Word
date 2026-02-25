@@ -13,54 +13,32 @@ body {
     overflow: hidden;
 }
 
-/* WRAPPER */
 #book-wrapper {
     width: 100vw;
     height: 100vh;
     background: #1a1a1a;
     position: relative;
     overflow: hidden;
+    touch-action: none;
 }
 
-/* VIEWPORT */
-#book-viewport {
-    width: 100%;
-    height: 100%;
-    overflow: auto;
-    position: relative;
-}
-
-/* Scrollbar desktop */
-#book-viewport::-webkit-scrollbar {
-    width: 16px;
-    height: 16px;
-}
-#book-viewport::-webkit-scrollbar-thumb {
-    background: rgba(255,255,255,0.6);
-    border-radius: 8px;
-}
-
-/* ZOOM LAYER */
 #zoom-layer {
     width: 1200px;
     height: 800px;
     transform-origin: 0 0;
     position: absolute;
-    top: 0;
-    left: 0;
 }
 
-/* BOOK */
 #book {
     width: 1200px;
     height: 800px;
 }
 
-/* PAGE */
 .page {
     background: white;
     overflow: hidden;
 }
+
 .page img {
     width: 100%;
     height: 100%;
@@ -68,7 +46,7 @@ body {
     pointer-events: none;
 }
 
-/* ZOOM BUTTONS */
+/* Zoom buttons */
 .zoom-btn {
     position: fixed;
     bottom: 20px;
@@ -83,7 +61,7 @@ body {
 #zoom-in { right: 90px; }
 #zoom-out { right: 20px; }
 
-/* NAVIGATION ARROWS */
+/* Navigation arrows */
 .nav-btn {
     position: fixed;
     top: 50%;
@@ -115,10 +93,8 @@ body {
 <body>
 
 <div id="book-wrapper">
-    <div id="book-viewport">
-        <div id="zoom-layer">
-            <div id="book"></div>
-        </div>
+    <div id="zoom-layer">
+        <div id="book"></div>
     </div>
 </div>
 
@@ -139,7 +115,6 @@ const BASE_WIDTH = 1200;
 const BASE_HEIGHT = 800;
 
 let scale = 1;
-let minScale = 0.2;
 let maxScale = 8;
 
 let posX = 0;
@@ -151,14 +126,30 @@ const zoomLayer = document.getElementById("zoom-layer");
 const wrapper = document.getElementById("book-wrapper");
 const zoomIndicator = document.getElementById("zoom-indicator");
 
-function clampPosition() {
-    const maxX = 0;
-    const maxY = 0;
-    const minX = wrapper.clientWidth - BASE_WIDTH * scale;
-    const minY = wrapper.clientHeight - BASE_HEIGHT * scale;
+/* ==== CENTRATURA AUTOMATICA ==== */
+function centerIfSmaller() {
+    const scaledWidth = BASE_WIDTH * scale;
+    const scaledHeight = BASE_HEIGHT * scale;
 
-    posX = Math.min(maxX, Math.max(minX, posX));
-    posY = Math.min(maxY, Math.max(minY, posY));
+    if (scaledWidth < wrapper.clientWidth) {
+        posX = (wrapper.clientWidth - scaledWidth) / 2;
+    }
+    if (scaledHeight < wrapper.clientHeight) {
+        posY = (wrapper.clientHeight - scaledHeight) / 2;
+    }
+}
+
+function clampPosition() {
+    const scaledWidth = BASE_WIDTH * scale;
+    const scaledHeight = BASE_HEIGHT * scale;
+
+    const minX = wrapper.clientWidth - scaledWidth;
+    const minY = wrapper.clientHeight - scaledHeight;
+
+    posX = Math.min(0, Math.max(minX, posX));
+    posY = Math.min(0, Math.max(minY, posY));
+
+    centerIfSmaller();
 }
 
 function updateTransform() {
@@ -174,11 +165,11 @@ document.getElementById("zoom-in").onclick = () => {
     updateTransform();
 };
 document.getElementById("zoom-out").onclick = () => {
-    scale = Math.max(scale - 0.2, minScale);
+    scale = Math.max(scale - 0.2, 1);
     updateTransform();
 };
 
-/* ==== DOUBLE CLICK / DOUBLE TAP ==== */
+/* ==== DOUBLE CLICK / TAP ==== */
 let lastTap = 0;
 
 wrapper.addEventListener("pointerup", e => {
@@ -196,7 +187,7 @@ wrapper.addEventListener("pointerup", e => {
     lastTap = now;
 });
 
-/* ==== DRAG ==== */
+/* ==== DRAG SOLO PER MUOVERE (NO PAGE FLIP) ==== */
 let isDragging = false;
 let startX, startY;
 
@@ -218,7 +209,7 @@ wrapper.addEventListener("pointerup", () => {
     isDragging = false;
 });
 
-/* ==== NAVIGATION ==== */
+/* ==== FRECCE ==== */
 document.getElementById("next").onclick = () => pageFlip.flipNext();
 document.getElementById("prev").onclick = () => pageFlip.flipPrev();
 
@@ -246,11 +237,12 @@ fetch('pages.json')
         size: "fixed",
         showCover: true,
         mobileScrollSupport: false,
-        useMouseEvents: true
+        useMouseEvents: false  // DISABILITA SWIPE
     });
 
     pageFlip.loadFromHTML(document.querySelectorAll('.page'));
 
+    updateTransform();
 });
 </script>
 
