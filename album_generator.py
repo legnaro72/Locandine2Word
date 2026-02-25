@@ -649,7 +649,7 @@ class AlbumGenerator:
         tw = bbox[2] - bbox[0]
         draw.text(((self.PAGE_W - tw) // 2, current_y), title,
                  fill=self.COLOR_HEADER_TEXT, font=font_title)
-        current_y += 55
+        current_y += 140 # Aumentato ulteriormente per evitare sovrapposizioni (font size 92!)
 
         # Sottotitolo
         font_sub = self._get_font(26, bold=True)
@@ -824,6 +824,26 @@ class AlbumGenerator:
         back_path = os.path.join(output_dir, "album_zzz_back.png")
         back_rgb.save(back_path, "PNG", quality=95)
         return back_path
+
+    def generate_logo_page(self, output_dir, filename="album_page_guard.png"):
+        """Genera una pagina di 'cartone' (sfondo album) con il logo centrale."""
+        page = Image.new("RGBA", (self.PAGE_W, self.PAGE_H), (255, 255, 255, 255))
+        self._apply_bg_to_page(page)
+        self._draw_page_frame(page)
+        
+        # Prepara il logo grande centrale
+        if self.logo_image:
+            logo = self._prepare_logo(self.logo_image, target_size=900)
+            lx = (self.PAGE_W - logo.size[0]) // 2
+            ly = (self.PAGE_H - logo.size[1]) // 2
+            page.paste(logo, (lx, ly), logo)
+
+        # Salva a 300 DPI
+        page_rgb = self._page_to_rgb(page)
+        page_rgb = page_rgb.resize((2480, 3508), Image.LANCZOS)
+        path = os.path.join(output_dir, filename)
+        page_rgb.save(path, "PNG", quality=95)
+        return path
 
     # ---------------------------------------------------------------
     #  PAGINE FIGURINE
@@ -1002,12 +1022,14 @@ class AlbumGenerator:
         valid_events = [ev for ev in events if self._resolve_image_path(ev.get('image_path', ''))]
 
         cover_path = self.generate_cover(len(valid_events), output_dir)
+        guard_front = self.generate_logo_page(output_dir, "album_page_000_guard_f.png")
         pages_full, pages_empty = self.generate_album_pages(events, output_dir)
+        guard_back = self.generate_logo_page(output_dir, "album_page_zzz_guard_b.png")
         back_path = self.generate_back_cover(len(valid_events), output_dir)
 
         # Genera PDF combinato Pieno
         pdf_buffer = None
-        all_pages_full = [cover_path] + pages_full + [back_path]
+        all_pages_full = [cover_path, guard_front] + pages_full + [guard_back, back_path]
         try:
             images = []
             first_img = Image.open(all_pages_full[0]).convert("RGB")
@@ -1024,7 +1046,7 @@ class AlbumGenerator:
         # Genera PDF combinato Vuoto (se richiesto)
         pdf_empty_buffer = None
         if self.empty_album_mode and pages_empty:
-            all_pages_empty = [cover_path] + pages_empty + [back_path]
+            all_pages_empty = [cover_path, guard_front] + pages_empty + [guard_back, back_path]
             try:
                 images_e = []
                 first_img_e = Image.open(all_pages_empty[0]).convert("RGB")
@@ -1038,7 +1060,10 @@ class AlbumGenerator:
                 print(f"Errore generazione PDF vuoto: {e}")
                 pdf_empty_buffer = None
 
-        # Aggiungiamo il back cover alla lista pagine per la preview
+        # Aggiungiamo le pagine di guardia e il back cover alla lista pagine per la preview
+        # Inseriamo guard_front all'inizio (dopo cover) e guard_back alla fine (prima di back)
+        pages_full.insert(0, guard_front)
+        pages_full.append(guard_back)
         pages_full.append(back_path)
 
         zip_buffer = None
