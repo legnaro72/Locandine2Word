@@ -77,11 +77,10 @@
         "type": "carta",
         "dpi": 300
     },
-	    {
+    {
         "page_number": 14,
         "image": "images/page_14.jpg",
         "type": "cartone",
         "dpi": 300
     }
-
 ]
