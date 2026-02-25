@@ -2,18 +2,22 @@
 <html lang="it">
 <head>
 <meta charset="UTF-8">
-<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no">
-    
-<title>Album Flipbook</title>
+
+<meta name="viewport"
+      content="width=device-width,
+               initial-scale=1,
+               maximum-scale=1,
+               user-scalable=no">
+
+<title>Flip Album</title>
 
 <style>
 html, body {
     margin: 0;
     padding: 0;
-    overflow: hidden;
-    background: #111;
-    touch-action: none;
     height: 100%;
+    background: #111;
+    overflow: hidden;
 }
 
 #viewer {
@@ -23,11 +27,14 @@ html, body {
     justify-content: center;
     align-items: center;
     position: relative;
+    overflow: hidden;
 }
 
 #album-wrapper {
+    display: flex;
+    justify-content: center;
+    align-items: center;
     transform-origin: center center;
-    transition: transform 0.1s ease-out;
 }
 
 #album {
@@ -36,13 +43,14 @@ html, body {
 }
 
 .page {
-    width: 45vw;
+    width: 42vw;
+    height: 60vh;
     max-width: 500px;
-    height: 65vh;
-    background: white;
-    box-shadow: 0 0 20px rgba(0,0,0,0.6);
-    background-size: cover;
+    background: #fff;
+    background-size: contain;
+    background-repeat: no-repeat;
     background-position: center;
+    box-shadow: 0 0 20px rgba(0,0,0,0.6);
 }
 
 /* Frecce */
@@ -52,11 +60,11 @@ html, body {
     transform: translateY(-50%);
     font-size: 40px;
     color: white;
-    background: rgba(0,0,0,0.5);
+    background: rgba(0,0,0,0.4);
+    padding: 10px 16px;
     border-radius: 50%;
-    padding: 10px 15px;
-    cursor: pointer;
     user-select: none;
+    cursor: pointer;
 }
 
 #prev { left: 20px; }
@@ -73,50 +81,47 @@ html, body {
         </div>
     </div>
 
-    <div class="arrow" id="prev">&#10094;</div>
-    <div class="arrow" id="next">&#10095;</div>
+    <div id="prev" class="arrow">&#10094;</div>
+    <div id="next" class="arrow">&#10095;</div>
 </div>
 
 <script>
-/* ------------------ IMMAGINI ------------------ */
+/* ---------- IMMAGINI ---------- */
 const images = [
     "page1.jpg",
     "page2.jpg",
     "page3.jpg",
-    "page4.jpg",
-    "page5.jpg",
-    "page6.jpg"
+    "page4.jpg"
 ];
 
-/* ------------------ PAGINAZIONE ------------------ */
-let currentIndex = 0;
+let index = 0;
 
-const leftPage = document.getElementById("page-left");
-const rightPage = document.getElementById("page-right");
+const left = document.getElementById("page-left");
+const right = document.getElementById("page-right");
 
-function renderPages() {
-    leftPage.style.backgroundImage = `url(${images[currentIndex]})`;
-    rightPage.style.backgroundImage = `url(${images[currentIndex+1] || ""})`;
+function render() {
+    left.style.backgroundImage = `url(${images[index]})`;
+    right.style.backgroundImage = `url(${images[index+1] || ""})`;
 }
+render();
 
+/* ---------- FRECCE ---------- */
 document.getElementById("next").onclick = () => {
-    if (currentIndex < images.length - 2) {
-        currentIndex += 2;
-        renderPages();
+    if (index < images.length - 2) {
+        index += 2;
+        render();
     }
 };
 
 document.getElementById("prev").onclick = () => {
-    if (currentIndex > 0) {
-        currentIndex -= 2;
-        renderPages();
+    if (index > 0) {
+        index -= 2;
+        render();
     }
 };
 
-renderPages();
-
-/* ------------------ FULLSCREEN ------------------ */
-let fullscreenDone = false;
+/* ---------- FULLSCREEN ---------- */
+let fsDone = false;
 
 function enableFullscreen() {
     const el = document.documentElement;
@@ -125,20 +130,18 @@ function enableFullscreen() {
 }
 
 document.addEventListener("touchstart", () => {
-    if (!fullscreenDone) {
+    if (!fsDone) {
         enableFullscreen();
-        fullscreenDone = true;
+        fsDone = true;
     }
 }, { once: true });
 
-/* ------------------ ZOOM ------------------ */
+/* ---------- ZOOM STABILE ---------- */
 const wrapper = document.getElementById("album-wrapper");
 
 let scale = 1;
 let lastScale = 1;
-let startDistance = 0;
-let translateX = 0;
-let translateY = 0;
+let startDist = 0;
 let lastTap = 0;
 
 function getDistance(touches) {
@@ -148,15 +151,14 @@ function getDistance(touches) {
     );
 }
 
-function updateTransform() {
-    wrapper.style.transform =
-        `translate(${translateX}px, ${translateY}px) scale(${scale})`;
+function update() {
+    wrapper.style.transform = `scale(${scale})`;
 }
 
 /* PINCH */
-wrapper.addEventListener("touchstart", (e) => {
+wrapper.addEventListener("touchstart", e => {
     if (e.touches.length === 2) {
-        startDistance = getDistance(e.touches);
+        startDist = getDistance(e.touches);
     }
 
     /* DOUBLE TAP */
@@ -164,42 +166,30 @@ wrapper.addEventListener("touchstart", (e) => {
     if (now - lastTap < 300) {
         if (scale === 1) {
             scale = 2;
-
-            const rect = wrapper.getBoundingClientRect();
-            const touch = e.touches[0];
-
-            translateX = (window.innerWidth / 2 - touch.clientX) * (scale - 1);
-            translateY = (window.innerHeight / 2 - touch.clientY) * (scale - 1);
         } else {
             scale = 1;
-            translateX = 0;
-            translateY = 0;
         }
-        updateTransform();
+        lastScale = scale;
+        update();
     }
     lastTap = now;
 
-}, { passive: false });
+}, { passive: true });
 
-wrapper.addEventListener("touchmove", (e) => {
+wrapper.addEventListener("touchmove", e => {
     if (e.touches.length === 2) {
-        e.preventDefault();
-        const newDistance = getDistance(e.touches);
-        scale = lastScale * (newDistance / startDistance);
+        const newDist = getDistance(e.touches);
+        scale = lastScale * (newDist / startDist);
         if (scale < 1) scale = 1;
-        updateTransform();
+        update();
     }
-}, { passive: false });
+}, { passive: true });
 
-wrapper.addEventListener("touchend", (e) => {
-    if (e.touches.length < 2) {
-        lastScale = scale;
+wrapper.addEventListener("touchend", e => {
+    lastScale = scale;
 
-        if (scale === 1) {
-            translateX = 0;
-            translateY = 0;
-        }
-        updateTransform();
+    if (scale === 1) {
+        wrapper.style.transform = "scale(1)";
     }
 });
 </script>
