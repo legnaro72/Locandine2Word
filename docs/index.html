@@ -1,371 +1,440 @@
 <!DOCTYPE html>
 <html lang="it">
+
 <head>
-<meta charset="UTF-8">
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>Flipbook Album</title>
 
-<meta name="viewport" 
-      content="width=device-width, 
-               initial-scale=1.0, 
-               maximum-scale=1.0, 
-               user-scalable=no, 
-               viewport-fit=cover">
 
-<title>Flipbook Album</title>
+    <style>
+        body {
+            margin: 0;
+            background: #2c2c2c;
+            font-family: sans-serif;
+            overflow: hidden;
+        }
 
-<style>
-html, body {
-    margin: 0;
-    padding: 0;
-    width: 100%;
-    height: 100dvh;
-    background: #2c2c2c;
-    font-family: sans-serif;
-    overflow: hidden;
-    touch-action: none;
-}
+        #book-wrapper {
+            width: 100vw;
+            height: 100vh;
+            background: #1a1a1a;
+            position: relative;
+            overflow: hidden;
+            touch-action: none;
+        }
 
-#book-wrapper {
-    width: 100vw;
-    height: 100dvh;
-    background: #1a1a1a;
-    position: relative;
-    overflow: hidden;
-    touch-action: none;
-}
+        #zoom-layer {
+            width: 1200px;
+            height: 800px;
+            transform-origin: 0 0;
+            position: absolute;
+        }
 
-#zoom-layer {
-    width: 1200px;
-    height: 800px;
-    transform-origin: 0 0;
-    position: absolute;
-    will-change: transform;
-}
+        #book {
+            width: 1200px;
+            height: 800px;
+        }
 
-#book {
-    width: 1200px;
-    height: 800px;
-}
+        .page {
+            background: white;
+            overflow: hidden;
+        }
 
-.page {
-    background: white;
-    overflow: hidden;
-}
+        .page img {
+            width: 100%;
+            height: 100%;
+            object-fit: contain;
+            pointer-events: none;
+        }
 
-.page img {
-    width: 100%;
-    height: 100%;
-    object-fit: contain;
-    pointer-events: none;
-}
+        /* Pulsanti zoom e controlli */
+        .controls-container {
+            position: fixed;
+            bottom: 20px;
+            right: 20px;
+            display: flex;
+            gap: 10px;
+            z-index: 9999;
+        }
 
-/* UI */
-.zoom-btn,
-.nav-btn,
-#zoom-indicator {
-    transition: opacity 0.3s ease;
-}
+        .zoom-btn {
+            padding: 14px 18px;
+            font-size: 20px;
+            background: white;
+            border: none;
+            border-radius: 10px;
+            cursor: pointer;
+            box-shadow: 0 4px 6px rgba(0, 0, 0, 0.3);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+        }
 
-.hidden-ui {
-    opacity: 0;
-    pointer-events: none;
-}
+        /* Frecce navigazione */
+        .nav-btn {
+            position: fixed;
+            top: 50%;
+            transform: translateY(-50%);
+            z-index: 9998;
+            font-size: 40px;
+            background: rgba(255, 255, 255, 0.7);
+            border: none;
+            border-radius: 50%;
+            width: 60px;
+            height: 60px;
+            cursor: pointer;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+        }
 
-/* Pulsanti zoom */
-.zoom-btn {
-    position: fixed;
-    bottom: 20px;
-    z-index: 9999;
-    padding: 16px 20px;
-    font-size: 22px;
-    background: white;
-    border: none;
-    border-radius: 12px;
-    cursor: pointer;
-}
-#zoom-in { right: 100px; }
-#zoom-out { right: 20px; }
+        #prev {
+            left: 15px;
+        }
 
-/* Frecce */
-.nav-btn {
-    position: fixed;
-    top: 50%;
-    transform: translateY(-50%);
-    z-index: 9999;
-    font-size: 42px;
-    background: rgba(255,255,255,0.9);
-    border: none;
-    border-radius: 50%;
-    width: 70px;
-    height: 70px;
-    cursor: pointer;
-}
-#prev { left: 15px; }
-#next { right: 15px; }
+        #next {
+            right: 15px;
+        }
 
-#zoom-indicator {
-    position: fixed;
-    top: 15px;
-    right: 20px;
-    color: white;
-    background: rgba(0,0,0,0.6);
-    padding: 6px 12px;
-    border-radius: 8px;
-}
-</style>
+        #zoom-indicator {
+            position: fixed;
+            top: 15px;
+            right: 20px;
+            color: white;
+            background: rgba(0, 0, 0, 0.6);
+            padding: 6px 12px;
+            border-radius: 8px;
+            z-index: 9999;
+        }
+
+        #mobile-start-overlay {
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100vw;
+            height: 100vh;
+            background: rgba(0, 0, 0, 0.8);
+            display: none;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            z-index: 10000;
+            color: white;
+            text-align: center;
+        }
+
+        #mobile-start-overlay button {
+            margin-top: 20px;
+            padding: 15px 30px;
+            font-size: 20px;
+            border-radius: 30px;
+            border: none;
+            background: #007bff;
+            color: white;
+            cursor: pointer;
+        }
+
+        #portrait-warning {
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100vw;
+            height: 100vh;
+            background: #1a1a1a;
+            color: white;
+            display: none;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            z-index: 10001;
+            text-align: center;
+            padding: 20px;
+        }
+
+        @media screen and (orientation: portrait) and (max-width: 1024px) {
+            #portrait-warning {
+                display: flex;
+            }
+        }
+    </style>
 </head>
 
 <body>
 
-<div id="book-wrapper">
-    <div id="zoom-layer">
-        <div id="book"></div>
+    <div id="book-wrapper">
+        <div id="zoom-layer">
+            <div id="book"></div>
+        </div>
     </div>
-</div>
 
-<div id="zoom-indicator">100%</div>
+    <div id="zoom-indicator">100%</div>
 
-<button id="zoom-in" class="zoom-btn">➕</button>
-<button id="zoom-out" class="zoom-btn">➖</button>
+    <div class="controls-container">
+        <button id="fullscreen-toggle" class="zoom-btn" title="Full Screen">⛶</button>
+        <button id="zoom-reset" class="zoom-btn" title="Mostra 2 Pagine">🏚️</button>
+        <button id="zoom-in" class="zoom-btn">➕</button>
+        <button id="zoom-out" class="zoom-btn">➖</button>
+    </div>
 
-<button id="prev" class="nav-btn">⟨</button>
-<button id="next" class="nav-btn">⟩</button>
+    <button id="prev" class="nav-btn">⟨</button>
+    <button id="next" class="nav-btn">⟩</button>
 
-<audio id="flipSound" src="flip.mp3"></audio>
+    <div id="mobile-start-overlay">
+        <h2>Album Flipbook</h2>
+        <p>Tocca per visualizzare in modalità panoramica</p>
+        <button id="start-app">INIZIA</button>
+    </div>
 
-<script src="https://cdn.jsdelivr.net/npm/page-flip/dist/js/page-flip.browser.min.js"></script>
+    <!-- Portrait Warning -->
+    <div id="portrait-warning">
+        <div class="warning-content">
+            <span style="font-size: 50px;">🔄</span>
+            <p>Per una visione ottimale, ruota il dispositivo in orizzontale</p>
+        </div>
+    </div>
 
-<script>
-const BASE_WIDTH = 1200;
-const BASE_HEIGHT = 800;
+    <audio id="flipSound" src="flip.mp3"></audio>
 
-let scale = 1;
-let maxScale = window.innerWidth < 900 ? 12 : 8;
+    <script src="https://cdn.jsdelivr.net/npm/page-flip/dist/js/page-flip.browser.min.js"></script>
 
-let posX = 0;
-let posY = 0;
+    <script>
+        const BASE_WIDTH = 1200;
+        const BASE_HEIGHT = 800;
 
-let pageFlip;
+        let scale = 1;
+        let maxScale = 8;
 
-const zoomLayer = document.getElementById("zoom-layer");
-const wrapper = document.getElementById("book-wrapper");
-const zoomIndicator = document.getElementById("zoom-indicator");
+        let posX = 0;
+        let posY = 0;
 
-const zoomInBtn = document.getElementById("zoom-in");
-const zoomOutBtn = document.getElementById("zoom-out");
-const prevBtn = document.getElementById("prev");
-const nextBtn = document.getElementById("next");
-const flipSound = document.getElementById("flipSound");
+        let pageFlip;
 
-let uiTimeout;
+        const zoomLayer = document.getElementById("zoom-layer");
+        const wrapper = document.getElementById("book-wrapper");
+        const zoomIndicator = document.getElementById("zoom-indicator");
 
-/* ================= UI CONTROL ================= */
-
-function showUI() {
-    zoomInBtn.classList.remove("hidden-ui");
-    zoomOutBtn.classList.remove("hidden-ui");
-    prevBtn.classList.remove("hidden-ui");
-    nextBtn.classList.remove("hidden-ui");
-    zoomIndicator.classList.remove("hidden-ui");
-
-    clearTimeout(uiTimeout);
-    uiTimeout = setTimeout(() => {
-        if (scale > 1) hideUI();
-    }, 3000);
-}
-
-function hideUI() {
-    zoomInBtn.classList.add("hidden-ui");
-    zoomOutBtn.classList.add("hidden-ui");
-    prevBtn.classList.add("hidden-ui");
-    nextBtn.classList.add("hidden-ui");
-    zoomIndicator.classList.add("hidden-ui");
-}
-
-/* ================= SCALE ================= */
-
-function calculateInitialScale() {
-    const scaleX = wrapper.clientWidth / BASE_WIDTH;
-    const scaleY = wrapper.clientHeight / BASE_HEIGHT;
-    scale = Math.min(scaleX, scaleY);
-    centerContent();
-}
-
-function centerContent() {
-    const scaledWidth = BASE_WIDTH * scale;
-    const scaledHeight = BASE_HEIGHT * scale;
-
-    posX = (wrapper.clientWidth - scaledWidth) / 2;
-    posY = (wrapper.clientHeight - scaledHeight) / 2;
-}
-
-function clampPosition() {
-    const scaledWidth = BASE_WIDTH * scale;
-    const scaledHeight = BASE_HEIGHT * scale;
-
-    const minX = wrapper.clientWidth - scaledWidth;
-    const minY = wrapper.clientHeight - scaledHeight;
-
-    if (scaledWidth > wrapper.clientWidth)
-        posX = Math.min(0, Math.max(minX, posX));
-    else
-        posX = (wrapper.clientWidth - scaledWidth) / 2;
-
-    if (scaledHeight > wrapper.clientHeight)
-        posY = Math.min(0, Math.max(minY, posY));
-    else
-        posY = (wrapper.clientHeight - scaledHeight) / 2;
-}
-
-function updateTransform() {
-    clampPosition();
-    zoomLayer.style.transform =
-        `translate(${posX}px, ${posY}px) scale(${scale})`;
-    zoomIndicator.innerText = Math.round(scale * 100) + "%";
-
-    if (scale > 1) hideUI();
-    else showUI();
-}
-
-/* ================= ZOOM BUTTONS ================= */
-
-zoomInBtn.onclick = () => {
-    scale = Math.min(scale + 0.3, maxScale);
-    updateTransform();
-};
-
-zoomOutBtn.onclick = () => {
-    scale = Math.max(scale - 0.3, 0.05);
-    updateTransform();
-};
-
-/* ================= TAP ================= */
-
-let lastTap = 0;
-
-wrapper.addEventListener("pointerup", e => {
-    const now = Date.now();
-
-    if (now - lastTap < 300) {
-        const rect = wrapper.getBoundingClientRect();
-        const clickX = e.clientX - rect.left;
-        const clickY = e.clientY - rect.top;
-
-        const offsetX = (clickX - posX) / scale;
-        const offsetY = (clickY - posY) / scale;
-
-        if (scale < maxScale)
-            scale = Math.min(scale * 2, maxScale);
-        else {
-            calculateInitialScale();
-            updateTransform();
-            lastTap = now;
-            return;
+        /* ==== AUTO FIT INIZIALE ==== */
+        function calculateInitialScale() {
+            const scaleX = wrapper.clientWidth / BASE_WIDTH;
+            const scaleY = wrapper.clientHeight / BASE_HEIGHT;
+            scale = Math.min(scaleX, scaleY);
+            centerContent();
         }
 
-        posX = clickX - offsetX * scale;
-        posY = clickY - offsetY * scale;
+        function centerContent() {
+            const scaledWidth = BASE_WIDTH * scale;
+            const scaledHeight = BASE_HEIGHT * scale;
 
-        updateTransform();
-    } else {
-        if (scale > 1) showUI();
-    }
+            posX = (wrapper.clientWidth - scaledWidth) / 2;
+            posY = (wrapper.clientHeight - scaledHeight) / 2;
+        }
 
-    lastTap = now;
-});
+        function clampPosition() {
+            const scaledWidth = BASE_WIDTH * scale;
+            const scaledHeight = BASE_HEIGHT * scale;
 
-/* ================= DRAG ================= */
+            const minX = wrapper.clientWidth - scaledWidth;
+            const minY = wrapper.clientHeight - scaledHeight;
 
-let isDragging = false;
-let startX, startY;
+            if (scaledWidth > wrapper.clientWidth) {
+                posX = Math.min(0, Math.max(minX, posX));
+            } else {
+                posX = (wrapper.clientWidth - scaledWidth) / 2;
+            }
 
-wrapper.addEventListener("pointerdown", e => {
-    isDragging = true;
-    startX = e.clientX - posX;
-    startY = e.clientY - posY;
-});
+            if (scaledHeight > wrapper.clientHeight) {
+                posY = Math.min(0, Math.max(minY, posY));
+            } else {
+                posY = (wrapper.clientHeight - scaledHeight) / 2;
+            }
+        }
 
-wrapper.addEventListener("pointermove", e => {
-    if (isDragging) {
-        posX = e.clientX - startX;
-        posY = e.clientY - startY;
-        updateTransform();
-    }
-});
+        function updateTransform() {
+            clampPosition();
+            zoomLayer.style.transform =
+                `translate(${posX}px, ${posY}px) scale(${scale})`;
+            zoomIndicator.innerText = Math.round(scale * 100) + "%";
+        }
 
-wrapper.addEventListener("pointerup", () => {
-    isDragging = false;
-});
+        /* ==== ZOOM CONTROLS ==== */
+        document.getElementById("zoom-in").onclick = (e) => {
+            e.stopPropagation();
+            scale += 0.2;
+            updateTransform();
+        };
+        document.getElementById("zoom-out").onclick = (e) => {
+            e.stopPropagation();
+            scale = Math.max(scale - 0.2, 0.05);
+            updateTransform();
+        };
+        document.getElementById("zoom-reset").onclick = (e) => {
+            e.stopPropagation();
+            calculateInitialScale();
+            updateTransform();
+        };
 
-/* ================= NAVIGATION ================= */
+        function toggleFullScreen() {
+            const btn = document.getElementById("fullscreen-toggle");
+            if (!document.fullscreenElement) {
+                document.documentElement.requestFullscreen().then(() => {
+                    btn.innerText = "❌";
+                    if (screen.orientation && screen.orientation.lock) {
+                        screen.orientation.lock('landscape').catch(e => console.log("Orientation lock not supported", e));
+                    }
+                }).catch(err => {
+                    console.error(`Error: ${err.message}`);
+                });
+            } else {
+                if (document.exitFullscreen) {
+                    document.exitFullscreen().then(() => {
+                        btn.innerText = "⛶";
+                    });
+                }
+            }
+        }
 
-function flipNext() {
-    pageFlip.flipNext();
-    playFlipFeedback();
-}
+        document.getElementById("fullscreen-toggle").onclick = (e) => {
+            e.stopPropagation();
+            toggleFullScreen();
+        };
 
-function flipPrev() {
-    pageFlip.flipPrev();
-    playFlipFeedback();
-}
+        // Aggiorna pulsante se si esce con ESC o tasti sistema
+        document.addEventListener("fullscreenchange", () => {
+            const btn = document.getElementById("fullscreen-toggle");
+            if (!document.fullscreenElement) {
+                btn.innerText = "⛶";
+            } else {
+                btn.innerText = "❌";
+            }
+        });
 
-function playFlipFeedback() {
-    flipSound.currentTime = 0;
-    flipSound.play().catch(() => {});
-    if (navigator.vibrate) navigator.vibrate(20);
-}
+        /* ==== DOUBLE CLICK / TAP CON ZOOM CENTRATO ==== */
+        let lastTap = 0;
 
-nextBtn.onclick = flipNext;
-prevBtn.onclick = flipPrev;
+        wrapper.addEventListener("pointerup", e => {
+            if (dragOccurred) return;
 
-/* ================= LOAD BOOK ================= */
+            const now = Date.now();
+            if (now - lastTap < 300) {
 
-fetch('pages.json')
-.then(r => r.json())
-.then(pages => {
+                const rect = wrapper.getBoundingClientRect();
+                const clickX = e.clientX - rect.left;
+                const clickY = e.clientY - rect.top;
 
-    const bookDiv = document.getElementById("book");
+                const offsetX = (clickX - posX) / scale;
+                const offsetY = (clickY - posY) / scale;
 
-    pages.forEach(p => {
-        const div = document.createElement("div");
-        div.className = "page " + p.type;
+                if (scale < 2) scale = 2;
+                else if (scale < 4) scale = 4;
+                else if (scale < 6) scale = 6;
+                else if (scale < 8) scale = 8;
+                else {
+                    calculateInitialScale();
+                    updateTransform();
+                    lastTap = now;
+                    return;
+                }
 
-        const img = document.createElement("img");
-        img.src = p.image;
+                posX = clickX - offsetX * scale;
+                posY = clickY - offsetY * scale;
 
-        div.appendChild(img);
-        bookDiv.appendChild(div);
-    });
+                updateTransform();
+            }
+            lastTap = now;
+        });
 
-    pageFlip = new St.PageFlip(bookDiv, {
-        width: 600,
-        height: 800,
-        size: "fixed",
-        showCover: true,
-        usePortrait: false,
-        mobileScrollSupport: false,
-        useMouseEvents: false
-    });
+        /* ==== DRAG ==== */
+        let isDragging = false;
+        let dragOccurred = false;
+        let startX, startY;
 
-    pageFlip.loadFromHTML(document.querySelectorAll('.page'));
+        wrapper.addEventListener("pointerdown", e => {
+            isDragging = true;
+            dragOccurred = false;
+            startX = e.clientX - posX;
+            startY = e.clientY - posY;
+        });
 
-    calculateInitialScale();
-    updateTransform();
-});
+        wrapper.addEventListener("pointermove", e => {
+            if (isDragging) {
+                const newX = e.clientX - startX;
+                const newY = e.clientY - startY;
 
-window.addEventListener("resize", () => {
-    maxScale = window.innerWidth < 900 ? 12 : 8;
-    calculateInitialScale();
-    updateTransform();
-});
+                if (Math.abs(newX - posX) > 5 || Math.abs(newY - posY) > 5) {
+                    dragOccurred = true;
+                }
 
-window.addEventListener("orientationchange", () => {
-    setTimeout(() => {
-        maxScale = window.innerWidth < 900 ? 12 : 8;
-        calculateInitialScale();
-        updateTransform();
-    }, 300);
-});
-</script>
+                posX = newX;
+                posY = newY;
+                updateTransform();
+            }
+        });
+
+        wrapper.addEventListener("pointerup", () => {
+            isDragging = false;
+        });
+
+        /* ==== FRECCE ==== */
+        document.getElementById("next").onclick = () => pageFlip.flipNext();
+        document.getElementById("prev").onclick = () => pageFlip.flipPrev();
+
+        /* ==== LOAD BOOK ==== */
+        fetch('pages.json')
+            .then(r => r.json())
+            .then(pages => {
+
+                const bookDiv = document.getElementById("book");
+
+                pages.forEach(p => {
+                    const div = document.createElement("div");
+                    div.className = "page " + p.type;
+
+                    const img = document.createElement("img");
+                    img.src = p.image;
+
+                    div.appendChild(img);
+                    bookDiv.appendChild(div);
+                });
+
+                pageFlip = new St.PageFlip(bookDiv, {
+                    width: 600,
+                    height: 800,
+                    size: "fixed",
+                    showCover: true,
+                    mobileScrollSupport: false,
+                    useMouseEvents: false
+                });
+
+                pageFlip.loadFromHTML(document.querySelectorAll('.page'));
+
+                calculateInitialScale();
+                updateTransform();
+
+                // Gestione Mobile e Fullscreen automatico
+                const isMobile = /iPhone|iPad|iPod|Android/i.test(navigator.userAgent);
+                const startOverlay = document.getElementById("mobile-start-overlay");
+
+                if (isMobile) {
+                    startOverlay.style.display = "flex";
+                    document.getElementById("start-app").onclick = () => {
+                        toggleFullScreen();
+                        startOverlay.style.display = "none";
+                    };
+                }
+            });
+
+        window.addEventListener("resize", () => {
+            // Non ricalcolare la scala automaticamente se l'utente ha zoomato manualimente
+            // ma ricalcola se siamo alla scala iniziale (auto-fit)
+            const oldInitialScale = Math.min(wrapper.clientWidth / BASE_WIDTH, wrapper.clientHeight / BASE_HEIGHT);
+            if (Math.abs(scale - oldInitialScale) < 0.01) {
+                calculateInitialScale();
+            }
+            updateTransform();
+        });
+    </script>
 
 </body>
+
 </html>
