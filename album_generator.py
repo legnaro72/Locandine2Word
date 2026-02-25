@@ -643,7 +643,7 @@ class AlbumGenerator:
             current_y = 60
 
         # === TITOLO sotto il banner ===
-        font_title = self._get_font(46, bold=True)
+        font_title = self._get_font(92, bold=True)
         title = "ALBUM"
         bbox = draw.textbbox((0, 0), title, font=font_title)
         tw = bbox[2] - bbox[0]
@@ -702,7 +702,7 @@ class AlbumGenerator:
         # === Sottotitolo edizione (sotto l'immagine, prima del footer) ===
         footer_start_y = self.PAGE_H - footer_zone + 10
 
-        font_ed = self._get_font(18)
+        font_ed = self._get_font(9)
         ed_text = "Referendum Giustizia 2026"
         bbox_ed = draw.textbbox((0, 0), ed_text, font=font_ed)
         ew = bbox_ed[2] - bbox_ed[0]
@@ -743,8 +743,9 @@ class AlbumGenerator:
         draw.text(((self.PAGE_W - fw2) // 2, self.PAGE_H - 48),
                  footer2, fill=(95, 90, 75), font=font_footer)
 
-        # Salva
+        # Salva a 300 DPI per stampa tipografica
         cover_rgb = self._page_to_rgb(cover)
+        cover_rgb = cover_rgb.resize((2480, 3508), Image.LANCZOS)
         cover_path = os.path.join(output_dir, "album_000_cover.png")
         cover_rgb.save(cover_path, "PNG", quality=95)
         return cover_path
@@ -763,7 +764,7 @@ class AlbumGenerator:
         self._draw_page_frame(draw)
 
         # === Testo di ringraziamento in alto ===
-        font_body = self._get_font(18)
+        font_body = self._get_font(9)
         body_lines = [
             "Quest'album raccoglie tutti gli eventi organizzati",
             "dal Comitato \"Giusto Dire No\"",
@@ -817,8 +818,9 @@ class AlbumGenerator:
         draw.text(((self.PAGE_W - fw2) // 2, self.PAGE_H - 65),
                  footer2, fill=(90, 85, 70), font=font_footer)
 
-        # Salva
+        # Salva a 300 DPI per stampa tipografica
         back_rgb = self._page_to_rgb(back)
+        back_rgb = back_rgb.resize((2480, 3508), Image.LANCZOS)
         back_path = os.path.join(output_dir, "album_zzz_back.png")
         back_rgb.save(back_path, "PNG", quality=95)
         return back_path
@@ -967,14 +969,16 @@ class AlbumGenerator:
             if draw_empty:
                 draw_empty.text(((self.PAGE_W - footer_w) // 2, self.PAGE_H - 32), footer_text, fill=(100, 95, 80), font=font_footer)
 
-            # Salva pagina(e)
+            # Salva pagina(e) a 300 DPI per stampa tipografica
             page_rgb_full = self._page_to_rgb(page_full)
+            page_rgb_full = page_rgb_full.resize((2480, 3508), Image.LANCZOS)
             page_path_full = os.path.join(output_dir, f"album_page_{page_idx + 1:03d}.png")
             page_rgb_full.save(page_path_full, "PNG", quality=95)
             generated_pages_full.append(page_path_full)
             
             if self.empty_album_mode and page_empty:
                 page_rgb_empty = self._page_to_rgb(page_empty)
+                page_rgb_empty = page_rgb_empty.resize((2480, 3508), Image.LANCZOS)
                 page_path_empty = os.path.join(output_dir, f"album_page_empty_{page_idx + 1:03d}.png")
                 page_rgb_empty.save(page_path_empty, "PNG", quality=95)
                 generated_pages_empty.append(page_path_empty)
