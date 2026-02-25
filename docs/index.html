@@ -3,7 +3,6 @@
 <head>
 <meta charset="UTF-8">
 
-      
 <meta name="viewport" 
       content="width=device-width, 
                initial-scale=1.0, 
@@ -22,7 +21,19 @@ html, body {
     background: #2c2c2c;
     font-family: sans-serif;
     overflow: hidden;
-    touch-action: none;
+}
+
+#rotate-warning {
+    display: none;
+    position: fixed;
+    inset: 0;
+    background: #111;
+    color: white;
+    z-index: 99999;
+    align-items: center;
+    justify-content: center;
+    text-align: center;
+    font-size: 22px;
 }
 
 #book-wrapper {
@@ -31,7 +42,6 @@ html, body {
     background: #1a1a1a;
     position: relative;
     overflow: hidden;
-    touch-action: none;
 }
 
 #zoom-layer {
@@ -59,46 +69,44 @@ html, body {
     pointer-events: none;
 }
 
-/* UI */
-.zoom-btn,
-.nav-btn,
-#zoom-indicator {
-    transition: opacity 0.3s ease;
-}
-
-.hidden-ui {
-    opacity: 0;
-    pointer-events: none;
-}
-
-/* Pulsanti zoom */
-.zoom-btn {
+/* Pulsanti */
+button {
     position: fixed;
-    bottom: 20px;
     z-index: 9999;
-    padding: 16px 20px;
-    font-size: 22px;
-    background: white;
     border: none;
-    border-radius: 12px;
     cursor: pointer;
 }
-#zoom-in { right: 100px; }
-#zoom-out { right: 20px; }
+
+/* Zoom */
+.zoom-btn {
+    bottom: 20px;
+    padding: 14px 18px;
+    font-size: 20px;
+    background: white;
+    border-radius: 10px;
+}
+#zoom-in { right: 140px; }
+#zoom-out { right: 80px; }
+#reset-zoom { right: 20px; }
+
+/* Fullscreen */
+#fullscreen-btn {
+    top: 15px;
+    left: 15px;
+    background: white;
+    border-radius: 10px;
+    padding: 8px 12px;
+}
 
 /* Frecce */
 .nav-btn {
-    position: fixed;
     top: 50%;
     transform: translateY(-50%);
-    z-index: 9999;
     font-size: 42px;
     background: rgba(255,255,255,0.9);
-    border: none;
     border-radius: 50%;
     width: 70px;
     height: 70px;
-    cursor: pointer;
 }
 #prev { left: 15px; }
 #next { right: 15px; }
@@ -111,11 +119,16 @@ html, body {
     background: rgba(0,0,0,0.6);
     padding: 6px 12px;
     border-radius: 8px;
+    z-index: 9999;
 }
 </style>
 </head>
 
 <body>
+
+<div id="rotate-warning">
+    Ruota il dispositivo in orizzontale 📱
+</div>
 
 <div id="book-wrapper">
     <div id="zoom-layer">
@@ -125,8 +138,11 @@ html, body {
 
 <div id="zoom-indicator">100%</div>
 
+<button id="fullscreen-btn">⛶</button>
+
 <button id="zoom-in" class="zoom-btn">➕</button>
 <button id="zoom-out" class="zoom-btn">➖</button>
+<button id="reset-zoom" class="zoom-btn">⤢</button>
 
 <button id="prev" class="nav-btn">⟨</button>
 <button id="next" class="nav-btn">⟩</button>
@@ -144,42 +160,45 @@ let maxScale = window.innerWidth < 900 ? 12 : 8;
 
 let posX = 0;
 let posY = 0;
-
 let pageFlip;
 
 const zoomLayer = document.getElementById("zoom-layer");
 const wrapper = document.getElementById("book-wrapper");
 const zoomIndicator = document.getElementById("zoom-indicator");
-
-const zoomInBtn = document.getElementById("zoom-in");
-const zoomOutBtn = document.getElementById("zoom-out");
-const prevBtn = document.getElementById("prev");
-const nextBtn = document.getElementById("next");
+const rotateWarning = document.getElementById("rotate-warning");
 const flipSound = document.getElementById("flipSound");
 
-let uiTimeout;
+const isMobile = window.innerWidth < 900;
 
-/* ================= UI CONTROL ================= */
+/* ================= LANDSCAPE LOCK ================= */
 
-function showUI() {
-    zoomInBtn.classList.remove("hidden-ui");
-    zoomOutBtn.classList.remove("hidden-ui");
-    prevBtn.classList.remove("hidden-ui");
-    nextBtn.classList.remove("hidden-ui");
-    zoomIndicator.classList.remove("hidden-ui");
-
-    clearTimeout(uiTimeout);
-    uiTimeout = setTimeout(() => {
-        if (scale > 1) hideUI();
-    }, 3000);
+function checkOrientation() {
+    if (isMobile && window.innerHeight > window.innerWidth) {
+        rotateWarning.style.display = "flex";
+    } else {
+        rotateWarning.style.display = "none";
+    }
 }
 
-function hideUI() {
-    zoomInBtn.classList.add("hidden-ui");
-    zoomOutBtn.classList.add("hidden-ui");
-    prevBtn.classList.add("hidden-ui");
-    nextBtn.classList.add("hidden-ui");
-    zoomIndicator.classList.add("hidden-ui");
+window.addEventListener("resize", checkOrientation);
+window.addEventListener("orientationchange", checkOrientation);
+checkOrientation();
+
+/* ================= FULLSCREEN ================= */
+
+function enterFullscreen() {
+    const el = document.documentElement;
+    if (el.requestFullscreen) el.requestFullscreen();
+    else if (el.webkitRequestFullscreen) el.webkitRequestFullscreen();
+}
+
+document.getElementById("fullscreen-btn").onclick = enterFullscreen;
+
+/* Auto fullscreen mobile */
+if (isMobile) {
+    setTimeout(() => {
+        enterFullscreen();
+    }, 500);
 }
 
 /* ================= SCALE ================= */
@@ -222,57 +241,24 @@ function updateTransform() {
     zoomLayer.style.transform =
         `translate(${posX}px, ${posY}px) scale(${scale})`;
     zoomIndicator.innerText = Math.round(scale * 100) + "%";
-
-    if (scale > 1) hideUI();
-    else showUI();
 }
 
-/* ================= ZOOM BUTTONS ================= */
+/* ================= ZOOM ================= */
 
-zoomInBtn.onclick = () => {
+document.getElementById("zoom-in").onclick = () => {
     scale = Math.min(scale + 0.3, maxScale);
     updateTransform();
 };
 
-zoomOutBtn.onclick = () => {
+document.getElementById("zoom-out").onclick = () => {
     scale = Math.max(scale - 0.3, 0.05);
     updateTransform();
 };
 
-/* ================= TAP ================= */
-
-let lastTap = 0;
-
-wrapper.addEventListener("pointerup", e => {
-    const now = Date.now();
-
-    if (now - lastTap < 300) {
-        const rect = wrapper.getBoundingClientRect();
-        const clickX = e.clientX - rect.left;
-        const clickY = e.clientY - rect.top;
-
-        const offsetX = (clickX - posX) / scale;
-        const offsetY = (clickY - posY) / scale;
-
-        if (scale < maxScale)
-            scale = Math.min(scale * 2, maxScale);
-        else {
-            calculateInitialScale();
-            updateTransform();
-            lastTap = now;
-            return;
-        }
-
-        posX = clickX - offsetX * scale;
-        posY = clickY - offsetY * scale;
-
-        updateTransform();
-    } else {
-        if (scale > 1) showUI();
-    }
-
-    lastTap = now;
-});
+document.getElementById("reset-zoom").onclick = () => {
+    calculateInitialScale();
+    updateTransform();
+};
 
 /* ================= DRAG ================= */
 
@@ -297,17 +283,7 @@ wrapper.addEventListener("pointerup", () => {
     isDragging = false;
 });
 
-/* ================= NAVIGATION ================= */
-
-function flipNext() {
-    pageFlip.flipNext();
-    playFlipFeedback();
-}
-
-function flipPrev() {
-    pageFlip.flipPrev();
-    playFlipFeedback();
-}
+/* ================= NAV ================= */
 
 function playFlipFeedback() {
     flipSound.currentTime = 0;
@@ -315,10 +291,17 @@ function playFlipFeedback() {
     if (navigator.vibrate) navigator.vibrate(20);
 }
 
-nextBtn.onclick = flipNext;
-prevBtn.onclick = flipPrev;
+document.getElementById("next").onclick = () => {
+    pageFlip.flipNext();
+    playFlipFeedback();
+};
 
-/* ================= LOAD BOOK ================= */
+document.getElementById("prev").onclick = () => {
+    pageFlip.flipPrev();
+    playFlipFeedback();
+};
+
+/* ================= LOAD ================= */
 
 fetch('pages.json')
 .then(r => r.json())
@@ -351,20 +334,6 @@ fetch('pages.json')
 
     calculateInitialScale();
     updateTransform();
-});
-
-window.addEventListener("resize", () => {
-    maxScale = window.innerWidth < 900 ? 12 : 8;
-    calculateInitialScale();
-    updateTransform();
-});
-
-window.addEventListener("orientationchange", () => {
-    setTimeout(() => {
-        maxScale = window.innerWidth < 900 ? 12 : 8;
-        calculateInitialScale();
-        updateTransform();
-    }, 300);
 });
 </script>
 
