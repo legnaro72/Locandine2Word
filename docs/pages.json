@@ -92,6 +92,12 @@
     {
         "page_number": 16,
         "image": "images/page_16.jpg",
+        "type": "carta",
+        "dpi": 300
+    },
+    {
+        "page_number": 17,
+        "image": "images/page_17.jpg",
         "type": "cartone",
         "dpi": 300
     }
