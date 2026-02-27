@@ -764,7 +764,7 @@ class AlbumGenerator:
         self._draw_page_frame(draw)
 
         # === Testo di ringraziamento in alto ===
-        font_body = self._get_font(9)
+        font_body = self._get_font(20)
         body_lines = [
             "Quest'album raccoglie tutti gli eventi organizzati",
             "dal Comitato \"Giusto Dire No\"",
@@ -1121,3 +1121,4 @@ class AlbumGenerator:
                 zip_buffer.seek(0)
 
         return cover_path, pages_full, pdf_buffer, pdf_empty_buffer, zip_buffer
+
