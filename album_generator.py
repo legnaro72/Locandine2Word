@@ -102,7 +102,7 @@ class AlbumGenerator:
     MARGIN_BOTTOM = 45
 
     # Colori tema Panini classico
-    COLOR_PAGE_BG = (30, 55, 90)           # Blu scuro Panini
+    COLOR_PAGE_BG = (20, 40, 75)           # Blu scuro Panini profondo
     COLOR_STICKER_BORDER = (200, 170, 80)  # Oro invecchiato
     COLOR_STICKER_BG = (245, 240, 230)     # Avorio
     COLOR_SHADOW = (15, 30, 55, 120)       # Ombra semi-trasparente
@@ -604,7 +604,7 @@ class AlbumGenerator:
         """Genera la copertina: banner in alto, titolo, immagine a tutta pagina, sottotitolo."""
         os.makedirs(output_dir, exist_ok=True)
 
-        cover = Image.new("RGBA", (self.PAGE_W, self.PAGE_H), (20, 40, 75))
+        cover = Image.new("RGBA", (self.PAGE_W, self.PAGE_H), self.COLOR_PAGE_BG)
         self._apply_bg_to_page(cover)
         draw = ImageDraw.Draw(cover)
 
@@ -758,7 +758,7 @@ class AlbumGenerator:
         """Genera l'ultima pagina con logo centrale e info collezione in basso."""
         os.makedirs(output_dir, exist_ok=True)
 
-        back = Image.new("RGBA", (self.PAGE_W, self.PAGE_H), (20, 40, 75))
+        back = Image.new("RGBA", (self.PAGE_W, self.PAGE_H), self.COLOR_PAGE_BG)
         self._apply_bg_to_page(back)
         draw = ImageDraw.Draw(back)
         self._draw_page_frame(draw)
@@ -827,7 +827,7 @@ class AlbumGenerator:
 
     def generate_logo_page(self, output_dir, filename="album_page_guard.png"):
         """Genera una pagina di 'cartone' (sfondo album) con il logo centrale."""
-        page = Image.new("RGBA", (self.PAGE_W, self.PAGE_H), (255, 255, 255, 255))
+        page = Image.new("RGBA", (self.PAGE_W, self.PAGE_H), self.COLOR_PAGE_BG)
         self._apply_bg_to_page(page)
         
         draw = ImageDraw.Draw(page)
@@ -839,6 +839,11 @@ class AlbumGenerator:
             lx = (self.PAGE_W - logo.size[0]) // 2
             ly = (self.PAGE_H - logo.size[1]) // 2
             page.paste(logo, (lx, ly), logo)
+            
+        # Aggiungi un titolo decorativo per non farla sembrare vuota
+        draw.text((self.PAGE_W // 2 - 100, self.PAGE_H - 150), 
+                  "COLLEZIONE 2026", fill=(100, 95, 80), 
+                  font=self._get_font(18, bold=True))
 
         # Salva a 300 DPI
         page_rgb = self._page_to_rgb(page)
