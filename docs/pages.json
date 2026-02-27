@@ -8,7 +8,7 @@
     {
         "page_number": 2,
         "image": "images/page_2.jpg",
-        "type": "carta",
+        "type": "cartone",
         "dpi": 300
     },
     {
@@ -170,6 +170,12 @@
     {
         "page_number": 29,
         "image": "images/page_29.jpg",
+        "type": "cartone",
+        "dpi": 300
+    },
+    {
+        "page_number": 30,
+        "image": "images/page_30.jpg",
         "type": "cartone",
         "dpi": 300
     }
