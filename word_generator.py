@@ -200,10 +200,14 @@ class WordGenerator:
             'LA SPEZIA': 'LIGURIA', 'SP': 'LIGURIA',
             'SAVONA': 'LIGURIA', 'SV': 'LIGURIA',
             'IMPERIA': 'LIGURIA', 'IM': 'LIGURIA',
-            'MASSA': 'TOSCANA', 'MS': 'TOSCANA', 'MASSA CARRARA': 'TOSCANA', 'CARRARA': 'TOSCANA'
+            'ASTI': 'PIEMONTE', 'AT': 'PIEMONTE', 'ALESSANDRIA': 'PIEMONTE', 'AL': 'PIEMONTE',
+            'MASSA': 'TOSCANA', 'MS': 'TOSCANA', 'MASSA CARRARA': 'TOSCANA', 'CARRARA': 'TOSCANA', 
+            'LUCCA': 'TOSCANA', 'LU': 'TOSCANA'
         }
         PROV_NORM = {
             'GE': 'GENOVA', 'SP': 'LA SPEZIA', 'SV': 'SAVONA', 'IM': 'IMPERIA', 
+            'AL': 'ALESSANDRIA', 'AT': 'ASTI',
+            'LU': 'LUCCA',
             'MS': 'MASSA', 'MASSA CARRARA': 'MASSA', 'CARRARA': 'MASSA'
         }
         
@@ -282,12 +286,14 @@ class WordGenerator:
         # --- STATISTICHE GEOGRAFICHE ---
         PROV_TO_REG = {
             'GENOVA': 'LIGURIA', 'LA SPEZIA': 'LIGURIA', 'SAVONA': 'LIGURIA', 'IMPERIA': 'LIGURIA',
-            'MASSA': 'TOSCANA'
+            'MASSA': 'TOSCANA', 'LUCCA': 'TOSCANA',
+            'ASTI': 'PIEMONTE', 'ALESSANDRIA': 'PIEMONTE'
         }
 
         stats = {
             'LIGURIA': {'total': 0, 'provinces': {'GENOVA': 0, 'LA SPEZIA': 0, 'SAVONA': 0, 'IMPERIA': 0}},
-            'TOSCANA': {'total': 0, 'provinces': {'MASSA': 0}},
+            'TOSCANA': {'total': 0, 'provinces': {'MASSA': 0, 'LUCCA': 0}},
+            'PIEMONTE': {'total': 0, 'provinces': {'ALESSANDRIA': 0, 'ASTI': 0}},
             'ALTRO': {'total': 0, 'cities': {}}
         }
 
@@ -302,22 +308,13 @@ class WordGenerator:
                     stats[reg]['provinces'][prov_found] += 1
             else:
                 stats['ALTRO']['total'] += 1
-                stats['ALTRO']['cities'][loc] = stats['ALTRO']['cities'].get(loc, 0) + 1
-                if loc in PROV_TO_REG:
-                    prov = PROV_NORM.get(loc, loc)
-                    reg = PROV_TO_REG[loc]
-                    stats[reg]['total'] += 1
-                    if prov in stats[reg]['provinces']:
-                        stats[reg]['provinces'][prov] += 1
-                else:
-                    stats['ALTRO']['total'] += 1
-                    # Se non è una provincia, è una città "Altro"
-                    city_key = loc if loc else 'N/D'
-                    stats['ALTRO']['cities'][city_key] = stats['ALTRO']['cities'].get(city_key, 0) + 1
+                # Se non è una provincia, è una città "Altro"
+                city_key = loc if loc else 'N/D'
+                stats['ALTRO']['cities'][city_key] = stats['ALTRO']['cities'].get(city_key, 0) + 1
 
         # Regionale
         reg_parts = []
-        for r in ['LIGURIA', 'TOSCANA']:
+        for r in ['LIGURIA', 'TOSCANA', 'PIEMONTE']:
             if stats[r]['total'] > 0:
                 reg_parts.append(f"{r} ({stats[r]['total']})")
         if stats['ALTRO']['total'] > 0:
@@ -327,7 +324,7 @@ class WordGenerator:
 
         # Provinciale
         prov_parts = []
-        for r in ['LIGURIA', 'TOSCANA']:
+        for r in ['LIGURIA', 'TOSCANA', 'PIEMONTE']:
             for p, count in stats[r]['provinces'].items():
                 if count > 0:
                     prov_parts.append(f"{p} ({count})")

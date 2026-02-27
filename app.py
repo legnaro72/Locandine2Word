@@ -731,7 +731,7 @@ with st.sidebar:
                 "Località": st.column_config.TextColumn("Località (Es. PEGLI)", required=True),
                 "Provincia": st.column_config.SelectboxColumn(
                     "Provincia",
-                    options=["GENOVA", "LA SPEZIA", "SAVONA", "IMPERIA", "MASSA"],
+                    options=["GENOVA", "LA SPEZIA", "SAVONA", "IMPERIA", "MASSA", "LUCCA", "ALESSANDRIA", "ASTI"],
                     required=True
                 )
             },
@@ -1112,7 +1112,7 @@ with tab2:
         with col_f2:
             geo_filter = st.selectbox(
                 "📍 2. Filtra per Luogo",
-                ["Tutti", "LIGURIA", "TOSCANA", "GENOVA", "LA SPEZIA", "SAVONA", "IMPERIA", "MASSA"],
+                ["Tutti", "LIGURIA", "TOSCANA", "PIEMONTE", "GENOVA", "LA SPEZIA", "SAVONA", "IMPERIA", "MASSA", "LUCCA", "ALESSANDRIA", "ASTI"],
                 key="mgr_geo_filter"
             )
         
@@ -1131,7 +1131,8 @@ with tab2:
         # Mappatura Province -> Regioni per il filtro (già presente ma definita qui per sicurezza)
         PROV_TO_REG = {
             'GENOVA': 'LIGURIA', 'LA SPEZIA': 'LIGURIA', 'SAVONA': 'LIGURIA', 'IMPERIA': 'LIGURIA',
-            'MASSA': 'TOSCANA'
+            'MASSA': 'TOSCANA', 'LUCCA': 'TOSCANA',
+            'ALESSANDRIA': 'PIEMONTE', 'ASTI': 'PIEMONTE'
         }
 
         # Ri-indicizzazione degli eventi filtrati per la visualizzazione corretta
@@ -1148,7 +1149,7 @@ with tab2:
             m_g = True
             if geo_filter != "Tutti":
                 prov = WordGenerator.get_province(ev)
-                if geo_filter in ["LIGURIA", "TOSCANA"]:
+                if geo_filter in ["LIGURIA", "TOSCANA", "PIEMONTE"]:
                     m_g = (PROV_TO_REG.get(prov, "ALTRO") == geo_filter)
                 else:
                     m_g = (prov == geo_filter)
@@ -1263,7 +1264,7 @@ with tab2:
             m_g = True
             if geo_filter != "Tutti":
                 prov = WordGenerator.get_province(ev)
-                if geo_filter in ["LIGURIA", "TOSCANA"]: m_g = (PROV_TO_REG.get(prov, "ALTRO") == geo_filter)
+                if geo_filter in ["LIGURIA", "TOSCANA", "PIEMONTE"]: m_g = (PROV_TO_REG.get(prov, "ALTRO") == geo_filter)
                 else: m_g = (prov == geo_filter)
             
             # C. Ricerca Testuale
@@ -1596,13 +1597,15 @@ def compute_statistics(events_list_stats):
     active_count = 0
     
     PROV_TO_REG = {
-        'GENOVA': 'LIGURIA', 'LA SPEZIA': 'LIGURIA', 'SAVONA': 'LIGURIA', 
-        'IMPERIA': 'LIGURIA', 'MASSA': 'TOSCANA'
+        'GENOVA': 'LIGURIA', 'LA SPEZIA': 'LIGURIA', 'SAVONA': 'LIGURIA', 'IMPERIA': 'LIGURIA',
+        'MASSA': 'TOSCANA', 'LUCCA': 'TOSCANA',
+        'ALESSANDRIA': 'PIEMONTE', 'ASTI': 'PIEMONTE'
     }
     
     stats_geo = {
         'LIGURIA': {'total': 0, 'provinces': {'GENOVA': 0, 'LA SPEZIA': 0, 'SAVONA': 0, 'IMPERIA': 0}},
-        'TOSCANA': {'total': 0, 'provinces': {'MASSA': 0}},
+        'TOSCANA': {'total': 0, 'provinces': {'MASSA': 0, 'LUCCA': 0}},
+        'PIEMONTE': {'total': 0, 'provinces': {'ALESSANDRIA': 0, 'ASTI': 0}},
         'ALTRO': {'total': 0, 'cities': {}}
     }
     
@@ -1759,12 +1762,13 @@ with tab4:
             # Prepariamo il dettaglio per il tooltip
             lig_dettaglio = ", ".join([f"{p} ({c})" for p, c in stats_geo['LIGURIA']['provinces'].items() if c > 0])
             tos_dettaglio = ", ".join([f"{p} ({c})" for p, c in stats_geo['TOSCANA']['provinces'].items() if c > 0])
+            pie_dettaglio = ", ".join([f"{p} ({c})" for p, c in stats_geo['PIEMONTE']['provinces'].items() if c > 0])
             alt_dettaglio = ", ".join([f"{loc} ({count})" for loc, count in sorted(stats_geo['ALTRO']['cities'].items(), key=lambda x: x[1], reverse=True)])
 
             reg_df = pd.DataFrame({
-                "Regione": ["LIGURIA", "TOSCANA", "ALTRO"],
-                "Eventi": [stats_geo['LIGURIA']['total'], stats_geo['TOSCANA']['total'], stats_geo['ALTRO']['total']],
-                "Dettaglio": [lig_dettaglio, tos_dettaglio, alt_dettaglio]
+                "Regione": ["LIGURIA", "TOSCANA", "PIEMONTE", "ALTRO"],
+                "Eventi": [stats_geo['LIGURIA']['total'], stats_geo['TOSCANA']['total'], stats_geo['PIEMONTE']['total'], stats_geo['ALTRO']['total']],
+                "Dettaglio": [lig_dettaglio, tos_dettaglio, pie_dettaglio, alt_dettaglio]
             })
             # Rimuoviamo righe con 0 eventi per pulizia grafico
             reg_df = reg_df[reg_df["Eventi"] > 0]
@@ -1772,7 +1776,7 @@ with tab4:
                 # Creazione Grafico a Torta (Donut) con Altair
                 pie_chart = alt.Chart(reg_df).mark_arc(innerRadius=50).encode(
                     theta=alt.Theta(field="Eventi", type="quantitative"),
-                    color=alt.Color(field="Regione", type="nominal", scale=alt.Scale(range=['#667eea', '#764ba2', '#ff9a9e'])),
+                    color=alt.Color(field="Regione", type="nominal", scale=alt.Scale(range=['#667eea', '#ff9a9e', '#764ba2', '#cccccc'])),
                     tooltip=['Regione', 'Eventi', 'Dettaglio']
                 ).properties(height=300)
                 
@@ -1787,7 +1791,7 @@ with tab4:
         with col_g2:
             st.markdown("#### 🗺️ Dettaglio Province")
             prov_data = []
-            for reg in ['LIGURIA', 'TOSCANA']:
+            for reg in ['LIGURIA', 'TOSCANA', 'PIEMONTE']:
                 for p, count in stats_geo[reg]['provinces'].items():
                     if count > 0:
                         prov_data.append({"Provincia": p, "Eventi": count, "Regione": reg})
@@ -1801,8 +1805,8 @@ with tab4:
                     y=alt.Y('Eventi:Q', title='Numero Eventi'),
                     color=alt.Color('Regione:N', 
                                    scale=alt.Scale(
-                                       domain=['LIGURIA', 'TOSCANA'],
-                                       range=['#667eea', '#ff9a9e']  # Viola per LIGURIA, Rosa per TOSCANA
+                                       domain=['LIGURIA', 'TOSCANA', 'PIEMONTE'],
+                                       range=['#667eea', '#ff9a9e', '#764ba2']
                                    ),
                                    legend=alt.Legend(title="Regione")),
                     tooltip=['Provincia', 'Regione', 'Eventi']
