@@ -2400,8 +2400,8 @@ with tab5:
                                         img_local_path = os.path.join(flipbook_images_dir, img_filename)
                                         img.save(img_local_path, "JPEG", quality=90, dpi=(300, 300))
                                         
-                                        # Determina tipo: prima e ultima = "cartone", centrali = "carta"
-                                        if page_num == 1 or page_num == total_pdf_pages:
+                                        # Determina tipo: prime due e ultime due = "cartone"
+                                        if page_num in [1, 2, total_pdf_pages - 1, total_pdf_pages]:
                                             page_type = "cartone"
                                         else:
                                             page_type = "carta"

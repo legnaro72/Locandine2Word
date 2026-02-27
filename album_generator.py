@@ -852,6 +852,32 @@ class AlbumGenerator:
         page_rgb.save(path, "PNG", quality=95)
         return path
 
+    def generate_blank_page(self, output_dir, filename="album_page_blank.png"):
+        """Genera una pagina di 'carta' vuota (con header e footer) senza figurine."""
+        page = self._create_page_background()
+        draw = ImageDraw.Draw(page)
+        
+        # Header
+        font_header = self._get_font(20, bold=True)
+        header_text = "GIUSTO DIRE NO  —  ALBUM EVENTI"
+        bbox = draw.textbbox((0, 0), header_text, font=font_header)
+        header_w = bbox[2] - bbox[0]
+        draw.text(((self.PAGE_W - header_w) // 2, 28), header_text, fill=self.COLOR_HEADER_TEXT, font=font_header)
+        
+        # Footer
+        font_footer = self._get_font(9)
+        footer_text = "© Comitato Giusto Dire No — Collezione Completa Eventi — Coordinamento Liguria e Massa"
+        bbox3 = draw.textbbox((0, 0), footer_text, font=font_footer)
+        footer_w = bbox3[2] - bbox3[0]
+        draw.text(((self.PAGE_W - footer_w) // 2, self.PAGE_H - 32), footer_text, fill=(100, 95, 80), font=font_footer)
+        
+        # Salva a 300 DPI
+        page_rgb = self._page_to_rgb(page)
+        page_rgb = page_rgb.resize((2480, 3508), Image.LANCZOS)
+        path = os.path.join(output_dir, filename)
+        page_rgb.save(path, "PNG", quality=95)
+        return path
+
     # ---------------------------------------------------------------
     #  PAGINE FIGURINE
     # ---------------------------------------------------------------
@@ -1031,6 +1057,15 @@ class AlbumGenerator:
         cover_path = self.generate_cover(len(valid_events), output_dir)
         guard_front = self.generate_logo_page(output_dir, "album_page_000_guard_f.png")
         pages_full, pages_empty = self.generate_album_pages(events, output_dir)
+        
+        # --- Controllo numero pagine pari ---
+        # Se len(pages_full) è dispari, aggiungiamo una pagina vuota (terzultima)
+        if len(pages_full) % 2 != 0:
+            blank_page = self.generate_blank_page(output_dir, "album_page_filler_blank.png")
+            pages_full.append(blank_page)
+            # Nota: pages_empty rimane così com'è o dovrebbe essere pareggiato anche lui?
+            # Per ora pareggiamo solo il PDF 'Pieno' che è quello principale
+        
         guard_back = self.generate_logo_page(output_dir, "album_page_zzz_guard_b.png")
         back_path = self.generate_back_cover(len(valid_events), output_dir)
 
