@@ -1578,29 +1578,78 @@ with tab3:
 
     export_mode = "minimal" if "Minimal" in export_mode_sel else "standard"
 
-    if st.button("📥 Genera Word", type="primary"):
-        if not events_list_exp:
-            st.error("Nessun evento da stampare!")
-        else:
-            with st.spinner("Creazione documento Word in corso..."):
-                gen = WordGenerator()
-                out_path = os.path.join(OUTPUT_DIR, doc_name)
-                # Passiamo la lista ordinata e le opzioni
-                gen.generate_from_data(
-                    events_list_exp, 
-                    out_path, 
-                    mode=export_mode, 
-                    show_borders=show_borders_opt
-                )
-                
-                with open(out_path, 'rb') as f:
-                    st.download_button(
-                        label="⬇️ Scarica File",
-                        data=f,
-                        file_name=doc_name,
-                        mime="application/vnd.openxmlformats-officedocument.wordprocessingml.document"
+    col_gen1, col_gen2 = st.columns(2)
+    
+    with col_gen1:
+        if st.button("📥 Genera Word", type="primary"):
+            if not events_list_exp:
+                st.error("Nessun evento da stampare!")
+            else:
+                with st.spinner("Creazione documento Word in corso..."):
+                    gen = WordGenerator()
+                    out_path = os.path.join(OUTPUT_DIR, doc_name)
+                    gen.generate_from_data(
+                        events_list_exp, 
+                        out_path, 
+                        mode=export_mode, 
+                        show_borders=show_borders_opt
                     )
-                st.success("Documento pronto!")
+                    
+                    with open(out_path, 'rb') as f:
+                        st.download_button(
+                            label="⬇️ Scarica Word",
+                            data=f,
+                            file_name=doc_name,
+                            mime="application/vnd.openxmlformats-officedocument.wordprocessingml.document"
+                        )
+                    st.success("Documento Word pronto!")
+
+    with col_gen2:
+        if st.button("📄 Genera PDF (senza statistiche)"):
+            if not events_list_exp:
+                st.error("Nessun evento da stampare!")
+            else:
+                with st.spinner("Creazione PDF in corso..."):
+                    gen = WordGenerator()
+                    pdf_doc_name = os.path.splitext(doc_name)[0] + "_nostat.docx"
+                    pdf_out_docx = os.path.join(OUTPUT_DIR, pdf_doc_name)
+                    gen.generate_from_data(
+                        events_list_exp,
+                        pdf_out_docx,
+                        mode=export_mode,
+                        show_borders=show_borders_opt,
+                        skip_stats=True
+                    )
+                    
+                    # Tentativo conversione PDF
+                    pdf_path = os.path.splitext(pdf_out_docx)[0] + ".pdf"
+                    pdf_converted = False
+                    try:
+                        from docx2pdf import convert
+                        convert(pdf_out_docx, pdf_path)
+                        pdf_converted = True
+                    except Exception:
+                        pass
+                    
+                    if pdf_converted and os.path.exists(pdf_path):
+                        with open(pdf_path, 'rb') as f:
+                            st.download_button(
+                                label="⬇️ Scarica PDF",
+                                data=f,
+                                file_name=os.path.splitext(doc_name)[0] + ".pdf",
+                                mime="application/pdf"
+                            )
+                        st.success("PDF pronto!")
+                    else:
+                        # Fallback: offri il Word senza stats
+                        with open(pdf_out_docx, 'rb') as f:
+                            st.download_button(
+                                label="⬇️ Scarica Word (senza statistiche)",
+                                data=f,
+                                file_name=pdf_doc_name,
+                                mime="application/vnd.openxmlformats-officedocument.wordprocessingml.document"
+                            )
+                        st.warning("Conversione PDF non disponibile. Scarica il Word senza statistiche e convertilo in PDF manualmente.")
 
 @st.cache_data(show_spinner=False)
 def compute_statistics(events_list_stats):

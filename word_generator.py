@@ -9,6 +9,7 @@ import streamlit as st
 from typing import List, Dict
 from docx.enum.text import WD_ALIGN_PARAGRAPH
 from docx.shared import Inches, Pt, RGBColor
+from docx.enum.table import WD_ALIGN_VERTICAL
 from docx import Document
 from datetime import datetime
 
@@ -83,17 +84,35 @@ class WordGenerator:
                 p_new.alignment = WD_ALIGN_PARAGRAPH.CENTER
                 run_new = p_new.add_run()
                 run_new.add_picture(new_img_path, width=Inches(1.5))
+        # Impedisci che la riga si spezzi tra due pagine
+        table.rows[0].allow_break_across_pages = False
 
-        # Aggiungi spazio dopo la tabella
-        self.doc.add_paragraph()
-
-    def _insert_image(self, cell, image_path, width=Inches(2.5)):
-        """Helper per inserire un'immagine in una cella"""
+    def _insert_image(self, cell, image_path, width=Inches(2.5), max_height=Inches(3.8)):
+        """Helper per inserire un'immagine in una cella, limitando sia larghezza che altezza"""
         if os.path.exists(image_path):
             paragraph = cell.paragraphs[0]
             run = paragraph.add_run()
-            # Adatta larghezza per stare nella cella
-            run.add_picture(image_path, width=width)
+            
+            # Calcola dimensioni reali per evitare immagini troppo alte
+            try:
+                from PIL import Image as PILImage
+                with PILImage.open(image_path) as img:
+                    img_w, img_h = img.size
+                    # Rapporto aspetto: se l'immagine è più alta che larga,
+                    # alla larghezza desiderata potrebbe superare max_height
+                    aspect_ratio = img_h / img_w  # >1 = portrait
+                    result_height_inches = (width / 914400) * aspect_ratio  # width è in EMU, 914400 EMU = 1 inch
+                    max_height_inches = max_height / 914400
+                    
+                    if result_height_inches > max_height_inches:
+                        # Troppo alta: limita all'altezza massima
+                        run.add_picture(image_path, height=max_height)
+                    else:
+                        run.add_picture(image_path, width=width)
+            except Exception:
+                # Fallback: usa solo la larghezza
+                run.add_picture(image_path, width=width)
+            
             paragraph.alignment = WD_ALIGN_PARAGRAPH.CENTER
 
     def _insert_text_details(self, cell, event_data):
@@ -247,10 +266,10 @@ class WordGenerator:
         
         return prov_found or "ALTRO"
 
-    def generate_from_data(self, events: List[Dict], output_path: str, mode: str = "standard", show_borders: bool = False):
+    def generate_from_data(self, events: List[Dict], output_path: str, mode: str = "standard", show_borders: bool = False, skip_stats: bool = False):
         """
         Genera il documento Word completo:
-        1. Pagina Statistiche & Titolo
+        1. Pagina Statistiche & Titolo (se skip_stats=False)
         2. Eventi (Standard o Minimal)
         3. Firma (se esiste)
         """
@@ -261,125 +280,134 @@ class WordGenerator:
         # Aggiungi ogni evento
         sorted_events = sorted(events, key=self.get_sort_date)
 
-        # 1. TITOLO E STATISTICHE (Sempre "Eventi e Locandine")
-        title_text = "Eventi e Locandine"
-        title = self.doc.add_heading(title_text, level=1)
-        title.alignment = WD_ALIGN_PARAGRAPH.CENTER
-        
-        # Data generazione
-        date_para = self.doc.add_paragraph()
-        date_para.alignment = WD_ALIGN_PARAGRAPH.CENTER
-        now_str = datetime.now().strftime('%d/%m/%Y %H:%M')
-        run = date_para.add_run(f"Documento generato il: {now_str}")
-        run.font.size = Pt(10)
-        run.font.italic = True
-        
-        self.doc.add_paragraph() # Spazio
-
-        # Statistiche
-        st_h = self.doc.add_paragraph()
-        st_h.add_run("Riepilogo Dati:").bold = True
-        
-        total_ev = len(sorted_events)
-        self.doc.add_paragraph(f"Totale Locandine caricate: {total_ev}", style='List Bullet')
-        
-        # --- STATISTICHE GEOGRAFICHE ---
-        PROV_TO_REG = {
-            'GENOVA': 'LIGURIA', 'LA SPEZIA': 'LIGURIA', 'SAVONA': 'LIGURIA', 'IMPERIA': 'LIGURIA',
-            'MASSA': 'TOSCANA', 'LUCCA': 'TOSCANA',
-            'ASTI': 'PIEMONTE', 'ALESSANDRIA': 'PIEMONTE'
-        }
-
-        stats = {
-            'LIGURIA': {'total': 0, 'provinces': {'GENOVA': 0, 'LA SPEZIA': 0, 'SAVONA': 0, 'IMPERIA': 0}},
-            'TOSCANA': {'total': 0, 'provinces': {'MASSA': 0, 'LUCCA': 0}},
-            'PIEMONTE': {'total': 0, 'provinces': {'ALESSANDRIA': 0, 'ASTI': 0}},
-            'ALTRO': {'total': 0, 'cities': {}}
-        }
-
-        for ev in sorted_events:
-            prov_found = self.get_province(ev)
-            loc = ev.get('location', 'N/D').strip().upper()
+        # 1. TITOLO E STATISTICHE
+        if not skip_stats:
+            title_text = "Eventi e Locandine"
+            title = self.doc.add_heading(title_text, level=1)
+            title.alignment = WD_ALIGN_PARAGRAPH.CENTER
             
-            reg = PROV_TO_REG.get(prov_found)
-            if reg:
-                stats[reg]['total'] += 1
-                if prov_found in stats[reg]['provinces']:
-                    stats[reg]['provinces'][prov_found] += 1
-            else:
-                stats['ALTRO']['total'] += 1
-                # Se non è una provincia, è una città "Altro"
-                city_key = loc if loc else 'N/D'
-                stats['ALTRO']['cities'][city_key] = stats['ALTRO']['cities'].get(city_key, 0) + 1
+            date_para = self.doc.add_paragraph()
+            date_para.alignment = WD_ALIGN_PARAGRAPH.CENTER
+            now_str = datetime.now().strftime('%d/%m/%Y %H:%M')
+            run = date_para.add_run(f"Documento generato il: {now_str}")
+            run.font.size = Pt(10)
+            run.font.italic = True
+            
+            self.doc.add_paragraph()
 
-        # Regionale
-        reg_parts = []
-        for r in ['LIGURIA', 'TOSCANA', 'PIEMONTE']:
-            if stats[r]['total'] > 0:
-                reg_parts.append(f"{r} ({stats[r]['total']})")
-        if stats['ALTRO']['total'] > 0:
-            reg_parts.append(f"ALTRO ({stats['ALTRO']['total']})")
-        
-        self.doc.add_paragraph(f"Distribuzione per Regione: {', '.join(reg_parts)}", style='List Bullet')
+            st_h = self.doc.add_paragraph()
+            st_h.add_run("Riepilogo Dati:").bold = True
+            
+            total_ev = len(sorted_events)
+            self.doc.add_paragraph(f"Totale Locandine caricate: {total_ev}", style='List Bullet')
+            
+            PROV_TO_REG = {
+                'GENOVA': 'LIGURIA', 'LA SPEZIA': 'LIGURIA', 'SAVONA': 'LIGURIA', 'IMPERIA': 'LIGURIA',
+                'MASSA': 'TOSCANA', 'LUCCA': 'TOSCANA',
+                'ASTI': 'PIEMONTE', 'ALESSANDRIA': 'PIEMONTE'
+            }
 
-        # Provinciale
-        prov_parts = []
-        for r in ['LIGURIA', 'TOSCANA', 'PIEMONTE']:
-            for p, count in stats[r]['provinces'].items():
-                if count > 0:
-                    prov_parts.append(f"{p} ({count})")
-        
-        # Aggiunta categoria ALTRO con elenco città
-        if stats['ALTRO']['total'] > 0:
-            altro_cities = ", ".join([f"{c} ({n})" for c, n in sorted(stats['ALTRO']['cities'].items())])
-            prov_parts.append(f"ALTRO [{altro_cities}]")
-        
-        if prov_parts:
-            self.doc.add_paragraph(f"Distribuzione per Provincia: {', '.join(prov_parts)}", style='List Bullet')
+            stats = {
+                'LIGURIA': {'total': 0, 'provinces': {'GENOVA': 0, 'LA SPEZIA': 0, 'SAVONA': 0, 'IMPERIA': 0}},
+                'TOSCANA': {'total': 0, 'provinces': {'MASSA': 0, 'LUCCA': 0}},
+                'PIEMONTE': {'total': 0, 'provinces': {'ALESSANDRIA': 0, 'ASTI': 0}},
+                'ALTRO': {'total': 0, 'cities': {}}
+            }
 
-        # Dettaglio Luoghi
-        locations = {}
-        for ev in sorted_events:
-            loc = ev.get('location', 'N/D').strip().upper()
-            locations[loc] = locations.get(loc, 0) + 1
-        
-        loc_str = ", ".join([f"{loc} ({count})" for loc, count in sorted(locations.items())])
-        self.doc.add_paragraph(f"Dettaglio per Località: {loc_str}", style='List Bullet')
-        
-        self.doc.add_page_break()
+            for ev in sorted_events:
+                prov_found = self.get_province(ev)
+                loc = ev.get('location', 'N/D').strip().upper()
+                
+                reg = PROV_TO_REG.get(prov_found)
+                if reg:
+                    stats[reg]['total'] += 1
+                    if prov_found in stats[reg]['provinces']:
+                        stats[reg]['provinces'][prov_found] += 1
+                else:
+                    stats['ALTRO']['total'] += 1
+                    city_key = loc if loc else 'N/D'
+                    stats['ALTRO']['cities'][city_key] = stats['ALTRO']['cities'].get(city_key, 0) + 1
+
+            reg_parts = []
+            for r in ['LIGURIA', 'TOSCANA', 'PIEMONTE']:
+                if stats[r]['total'] > 0:
+                    reg_parts.append(f"{r} ({stats[r]['total']})")
+            if stats['ALTRO']['total'] > 0:
+                reg_parts.append(f"ALTRO ({stats['ALTRO']['total']})")
+            
+            self.doc.add_paragraph(f"Distribuzione per Regione: {', '.join(reg_parts)}", style='List Bullet')
+
+            prov_parts = []
+            for r in ['LIGURIA', 'TOSCANA', 'PIEMONTE']:
+                for p, count in stats[r]['provinces'].items():
+                    if count > 0:
+                        prov_parts.append(f"{p} ({count})")
+            
+            if stats['ALTRO']['total'] > 0:
+                altro_cities = ", ".join([f"{c} ({n})" for c, n in sorted(stats['ALTRO']['cities'].items())])
+                prov_parts.append(f"ALTRO [{altro_cities}]")
+            
+            if prov_parts:
+                self.doc.add_paragraph(f"Distribuzione per Provincia: {', '.join(prov_parts)}", style='List Bullet')
+
+            locations = {}
+            for ev in sorted_events:
+                loc = ev.get('location', 'N/D').strip().upper()
+                locations[loc] = locations.get(loc, 0) + 1
+            
+            loc_str = ", ".join([f"{loc} ({count})" for loc, count in sorted(locations.items())])
+            self.doc.add_paragraph(f"Dettaglio per Località: {loc_str}", style='List Bullet')
 
         # 2. ELENCO EVENTI
+        # Usiamo page_break_before sui separatori invece di add_page_break()
+        # per evitare paragrafi-fantasma che creano pagine bianche
         if mode == "standard":
-            # Modalità Standard: 2 eventi per pagina
-            for idx, event in enumerate(sorted_events):
-                self.add_event_entry(event, event.get('image_path', ''), mode=mode, show_borders=show_borders)
+            # Modalità Standard: 2 eventi per pagina, processati a coppie
+            for page_idx in range(0, len(sorted_events), 2):
+                # Separatore pagina: prima di ogni coppia
+                # (dopo stats, oppure tra le coppie di eventi)
+                if page_idx > 0 or not skip_stats:
+                    sep = self.doc.add_paragraph()
+                    sep.paragraph_format.page_break_before = True
+                    sep.paragraph_format.space_before = Pt(0)
+                    sep.paragraph_format.space_after = Pt(0)
                 
-                # Ogni 2 eventi (e se non è l'ultimo), aggiungiamo un salto pagina per armonia
-                if (idx + 1) % 2 == 0 and (idx + 1) < len(sorted_events):
-                    self.doc.add_page_break()
-                else:
-                    # Spazio abbondante tra i due eventi nella stessa pagina
-                    self.doc.add_paragraph().paragraph_format.space_after = Pt(30)
+                # Evento 1
+                ev1 = sorted_events[page_idx]
+                self.add_event_entry(ev1, ev1.get('image_path', ''), mode=mode, show_borders=show_borders)
+                
+                # Evento 2 (se esiste)
+                if page_idx + 1 < len(sorted_events):
+                    spacer = self.doc.add_paragraph()
+                    spacer.paragraph_format.space_before = Pt(6)
+                    spacer.paragraph_format.space_after = Pt(6)
+                    ev2 = sorted_events[page_idx + 1]
+                    self.add_event_entry(ev2, ev2.get('image_path', ''), mode=mode, show_borders=show_borders)
         else:
-            i = 0
-            while i < len(sorted_events):
-                event1 = sorted_events[i]
-                event2 = sorted_events[i+1] if (i + 1) < len(sorted_events) else None
-                self.add_minimal_grid_row(event1, event2, show_borders=show_borders)
-                i += 2
+            # Modalità Minimal: griglia 2x2 (4 eventi per pagina)
+            page_size = 4
+            for page_start in range(0, len(sorted_events), page_size):
+                if page_start > 0 or not skip_stats:
+                    sep = self.doc.add_paragraph()
+                    sep.paragraph_format.page_break_before = True
+                    sep.paragraph_format.space_before = Pt(0)
+                    sep.paragraph_format.space_after = Pt(0)
+                
+                page_events = sorted_events[page_start:page_start + page_size]
+                self.add_minimal_grid_page(page_events, show_borders=show_borders)
         
-        # 3. FIRMA (Append file e inserimento Logo esplicito se presente)
+        # 3. FIRMA
         firma_path = "firmaComitato.docx"
         logo_path = "LogoNOConfiniTrasparente.png"
         
         if os.path.exists(firma_path):
-            self.doc.add_paragraph() # Spazio
+            sep = self.doc.add_paragraph()
+            sep.paragraph_format.page_break_before = True
+            sep.paragraph_format.space_before = Pt(0)
+            sep.paragraph_format.space_after = Pt(0)
             self._append_external_doc(firma_path)
             
-            # Logo posizionato DOPO la firma
             if os.path.exists(logo_path):
-                # Assicuriamoci che ci sia un paragrafo di stacco
-                self.doc.add_paragraph()
                 p_logo = self.doc.add_paragraph()
                 p_logo.alignment = WD_ALIGN_PARAGRAPH.CENTER
                 run_logo = p_logo.add_run()
@@ -400,40 +428,87 @@ class WordGenerator:
             p = self.doc.add_paragraph()
             p.add_run(f"[Errore caricamento documento esterno {file_path}: {e}]").italic = True
 
-    def add_minimal_grid_row(self, event1, event2, show_borders=False):
+    def add_minimal_grid_page(self, page_events, show_borders=False):
         """
-        Aggiunge una riga in modalità minimal:
-        Colonna 1: Titolo + Immagine evento 1
-        Colonna 2: Titolo + Immagine evento 2 (se presente)
+        Aggiunge una pagina in modalità minimal con griglia 2x2:
+        - Riga 1: evento 1 (sx) + evento 2 (dx)
+        - Riga 2: evento 3 (sx) + evento 4 (dx)
+        Ogni cella contiene Titolo + Immagine.
+        page_events: lista da 1 a 4 eventi per questa pagina.
         """
-        table = self.doc.add_table(rows=1, cols=2)
+        from docx.oxml.ns import qn
+        from docx.oxml import OxmlElement
+        
+        # Calcola numero righe necessarie (1 o 2)
+        num_rows = 2 if len(page_events) > 2 else 1
+        table = self.doc.add_table(rows=num_rows, cols=2)
         
         if show_borders:
             table.style = 'Table Grid'
         else:
             table.style = 'Normal Table'
-            
-        # Impedisce alla riga di spezzarsi tra due pagine
-        table.rows[0].allow_break_across_pages = False
-            
-        # Larghezze uguali
+        
+        # Larghezze colonne: dividono equamente la pagina
+        # (pagina ~7" di testo utile con margini 0.75")
         table.columns[0].width = Inches(3.25)
         table.columns[1].width = Inches(3.25)
         
-        # Cella 1
-        if event1:
-            self._insert_minimal_content(table.rows[0].cells[0], event1)
-            
-        # Cella 2
+        # Impedisci che le righe si spezzino tra due pagine
+        for row in table.rows:
+            row.allow_break_across_pages = False
+            # Altezza righe uniforme: metà pagina utile (~4.5" con margini 0.5")
+            tr = row._tr
+            trPr = tr.get_or_add_trPr()
+            trHeight = OxmlElement('w:trHeight')
+            trHeight.set(qn('w:val'), str(int(4.5 * 1440)))  # 4.5 pollici in twip
+            trHeight.set(qn('w:hRule'), 'atLeast')
+            trPr.append(trHeight)
+        
+        # Riempi le celle con gli eventi
+        # Layout: [0]=riga0-col0, [1]=riga0-col1, [2]=riga1-col0, [3]=riga1-col1
+        cell_positions = [(0, 0), (0, 1), (1, 0), (1, 1)]
+        
+        for idx, event in enumerate(page_events):
+            if idx >= len(cell_positions):
+                break
+            row_idx, col_idx = cell_positions[idx]
+            cell = table.rows[row_idx].cells[col_idx]
+            # Allineamento verticale centrato per distribuzione uniforme
+            cell.vertical_alignment = WD_ALIGN_VERTICAL.CENTER
+            self._insert_minimal_content(cell, event)
+
+    def add_minimal_grid_row(self, event1, event2, show_borders=False):
+        """
+        Aggiunge una riga in modalità minimal (backward compatibility):
+        Colonna 1: Titolo + Immagine evento 1
+        Colonna 2: Titolo + Immagine evento 2 (se presente)
+        """
+        events = [event1]
         if event2:
-            self._insert_minimal_content(table.rows[0].cells[1], event2)
-            
-        self.doc.add_paragraph() # Spazio dopo la riga
+            events.append(event2)
+        self.add_minimal_grid_page(events, show_borders=show_borders)
 
     def _insert_minimal_content(self, cell, event_data):
         """Inserisce Titolo (con Ora) + Immagine in una cella (modalità minimal)"""
+        from docx.oxml.ns import qn
+        from docx.oxml import OxmlElement
+        
+        # Riduce il padding interno della cella per massimizzare lo spazio
+        tc = cell._tc
+        tcPr = tc.get_or_add_tcPr()
+        tcMar = OxmlElement('w:tcMar')
+        for side in ['top', 'bottom']:
+            el = OxmlElement(f'w:{side}')
+            el.set(qn('w:w'), '30')  # ~0.02" di margine
+            el.set(qn('w:type'), 'dxa')
+            tcMar.append(el)
+        tcPr.append(tcMar)
+        
         p = cell.paragraphs[0]
         p.alignment = WD_ALIGN_PARAGRAPH.CENTER
+        # Spaziatura minima del paragrafo titolo
+        p.paragraph_format.space_before = Pt(0)
+        p.paragraph_format.space_after = Pt(2)
         
         # Titolo (Grassetto, dimensione contenuta)
         # Formato: DATA - ORA - LUOGO
@@ -442,7 +517,6 @@ class WordGenerator:
         
         if time and time not in title:
             # Ricostruzione titolo con ora se non presente
-            # (Assumendo che il titolo originale sia DATA - LUOGO)
             if " - " in title:
                 parts = title.split(" - ", 1)
                 title_text = f"{parts[0]} - {time} - {parts[1]}"
@@ -453,7 +527,7 @@ class WordGenerator:
 
         run = p.add_run(title_text)
         run.bold = True
-        run.font.size = Pt(9)
+        run.font.size = Pt(8)
         # Forza il titolo a stare insieme al paragrafo successivo (l'immagine)
         p.paragraph_format.keep_with_next = True
         
@@ -470,9 +544,11 @@ class WordGenerator:
         if img_path and os.path.exists(img_path):
             p_img = cell.add_paragraph()
             p_img.alignment = WD_ALIGN_PARAGRAPH.CENTER
+            p_img.paragraph_format.space_before = Pt(0)
+            p_img.paragraph_format.space_after = Pt(0)
             run_img = p_img.add_run()
-            # Adatta larghezza per la griglia
-            run_img.add_picture(img_path, width=Inches(2.8))
+            # Larghezza calcolata per stare bene in 2x2
+            run_img.add_picture(img_path, width=Inches(2.6))
     
     def load_events_from_json(self, json_path: str) -> List[Dict]:
         """Carica eventi dal file JSON"""
