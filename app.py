@@ -667,8 +667,23 @@ with st.sidebar:
                     
                     safe_reset_city_cache()
                     
-                    # Forza ricaricamento totale
-                    safe_media_rerun()
+                    # Forza ricaricamento totale MA preserva data_initialized
+                    # per evitare che l'auto-sync cloud sovrascriva il backup locale appena ripristinato
+                    try:
+                        from streamlit.runtime import get_instance
+                        runtime = get_instance()
+                        if hasattr(runtime, "media_file_mgr"):
+                            runtime.media_file_mgr.clear()
+                    except:
+                        pass
+                    # Puliamo solo le chiavi necessarie, NON data_initialized
+                    for k in ['album_cover', 'album_pages', 'album_zip', 'album_pdf', 'backup_zip', 'events']:
+                        if k in st.session_state:
+                            try: del st.session_state[k]
+                            except: pass
+                    import time
+                    time.sleep(0.8)
+                    st.rerun()
 
                 # Caso 2: È un file JSON (Vecchio metodo Import)
                 elif uploaded_backup.name.endswith('.json'):
