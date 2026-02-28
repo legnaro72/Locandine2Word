@@ -403,6 +403,27 @@ OUTPUT_DIR = "output"
 os.makedirs(UPLOADS_DIR, exist_ok=True)
 os.makedirs(OUTPUT_DIR, exist_ok=True)
 
+# Helper per salvataggio pulito (senza metadati temporanei)
+def save_events_to_disk():
+    if 'events' in st.session_state:
+        # Crea una copia pulita senza i metadati _dt e _prov
+        clean_events = []
+        for ev in st.session_state.events:
+            clean_ev = {k: v for k, v in ev.items() if not k.startswith('_')}
+            clean_events.append(clean_ev)
+            
+        with open(DATA_FILE, 'w', encoding='utf-8') as f:
+            json.dump(clean_events, f, ensure_ascii=False, indent=2)
+
+# Helper per refresh dei dati calcolati (da usare dopo edit/add)
+def refresh_event_metadata():
+    if 'events' in st.session_state:
+        for ev in st.session_state.events:
+            if '_dt' not in ev:
+                ev['_dt'] = WordGenerator.get_sort_date(ev)
+            if '_prov' not in ev:
+                ev['_prov'] = WordGenerator.get_province(ev)
+
 # --- CONFIGURAZIONE GITHUB ---
 GITHUB_TOKEN = st.secrets.get("GITHUB_TOKEN", None)
 GITHUB_REPO = "legnaro72/Locandine2Word"
@@ -502,26 +523,6 @@ if 'events' not in st.session_state:
         except Exception as e:
             st.error(f"Errore caricamento database locale: {e}")
 
-# Helper per salvataggio pulito (senza metadati temporanei)
-def save_events_to_disk():
-    if 'events' in st.session_state:
-        # Crea una copia pulita senza i metadati _dt e _prov
-        clean_events = []
-        for ev in st.session_state.events:
-            clean_ev = {k: v for k, v in ev.items() if not k.startswith('_')}
-            clean_events.append(clean_ev)
-            
-        with open(DATA_FILE, 'w', encoding='utf-8') as f:
-            json.dump(clean_events, f, ensure_ascii=False, indent=2)
-
-# Helper per refresh dei dati calcolati (da usare dopo edit/add)
-def refresh_event_metadata():
-    if 'events' in st.session_state:
-        for ev in st.session_state.events:
-            if '_dt' not in ev:
-                ev['_dt'] = WordGenerator.get_sort_date(ev)
-            if '_prov' not in ev:
-                ev['_prov'] = WordGenerator.get_province(ev)
 
 
 if 'ocr_engine' not in st.session_state:
