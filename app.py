@@ -14,6 +14,7 @@ from PIL import Image
 from ocr_engine import LocandineOCR
 from word_generator import WordGenerator
 from album_generator import AlbumGenerator, create_single_sticker
+from gdrive_uploader import render_credentials_sidebar, upload_pdf_to_gdrive, GDRIVE_TARGET_FILENAME
 
 # Suppress PyTorch warnings about pin_memory when no GPU is present
 warnings.filterwarnings("ignore", message=".*'pin_memory' argument is set as true but no accelerator is found.*")
@@ -929,7 +930,10 @@ with st.sidebar:
                 # e ri-triggera il cloud sync che sovrascrive il lavoro appena fatto!
                 st.rerun()
 
-
+    # --- CREDENZIALI GOOGLE DRIVE ---
+    st.divider()
+    st.markdown("### 📤 Google Drive")
+    render_credentials_sidebar(github_manager=st.session_state.get('github_manager'))
 
 
 tab4, tab1, tab2, tab3, tab5 = st.tabs(["📊 Statistiche", "📤 Carica & Analizza", "📋 Modifica Dati", "📖 Export Word", "📖 Creazione Album"])
@@ -1628,20 +1632,30 @@ with tab3:
                         from docx2pdf import convert
                         convert(pdf_out_docx, pdf_path)
                         pdf_converted = True
-                    except Exception:
-                        pass
+                    except Exception as e:
+                        st.warning(f"⚠️ Errore conversione PDF: {e}")
                     
                     if pdf_converted and os.path.exists(pdf_path):
-                        with open(pdf_path, 'rb') as f:
-                            st.download_button(
-                                label="⬇️ Scarica PDF",
-                                data=f,
-                                file_name=os.path.splitext(doc_name)[0] + ".pdf",
-                                mime="application/pdf"
-                            )
+                        # Salva il path PDF in session_state per il bottone upload
+                        st.session_state['last_pdf_path'] = pdf_path
+                        st.session_state['last_pdf_name'] = os.path.splitext(doc_name)[0] + ".pdf"
+                        
+                        col_dl, col_up = st.columns(2)
+                        with col_dl:
+                            with open(pdf_path, 'rb') as f:
+                                st.download_button(
+                                    label="⬇️ Scarica PDF",
+                                    data=f,
+                                    file_name=os.path.splitext(doc_name)[0] + ".pdf",
+                                    mime="application/pdf"
+                                )
                         st.success("PDF pronto!")
                     else:
                         # Fallback: offri il Word senza stats
+                        # Salva anche il docx path per eventuale upload
+                        st.session_state['last_pdf_path'] = pdf_out_docx
+                        st.session_state['last_pdf_name'] = pdf_doc_name
+                        
                         with open(pdf_out_docx, 'rb') as f:
                             st.download_button(
                                 label="⬇️ Scarica Word (senza statistiche)",
@@ -1650,6 +1664,28 @@ with tab3:
                                 mime="application/vnd.openxmlformats-officedocument.wordprocessingml.document"
                             )
                         st.warning("Conversione PDF non disponibile. Scarica il Word senza statistiche e convertilo in PDF manualmente.")
+    
+    # --- BOTTONE UPLOAD GOOGLE DRIVE (sempre visibile se c'è un PDF pronto) ---
+    if 'last_pdf_path' in st.session_state and os.path.exists(st.session_state.get('last_pdf_path', '')):
+        st.divider()
+        st.markdown("#### ☁️ Upload su Google Drive")
+        st.caption(f"📄 Il file verrà caricato come: **{GDRIVE_TARGET_FILENAME}**")
+        
+        if st.button("📤 Carica PDF su Google Drive", type="primary", key="btn_upload_gdrive"):
+            pdf_source = st.session_state['last_pdf_path']
+            
+            with st.spinner(f"Upload di '{GDRIVE_TARGET_FILENAME}' su Google Drive..."):
+                def progress_cb(msg):
+                    st.toast(msg, icon="☁️")
+                
+                success, message, link = upload_pdf_to_gdrive(pdf_source, progress_callback=progress_cb)
+                
+                if success:
+                    st.success(message)
+                    if link:
+                        st.markdown(f"🔗 [Apri su Google Drive]({link})")
+                else:
+                    st.error(message)
 
 @st.cache_data(show_spinner=False)
 def compute_statistics(events_list_stats):
