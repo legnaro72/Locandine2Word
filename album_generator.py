@@ -117,6 +117,21 @@ class AlbumGenerator:
     CORNER_RADIUS = 12
     SHADOW_OFFSET = 6
 
+    _font_cache = {}
+    _resource_cache = {}
+
+    @classmethod
+    def _get_cached_resource(cls, path):
+        """Carica risorse immagine solo una volta nella vita del worker."""
+        if not path or not os.path.exists(path):
+            return None
+        if path not in cls._resource_cache:
+            try:
+                cls._resource_cache[path] = Image.open(path).convert("RGBA")
+            except Exception:
+                cls._resource_cache[path] = None
+        return cls._resource_cache[path]
+
     def __init__(self, bg_image_path="giustidireno.png", logo_path="LogoNOConfiniTrasparente.png",
                  banner_path="bannerprimapaginainalto.png",
                  rows=3, cols=2, layout="verticale",
@@ -126,84 +141,63 @@ class AlbumGenerator:
                   sticker_height_mm=80,
                   empty_album_mode=False, export_stickers=False, preview_mode=False):
         """
-        Args:
-            cols: numero colonne per pagina (1-4)
-            layout: "verticale" (dritto) o "obliquo" (sfalsato)
-            custom_cover_image: PIL Image per copertina (None = usa logo_path)
-            custom_back_image: PIL Image per ultima pagina (None = usa logo_path piccolo)
-            logo_white_bg: se True, il cerchio del logo in ultima pagina ha sfondo bianco
-            logo_cover_white_bg: se True, il cerchio del logo in prima pagina (se default) ha sfondo bianco
-            logo_cover_full_page: se True, il logo in prima pagina riempie la pagina, sennò è piccolo
-            show_banner: se True, mostra il banner in alto in copertina
-            sticker_fill_mode: modalità riempimento figurina:
-                - "opaco": sfondo classico color crema solido
-                - "trasparente": sfondo trasparente (si vede la trama dell'album)
-                - "espansione": sfondo riempito con immagine sfocata (stile Instagram)
-            force_aspect_ratio: se True, forza le immagini interne alla proporzione configurata
-            sticker_height_mm: altezza in mm della figurina (57mm è la larghezza fissa). Range 76-80. Default 80.
-            empty_album_mode: se True, disegna figure vuote con numero gigante
-            export_stickers: se True, salva crop perfetti delle figurine trasparenti (con bg vero fuso)
+        ...
         """
         self.rows = max(1, min(5, rows))
         self.cols = max(1, min(4, cols))
         self.stickers_per_page = self.rows * self.cols
-        self.layout = layout  # "verticale" o "obliquo"
+        self.layout = layout
         self.logo_white_bg = logo_white_bg
         self.logo_cover_white_bg = logo_cover_white_bg
         self.logo_cover_full_page = logo_cover_full_page
         self.show_banner = show_banner
-        self.sticker_fill_mode = sticker_fill_mode  # "opaco", "trasparente", "espansione"
+        self.sticker_fill_mode = sticker_fill_mode
         self.force_aspect_ratio = force_aspect_ratio
-        self.sticker_height_mm = max(76, min(80, sticker_height_mm))  # 76-80
+        self.sticker_height_mm = max(76, min(80, sticker_height_mm))
         self.empty_album_mode = empty_album_mode
         self.export_stickers = export_stickers
         self.preview_mode = preview_mode
         self._image_cache = {}
 
-        # --- Caricamento immagini ---
-        self.bg_image = None
-        self.logo_image = None
-        self.banner_image = None
-        self.custom_cover_image = custom_cover_image  # PIL Image o None
-        self.custom_back_image = custom_back_image    # PIL Image o None
-
-        if os.path.exists(bg_image_path):
-            try:
-                self.bg_image = Image.open(bg_image_path).convert("RGBA")
-            except Exception:
-                self.bg_image = None
-
-        if os.path.exists(logo_path):
-            try:
-                self.logo_image = Image.open(logo_path).convert("RGBA")
-            except Exception:
-                self.logo_image = None
-
-        if os.path.exists(banner_path):
-            try:
-                self.banner_image = Image.open(banner_path).convert("RGBA")
-            except Exception:
-                self.banner_image = None
+        # --- Caricamento immagini ottimizzato (con cache globale per risorsa base) ---
+        self.bg_image = self._get_cached_resource(bg_image_path)
+        self.logo_image = self._get_cached_resource(logo_path)
+        self.banner_image = self._get_cached_resource(banner_path)
+        
+        self.custom_cover_image = custom_cover_image
+        self.custom_back_image = custom_back_image
 
     # ---------------------------------------------------------------
     #  UTILITÀ GRAFICHE
     # ---------------------------------------------------------------
 
     def _get_font(self, size, bold=False):
-        """Prova a caricare un font di sistema, fallback sul default."""
+        """Prova a caricare un font di sistema con CACHE, fallback sul default."""
+        cache_key = (size, bold)
+        if cache_key in self._font_cache:
+            return self._font_cache[cache_key]
+            
         font_names = [
             "C:/Windows/Fonts/arialbd.ttf" if bold else "C:/Windows/Fonts/arial.ttf",
             "C:/Windows/Fonts/calibrib.ttf" if bold else "C:/Windows/Fonts/calibri.ttf",
             "/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf" if bold else
             "/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf",
         ]
+        
+        loaded_font = None
         for fn in font_names:
             if os.path.exists(fn):
                 try:
-                    return ImageFont.truetype(fn, size)
+                    loaded_font = ImageFont.truetype(fn, size)
+                    break
                 except Exception:
                     continue
-        return ImageFont.load_default()
+                    
+        if loaded_font is None:
+            loaded_font = ImageFont.load_default()
+            
+        self._font_cache[cache_key] = loaded_font
+        return loaded_font
 
     def _prepare_logo(self, logo_img, target_size, white_bg=False):
         """
@@ -764,7 +758,7 @@ class AlbumGenerator:
         self._draw_page_frame(draw)
 
         # === Testo di ringraziamento in alto ===
-        font_body = self._get_font(20)
+        font_body = self._get_font(9)
         body_lines = [
             "Quest'album raccoglie tutti gli eventi organizzati",
             "dal Comitato \"Giusto Dire No\"",
@@ -1121,4 +1115,3 @@ class AlbumGenerator:
                 zip_buffer.seek(0)
 
         return cover_path, pages_full, pdf_buffer, pdf_empty_buffer, zip_buffer
-

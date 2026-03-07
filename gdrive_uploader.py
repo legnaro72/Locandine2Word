@@ -19,7 +19,11 @@ DEFAULT_CREDENTIALS = {
 
 
 def load_credentials():
-    """Carica le credenziali dal file JSON."""
+    """Carica le credenziali dal file JSON (con cache in session_state)."""
+    if 'gdrive_credentials_cache' in st.session_state:
+        return st.session_state.gdrive_credentials_cache
+    
+    creds = DEFAULT_CREDENTIALS.copy()
     if os.path.exists(CREDENTIALS_FILE):
         try:
             with open(CREDENTIALS_FILE, 'r', encoding='utf-8') as f:
@@ -27,16 +31,20 @@ def load_credentials():
             for key, val in DEFAULT_CREDENTIALS.items():
                 if key not in creds:
                     creds[key] = val
-            return creds
         except Exception:
             pass
-    return DEFAULT_CREDENTIALS.copy()
+    
+    st.session_state.gdrive_credentials_cache = creds
+    return creds
 
 
 def save_credentials(creds):
     """Salva le credenziali nel file JSON locale."""
     with open(CREDENTIALS_FILE, 'w', encoding='utf-8') as f:
         json.dump(creds, f, ensure_ascii=False, indent=2)
+    # Invalida cache
+    if 'gdrive_credentials_cache' in st.session_state:
+        del st.session_state['gdrive_credentials_cache']
 
 
 def save_credentials_to_cloud(github_manager):

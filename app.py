@@ -62,18 +62,33 @@ def cached_ocr(image_path):
     return st.session_state.ocr_engine.analyze_poster(image_path)
 
 # --- FUNZIONE HELPER AUDIO (Dall'esempio funzionante) ---
+@st.cache_data(show_spinner=False)
 def get_base64_file(file_path):
     if os.path.exists(file_path):
         with open(file_path, "rb") as f:
             return base64.b64encode(f.read()).decode()
     return None
 
-# Caricamento anticipato della risorsa audio
-audio_base64 = get_base64_file("audio.mp3")
+# NOTA: Caricamento audio rimosso qui — avviene una sola volta in get_audio_base64_robust() (cachata)
 
 # --- STREAMLIT IMAGE WIDTH PARAMETER ---
 # Usa il parametro moderno 'width' (valido per st.image(), NON per button/download_button)
 IMG_WIDTH_ARG = {"width": "stretch"}
+
+# --- COSTANTI DI MODULO (evita ricalcolo ad ogni chiamata) ---
+IT_MONTHS = {
+    "GENNAIO": "01", "FEBBRAIO": "02", "MARZO": "03",
+    "APRILE": "04", "MAGGIO": "05", "GIUGNO": "06",
+    "LUGLIO": "07", "AGOSTO": "08", "SETTEMBRE": "09",
+    "OTTOBRE": "10", "NOVEMBRE": "11", "DICEMBRE": "12"
+}
+IT_MONTHS_LIST = list(IT_MONTHS.keys())
+
+PROV_TO_REG = {
+    'GENOVA': 'LIGURIA', 'LA SPEZIA': 'LIGURIA', 'SAVONA': 'LIGURIA', 'IMPERIA': 'LIGURIA',
+    'MASSA': 'TOSCANA', 'LUCCA': 'TOSCANA',
+    'ALESSANDRIA': 'PIEMONTE', 'ASTI': 'PIEMONTE'
+}
 
 # --- FUNZIONI DI SUPPORTO ---
 def normalize_date_to_italian(raw_date):
@@ -81,20 +96,13 @@ def normalize_date_to_italian(raw_date):
     if not raw_date:
         return ""
 
-    IT_MONTHS = {
-        "GENNAIO": "01", "FEBBRAIO": "02", "MARZO": "03",
-        "APRILE": "04", "MAGGIO": "05", "GIUGNO": "06",
-        "LUGLIO": "07", "AGOSTO": "08", "SETTEMBRE": "09",
-        "OTTOBRE": "10", "NOVEMBRE": "11", "DICEMBRE": "12"
-    }
-
     raw_date = raw_date.upper().strip()
 
     # Caso 15/01/2026
     m = re.match(r"(\d{1,2})[\/\.\-](\d{1,2})[\/\.\-](\d{4})", raw_date)
     if m:
         d, mth, y = m.groups()
-        return f"{int(d)} {list(IT_MONTHS.keys())[int(mth)-1]} {y}"
+        return f"{int(d)} {IT_MONTHS_LIST[int(mth)-1]} {y}"
 
     # Caso 15 GENNAIO 2026
     for month_name in IT_MONTHS:
@@ -401,8 +409,12 @@ LOCANDINE_FILE = "locandine.json"
 DATA_FILE = "data.json"
 UPLOADS_DIR = "uploads"
 OUTPUT_DIR = "output"
-os.makedirs(UPLOADS_DIR, exist_ok=True)
-os.makedirs(OUTPUT_DIR, exist_ok=True)
+
+# Crea directory solo alla prima esecuzione (evita IO inutile ad ogni rerun)
+if 'dirs_created' not in st.session_state:
+    os.makedirs(UPLOADS_DIR, exist_ok=True)
+    os.makedirs(OUTPUT_DIR, exist_ok=True)
+    st.session_state.dirs_created = True
 
 # Helper per salvataggio pulito (senza metadati temporanei)
 def save_events_to_disk():
@@ -415,15 +427,29 @@ def save_events_to_disk():
             
         with open(DATA_FILE, 'w', encoding='utf-8') as f:
             json.dump(clean_events, f, ensure_ascii=False, indent=2)
+        # Marca metadata come sporco per forzare ricalcolo al prossimo refresh
+        st.session_state['metadata_dirty'] = True
 
 # Helper per refresh dei dati calcolati (da usare dopo edit/add)
+# Usa un flag 'metadata_dirty' per evitare ricalcoli inutili ad ogni rerun
 def refresh_event_metadata():
     if 'events' in st.session_state:
-        for ev in st.session_state.events:
-            if '_dt' not in ev:
-                ev['_dt'] = WordGenerator.get_sort_date(ev)
-            if '_prov' not in ev:
-                ev['_prov'] = WordGenerator.get_province(ev)
+        # Ricalcola solo se serve (nuovi eventi senza _dt o flag dirty)
+        needs_refresh = st.session_state.get('metadata_dirty', False)
+        if not needs_refresh:
+            # Controlla se c'è almeno un evento senza metadati
+            for ev in st.session_state.events:
+                if '_dt' not in ev or '_prov' not in ev:
+                    needs_refresh = True
+                    break
+        
+        if needs_refresh:
+            for ev in st.session_state.events:
+                if '_dt' not in ev:
+                    ev['_dt'] = WordGenerator.get_sort_date(ev)
+                if '_prov' not in ev:
+                    ev['_prov'] = WordGenerator.get_province(ev)
+            st.session_state['metadata_dirty'] = False
 
 # --- CONFIGURAZIONE GITHUB ---
 GITHUB_TOKEN = st.secrets.get("GITHUB_TOKEN", None)
@@ -723,16 +749,18 @@ with st.sidebar:
         st.markdown("#### 📍 Gestione Mappatura Località -> Province")
         st.info("Qui puoi definire quali località (che non sono capoluogo) appartengono a quali province. Le modifiche avranno effetto immediato su statistiche e grafici.")
         
-        # Caricamento JSON esistente o creazione default
+        # Caricamento JSON con cache in session_state (evita IO disco ad ogni rerun)
         fb_file = "CITY_FALLBACK.json"
-        if not os.path.exists(fb_file):
-            default_fb = {} # Il file dovrebbe esistere grazie alla creazione iniziale
-        else:
-            try:
-                with open(fb_file, "r", encoding="utf-8") as f:
-                    default_fb = json.load(f)
-            except:
-                default_fb = {}
+        if 'city_fallback_cache' not in st.session_state:
+            if not os.path.exists(fb_file):
+                st.session_state.city_fallback_cache = {}
+            else:
+                try:
+                    with open(fb_file, "r", encoding="utf-8") as f:
+                        st.session_state.city_fallback_cache = json.load(f)
+                except:
+                    st.session_state.city_fallback_cache = {}
+        default_fb = st.session_state.city_fallback_cache
 
         # Conversione Dict -> DataFrame per editing
         # Usiamo una lista di dizionari
@@ -773,8 +801,10 @@ with st.sidebar:
                 with open(fb_file, "w", encoding="utf-8") as f:
                     json.dump(new_fb_dict, f, ensure_ascii=False, indent=4)
                 
-                # Reset Cache
+                # Reset Cache (sia WordGenerator che session_state)
                 safe_reset_city_cache()
+                if 'city_fallback_cache' in st.session_state:
+                    del st.session_state['city_fallback_cache']
                 st.success(f"✅ Mappatura salvata! ({len(new_fb_dict)} voci)")
                 # st.rerun()
             except Exception as e:
@@ -1015,10 +1045,11 @@ with tab1:
             with st.expander(f"🖼️ {uploaded_file.name}", expanded=True):
                 col1, col2 = st.columns([1, 2])
                 
-                # Salvataggio e Anteprima Immagine (Ottimizzata JPG)
+                # Salvataggio e Anteprima Immagine (Ottimizzata JPG) — solo se non esiste già
                 base_name = os.path.splitext(uploaded_file.name)[0]
                 image_path = os.path.join(UPLOADS_DIR, f"{base_name}.jpg")
-                save_optimized_image(uploaded_file, image_path)
+                if not os.path.exists(image_path):
+                    save_optimized_image(uploaded_file, image_path)
                 
                 # Visualizza immagine
                 col1.image(image_path, **IMG_WIDTH_ARG)
@@ -1145,42 +1176,31 @@ with tab2:
         
         search_query = st.text_input("📝 Cerca nel testo (Titolo, Luogo, Descrizione...)", "").strip().lower()
         
-        # Logica di filtraggio combinata
+        # --- FILTRAGGIO UNICO (una sola passata, usa PROV_TO_REG dal livello modulo) ---
         now = datetime.now()
         
-        # Mappatura Province -> Regioni per il filtro (già presente ma definita qui per sicurezza)
-        PROV_TO_REG = {
-            'GENOVA': 'LIGURIA', 'LA SPEZIA': 'LIGURIA', 'SAVONA': 'LIGURIA', 'IMPERIA': 'LIGURIA',
-            'MASSA': 'TOSCANA', 'LUCCA': 'TOSCANA',
-            'ALESSANDRIA': 'PIEMONTE', 'ASTI': 'PIEMONTE'
-        }
-
-        # Ri-indicizzazione degli eventi filtrati per la visualizzazione corretta
-        # Manteniamo l'indice originale per permettere l'aggiornamento corretto
         indexed_view_events = []
         for i, ev in enumerate(st.session_state.events):
-            # A. Controllo Stato
+            # A. Stato
             m_s = True
             if status_filter == "Solo i NEW": m_s = ev.get('is_new', False)
             elif status_filter == "Attivi (Futuri + NEW)": m_s = WordGenerator.get_sort_date(ev).date() >= now.date() or ev.get('is_new', False)
             elif status_filter == "Solo Scaduti": m_s = WordGenerator.get_sort_date(ev).date() < now.date() and not ev.get('is_new', False)
             
-            # B. Controllo Luogo
+            # B. Luogo
             m_g = True
             if geo_filter != "Tutti":
                 prov = WordGenerator.get_province(ev)
-                if geo_filter in ["LIGURIA", "TOSCANA", "PIEMONTE"]:
-                    m_g = (PROV_TO_REG.get(prov, "ALTRO") == geo_filter)
-                else:
-                    m_g = (prov == geo_filter)
+                if geo_filter in ["LIGURIA", "TOSCANA", "PIEMONTE"]: m_g = (PROV_TO_REG.get(prov, "ALTRO") == geo_filter)
+                else: m_g = (prov == geo_filter)
             
-            # C. Controllo Ricerca Testuale
+            # C. Ricerca Testuale
             m_t = True
             if search_query:
                 content = (ev.get('title', '') + ev.get('description', '') + ev.get('location', '') + ev.get('venue', '')).lower()
                 m_t = search_query in content
             
-            # D. Controllo Locandina Album (sticker_image_path)
+            # D. Locandina Album
             m_a = True
             if album_filter == "Con Locandina Album":
                 m_a = bool(ev.get('sticker_image_path', ''))
@@ -1201,7 +1221,6 @@ with tab2:
         st.write(f"📊 Eventi visualizzati: **{total_ev}** (su {len(events_list)} totali)")
 
         # Controllo Duplicati (Basato esclusivamente sul Percorso Immagine)
-        # ... (rest of the duplicate logic) ...
         image_counts = {}
         for ev in events_list_view:
             img_path = ev.get('image_path', '').strip()
@@ -1270,42 +1289,68 @@ with tab2:
                 st.success("Eventi riordinati!")
                 # st.rerun()
 
-        # Ri-indicizzazione degli eventi filtrati per la visualizzazione corretta
-        # Manteniamo l'indice originale per permettere l'aggiornamento corretto
-        indexed_view_events = []
-        for i, ev in enumerate(st.session_state.events):
-            # A. Stato
-            m_s = True
-            if status_filter == "Solo i NEW": m_s = ev.get('is_new', False)
-            elif status_filter == "Attivi (Futuri + NEW)": m_s = WordGenerator.get_sort_date(ev).date() >= now.date() or ev.get('is_new', False)
-            elif status_filter == "Solo Scaduti": m_s = WordGenerator.get_sort_date(ev).date() < now.date() and not ev.get('is_new', False)
-            
-            # B. Luogo
-            m_g = True
-            if geo_filter != "Tutti":
-                prov = WordGenerator.get_province(ev)
-                if geo_filter in ["LIGURIA", "TOSCANA", "PIEMONTE"]: m_g = (PROV_TO_REG.get(prov, "ALTRO") == geo_filter)
-                else: m_g = (prov == geo_filter)
-            
-            # C. Ricerca Testuale
-            m_t = True
-            if search_query:
-                content = (ev.get('title', '') + ev.get('description', '') + ev.get('location', '') + ev.get('venue', '')).lower()
-                m_t = search_query in content
-            
-            # D. Locandina Album
-            m_a = True
-            if album_filter == "Con Locandina Album":
-                m_a = bool(ev.get('sticker_image_path', ''))
-            elif album_filter == "Senza Locandina Album":
-                m_a = not bool(ev.get('sticker_image_path', ''))
-            
-            if m_s and m_g and m_t and m_a:
-                indexed_view_events.append((i, ev))
-
-        sorted_view_events = sorted(indexed_view_events, key=lambda x: WordGenerator.get_sort_date(x[1]))
-
         st.info("ℹ️ Gli eventi sono ordinati cronologicamente.")
+
+        # ===== EDITOR FIGURINA come @st.fragment (evita rerun intera pagina con slider) =====
+        @st.fragment
+        def render_sticker_editor(real_idx, event, events_list_ref):
+            """Fragment per l'editor figurina: gli slider aggiornano solo questo blocco."""
+            st.markdown("#### 🖼️ Editor Figurina (Maschera 57×80mm)")
+            if event.get('sticker_processed') and os.path.exists(event.get('sticker_image_path', '')):
+                st.success("✅ Figurina già elaborata!")
+                if st.button("🔄 Modifica Figurina", key=f"edit_stk_{real_idx}"):
+                    st.session_state[f"show_ed_stk_{real_idx}"] = True
+            else:
+                if st.button("🖼️ Crea Figurina", key=f"edit_stk_{real_idx}"):
+                    st.session_state[f"show_ed_stk_{real_idx}"] = True
+
+            if st.session_state.get(f"show_ed_stk_{real_idx}"):
+                ed_c1, ed_c2 = st.columns([1, 1])
+                with ed_c2:
+                    s_zoom = st.slider("🔍 Zoom", 1.0, 2.0, event.get('stk_zoom', 1.0), 0.05, key=f"sz_{real_idx}")
+                    s_strx = st.slider("↔️ Allungamento Orizzontale (Stretch)", 1.0, 1.05, event.get('stk_strx', 1.0), 0.01, key=f"str_{real_idx}")
+                    s_offx = st.slider("↔️ Spostamento Orizzontale X", -300, 300, event.get('stk_offx', 0), 10, key=f"sx_{real_idx}")
+                    s_offy = st.slider("↕️ Spostamento Verticale Y", -300, 300, event.get('stk_offy', 0), 10, key=f"sy_{real_idx}")
+                    
+                    img_path = event.get('image_path', '')
+                    img_preview = create_single_sticker(
+                        img_path, mask_w_mm=57, mask_h_mm=80,
+                        zoom=s_zoom, stretch_x=s_strx, offset_x=s_offx, offset_y=s_offy,
+                        preview_mode=True
+                    )
+                    
+                    if st.button("💾 Salva Figurina", type="primary", key=f"save_stk_{real_idx}"):
+                        # Genera versione pulita da salvare (senza bordo rosso)
+                        img_clean = create_single_sticker(
+                            img_path, mask_w_mm=57, mask_h_mm=80,
+                            zoom=s_zoom, stretch_x=s_strx, offset_x=s_offx, offset_y=s_offy,
+                            preview_mode=False
+                        )
+                        if img_clean:
+                            base_name = os.path.splitext(os.path.basename(img_path))[0]
+                            out_dir = os.path.join(OUTPUT_DIR, "images_album")
+                            os.makedirs(out_dir, exist_ok=True)
+                            tgt_path = os.path.join(out_dir, f"{base_name}_sticker.jpg")
+                            # Converte in RGB e salva come JPG ottimizzato (molto più leggero di PNG)
+                            img_clean.convert("RGB").save(tgt_path, "JPEG", quality=85, optimize=True)
+                            
+                            events_list_ref[real_idx]['sticker_processed'] = True
+                            events_list_ref[real_idx]['sticker_image_path'] = tgt_path
+                            # Salva parametri per dopo
+                            events_list_ref[real_idx]['stk_zoom'] = s_zoom
+                            events_list_ref[real_idx]['stk_strx'] = s_strx
+                            events_list_ref[real_idx]['stk_offx'] = s_offx
+                            events_list_ref[real_idx]['stk_offy'] = s_offy
+                            
+                            save_events_to_disk()
+                            st.session_state[f"show_ed_stk_{real_idx}"] = False
+                            st.rerun()
+                            
+                with ed_c1:
+                    if img_preview:
+                        st.caption("Anteprima Figurina (Sfondo Trasparente)")
+                        # Usa st.image direttamente con PIL (molto più veloce di base64)
+                        st.image(img_preview, width='content')
 
         # -------- LOOP EVENTI --------
         now = datetime.now()
@@ -1323,68 +1368,9 @@ with tab2:
             
             with st.expander(f"{title_prefix}{stck_icon}📅 {event.get('title', 'Titolo n/d')}"):
 
-                # ===== EDITOR FIGURINA INTERATTIVO =====
-                st.markdown("#### 🖼️ Editor Figurina (Maschera 57×80mm)")
-                if event.get('sticker_processed') and os.path.exists(event.get('sticker_image_path', '')):
-                    st.success("✅ Figurina già elaborata!")
-                    if st.button("🔄 Modifica Figurina", key=f"edit_stk_{real_idx}"):
-                        st.session_state[f"show_ed_stk_{real_idx}"] = True
-                else:
-                    if st.button("🖼️ Crea Figurina", key=f"edit_stk_{real_idx}"):
-                        st.session_state[f"show_ed_stk_{real_idx}"] = True
-
-                if st.session_state.get(f"show_ed_stk_{real_idx}"):
-                    ed_c1, ed_c2 = st.columns([1, 1])
-                    with ed_c2:
-                        s_zoom = st.slider("🔍 Zoom", 1.0, 2.0, event.get('stk_zoom', 1.0), 0.05, key=f"sz_{real_idx}")
-                        s_strx = st.slider("↔️ Allungamento Orizzontale (Stretch)", 1.0, 1.05, event.get('stk_strx', 1.0), 0.01, key=f"str_{real_idx}")
-                        s_offx = st.slider("↔️ Spostamento Orizzontale X", -300, 300, event.get('stk_offx', 0), 10, key=f"sx_{real_idx}")
-                        s_offy = st.slider("↕️ Spostamento Verticale Y", -300, 300, event.get('stk_offy', 0), 10, key=f"sy_{real_idx}")
-                        
-                        img_path = event.get('image_path', '')
-                        img_preview = None
-                        if getattr(st.session_state, f"preview_btn_{real_idx}", False) or True: # Live preview is fast enough
-                             img_preview = create_single_sticker(
-                                img_path, mask_w_mm=57, mask_h_mm=80,
-                                zoom=s_zoom, stretch_x=s_strx, offset_x=s_offx, offset_y=s_offy,
-                                preview_mode=True
-                             )
-                        
-                        if st.button("💾 Salva Figurina", type="primary", key=f"save_stk_{real_idx}"):
-                            # Genera versione pulita da salvare (senza bordo rosso)
-                            img_clean = create_single_sticker(
-                                img_path, mask_w_mm=57, mask_h_mm=80,
-                                zoom=s_zoom, stretch_x=s_strx, offset_x=s_offx, offset_y=s_offy,
-                                preview_mode=False
-                            )
-                            if img_clean:
-                                base_name = os.path.splitext(os.path.basename(img_path))[0]
-                                out_dir = os.path.join(OUTPUT_DIR, "images_album")
-                                os.makedirs(out_dir, exist_ok=True)
-                                tgt_path = os.path.join(out_dir, f"{base_name}_sticker.jpg")
-                                # Converte in RGB e salva come JPG ottimizzato (molto più leggero di PNG)
-                                img_clean.convert("RGB").save(tgt_path, "JPEG", quality=85, optimize=True)
-                                
-                                events_list[real_idx]['sticker_processed'] = True
-                                events_list[real_idx]['sticker_image_path'] = tgt_path
-                                # Salva parametri per dopo
-                                events_list[real_idx]['stk_zoom'] = s_zoom
-                                events_list[real_idx]['stk_strx'] = s_strx
-                                events_list[real_idx]['stk_offx'] = s_offx
-                                events_list[real_idx]['stk_offy'] = s_offy
-                                
-                                save_events_to_disk()
-                                st.session_state[f"show_ed_stk_{real_idx}"] = False
-                                st.rerun()
-                                
-                    with ed_c1:
-                        if img_preview:
-                            st.caption("Anteprima Figurina (Sfondo Trasparente)")
-                            # Usa st.image direttamente con PIL (molto più veloce di base64)
-                            st.image(img_preview, width='content')
-                            # Anteprima istantanea
-                            pass
-                            
+                # Chiama il fragment dell'editor figurina
+                render_sticker_editor(real_idx, event, events_list)
+                
                 st.divider()
 
                 # ===== INIZIALIZZAZIONE WIDGET STATE SICURA =====
@@ -1537,135 +1523,134 @@ with tab2:
                         save_events_to_disk()
                         st.rerun()
 
-# --- TAB 3: EXPORT ---
+# --- TAB 3: EXPORT (con st.form — nessun rerun durante la configurazione) ---
 with tab3:
     st.subheader("Generazione Documento")
-    # Usa events_list invece di session_state
     events_list_all = st.session_state.get('events', [])
     
-    # --- FILTRAGGIO ---
-    st.markdown("#### 🔍 1. Filtra Eventi")
-    filter_choice = st.radio(
-        "Scegli quali eventi includere nell'export:",
-        ["Tutti gli eventi", "Solo attivi (non scaduti)", "Solo i NEW", "Solo Provincia di Genova", "Solo Provincia di La Spezia"],
-        horizontal=True
-    )
-    
-    # Refresh metadata se necesario (es. dopo aggiunta rapida)
+    # Refresh metadata prima del form (necessario per i filtri)
     refresh_event_metadata()
-    
-    now_date = datetime.now().date()
-    
-    # Filtraggio ottimizzato (senza ricalcolare date)
-    if filter_choice == "Solo attivi (non scaduti)":
-        events_list_exp = [ev for ev in events_list_all if ev.get('_dt', datetime.max).date() >= now_date]
-    elif filter_choice == "Solo i NEW":
-        events_list_exp = [ev for ev in events_list_all if ev.get('is_new')]
-    elif filter_choice == "Solo Provincia di Genova":
-        events_list_exp = [ev for ev in events_list_all if ev.get('_prov') == "GENOVA"]
-    elif filter_choice == "Solo Provincia di La Spezia":
-        events_list_exp = [ev for ev in events_list_all if ev.get('_prov') == "LA SPEZIA"]
-    else:
-        events_list_exp = events_list_all
 
-    st.write(f"Eventi pronti per la stampa: **{len(events_list_exp)}**")
-    st.divider()
+    with st.form("word_generation_form"):
+        # --- FILTRAGGIO ---
+        st.markdown("#### 🔍 1. Filtra Eventi")
+        filter_choice = st.radio(
+            "Scegli quali eventi includere nell'export:",
+            ["Tutti gli eventi", "Solo attivi (non scaduti)", "Solo i NEW", "Solo Provincia di Genova", "Solo Provincia di La Spezia"],
+            horizontal=True
+        )
 
-    st.markdown("#### 🎨 2. Opzioni Stile")
-    col_opts1, col_opts2 = st.columns(2)
-    with col_opts1:
-        export_mode_sel = st.radio("Stile Documento", ["Standard (Foto + Testo)", "Minimal (Solo Foto)"])
-    with col_opts2:
-        st.write("") # Spacer
-        st.write("") 
-        show_borders_opt = st.checkbox("Mostra bordi tabella", value=True)
+        st.divider()
 
-    export_mode = "minimal" if "Minimal" in export_mode_sel else "standard"
+        st.markdown("#### 🎨 2. Opzioni Stile")
+        col_opts1, col_opts2 = st.columns(2)
+        with col_opts1:
+            export_mode_sel = st.radio("Stile Documento", ["Standard (Foto + Testo)", "Minimal (Solo Foto)"])
+        with col_opts2:
+            st.write("") # Spacer
+            st.write("") 
+            show_borders_opt = st.checkbox("Mostra bordi tabella", value=True)
 
-    col_gen1, col_gen2 = st.columns(2)
-    
-    with col_gen1:
-        if st.button("📥 Genera Word", type="primary"):
-            if not events_list_exp:
-                st.error("Nessun evento da stampare!")
-            else:
-                with st.spinner("Creazione documento Word in corso..."):
-                    gen = WordGenerator()
-                    out_path = os.path.join(OUTPUT_DIR, doc_name)
-                    gen.generate_from_data(
-                        events_list_exp, 
-                        out_path, 
-                        mode=export_mode, 
-                        show_borders=show_borders_opt
+        st.divider()
+
+        # --- BOTTONI DI GENERAZIONE (form_submit_button) ---
+        col_gen1, col_gen2 = st.columns(2)
+        with col_gen1:
+            genera_word = st.form_submit_button("📥 Genera Word", type="primary")
+        with col_gen2:
+            genera_pdf = st.form_submit_button("📄 Genera PDF (senza statistiche)")
+
+    # --- LOGICA POST-FORM (eseguita solo al submit) ---
+    if genera_word or genera_pdf:
+        now_date = datetime.now().date()
+        
+        # Filtraggio ottimizzato (senza ricalcolare date)
+        if filter_choice == "Solo attivi (non scaduti)":
+            events_list_exp = [ev for ev in events_list_all if ev.get('_dt', datetime.max).date() >= now_date]
+        elif filter_choice == "Solo i NEW":
+            events_list_exp = [ev for ev in events_list_all if ev.get('is_new')]
+        elif filter_choice == "Solo Provincia di Genova":
+            events_list_exp = [ev for ev in events_list_all if ev.get('_prov') == "GENOVA"]
+        elif filter_choice == "Solo Provincia di La Spezia":
+            events_list_exp = [ev for ev in events_list_all if ev.get('_prov') == "LA SPEZIA"]
+        else:
+            events_list_exp = events_list_all
+
+        export_mode = "minimal" if "Minimal" in export_mode_sel else "standard"
+
+        if not events_list_exp:
+            st.error("Nessun evento da stampare!")
+        elif genera_word:
+            with st.spinner("Creazione documento Word in corso..."):
+                gen = WordGenerator()
+                out_path = os.path.join(OUTPUT_DIR, doc_name)
+                gen.generate_from_data(
+                    events_list_exp, 
+                    out_path, 
+                    mode=export_mode, 
+                    show_borders=show_borders_opt
+                )
+                
+                with open(out_path, 'rb') as f:
+                    st.download_button(
+                        label="⬇️ Scarica Word",
+                        data=f,
+                        file_name=doc_name,
+                        mime="application/vnd.openxmlformats-officedocument.wordprocessingml.document"
                     )
+                st.success("Documento Word pronto!")
+
+        elif genera_pdf:
+            with st.spinner("Creazione PDF in corso..."):
+                gen = WordGenerator()
+                pdf_doc_name = os.path.splitext(doc_name)[0] + "_nostat.docx"
+                pdf_out_docx = os.path.join(OUTPUT_DIR, pdf_doc_name)
+                gen.generate_from_data(
+                    events_list_exp,
+                    pdf_out_docx,
+                    mode=export_mode,
+                    show_borders=show_borders_opt,
+                    skip_stats=True
+                )
+                
+                # Tentativo conversione PDF
+                pdf_path = os.path.splitext(pdf_out_docx)[0] + ".pdf"
+                pdf_converted = False
+                try:
+                    from docx2pdf import convert
+                    convert(pdf_out_docx, pdf_path)
+                    pdf_converted = True
+                except Exception as e:
+                    st.warning(f"⚠️ Errore conversione PDF: {e}")
+                
+                if pdf_converted and os.path.exists(pdf_path):
+                    # Salva il path PDF in session_state per il bottone upload
+                    st.session_state['last_pdf_path'] = pdf_path
+                    st.session_state['last_pdf_name'] = os.path.splitext(doc_name)[0] + ".pdf"
                     
-                    with open(out_path, 'rb') as f:
+                    with open(pdf_path, 'rb') as f:
                         st.download_button(
-                            label="⬇️ Scarica Word",
+                            label="⬇️ Scarica PDF",
                             data=f,
-                            file_name=doc_name,
+                            file_name=os.path.splitext(doc_name)[0] + ".pdf",
+                            mime="application/pdf"
+                        )
+                    st.success("PDF pronto!")
+                else:
+                    # Fallback: offri il Word senza stats
+                    st.session_state['last_pdf_path'] = pdf_out_docx
+                    st.session_state['last_pdf_name'] = pdf_doc_name
+                    
+                    with open(pdf_out_docx, 'rb') as f:
+                        st.download_button(
+                            label="⬇️ Scarica Word (senza statistiche)",
+                            data=f,
+                            file_name=pdf_doc_name,
                             mime="application/vnd.openxmlformats-officedocument.wordprocessingml.document"
                         )
-                    st.success("Documento Word pronto!")
-
-    with col_gen2:
-        if st.button("📄 Genera PDF (senza statistiche)"):
-            if not events_list_exp:
-                st.error("Nessun evento da stampare!")
-            else:
-                with st.spinner("Creazione PDF in corso..."):
-                    gen = WordGenerator()
-                    pdf_doc_name = os.path.splitext(doc_name)[0] + "_nostat.docx"
-                    pdf_out_docx = os.path.join(OUTPUT_DIR, pdf_doc_name)
-                    gen.generate_from_data(
-                        events_list_exp,
-                        pdf_out_docx,
-                        mode=export_mode,
-                        show_borders=show_borders_opt,
-                        skip_stats=True
-                    )
-                    
-                    # Tentativo conversione PDF
-                    pdf_path = os.path.splitext(pdf_out_docx)[0] + ".pdf"
-                    pdf_converted = False
-                    try:
-                        from docx2pdf import convert
-                        convert(pdf_out_docx, pdf_path)
-                        pdf_converted = True
-                    except Exception as e:
-                        st.warning(f"⚠️ Errore conversione PDF: {e}")
-                    
-                    if pdf_converted and os.path.exists(pdf_path):
-                        # Salva il path PDF in session_state per il bottone upload
-                        st.session_state['last_pdf_path'] = pdf_path
-                        st.session_state['last_pdf_name'] = os.path.splitext(doc_name)[0] + ".pdf"
-                        
-                        col_dl, col_up = st.columns(2)
-                        with col_dl:
-                            with open(pdf_path, 'rb') as f:
-                                st.download_button(
-                                    label="⬇️ Scarica PDF",
-                                    data=f,
-                                    file_name=os.path.splitext(doc_name)[0] + ".pdf",
-                                    mime="application/pdf"
-                                )
-                        st.success("PDF pronto!")
-                    else:
-                        # Fallback: offri il Word senza stats
-                        # Salva anche il docx path per eventuale upload
-                        st.session_state['last_pdf_path'] = pdf_out_docx
-                        st.session_state['last_pdf_name'] = pdf_doc_name
-                        
-                        with open(pdf_out_docx, 'rb') as f:
-                            st.download_button(
-                                label="⬇️ Scarica Word (senza statistiche)",
-                                data=f,
-                                file_name=pdf_doc_name,
-                                mime="application/vnd.openxmlformats-officedocument.wordprocessingml.document"
-                            )
-                        st.warning("Conversione PDF non disponibile. Scarica il Word senza statistiche e convertilo in PDF manualmente.")
+                    st.warning("Conversione PDF non disponibile. Scarica il Word senza statistiche e convertilo in PDF manualmente.")
     
-    # --- BOTTONE UPLOAD GOOGLE DRIVE (sempre visibile se c'è un PDF pronto) ---
+    # --- BOTTONE UPLOAD GOOGLE DRIVE (fuori dal form, sempre visibile se c'è un PDF pronto) ---
     if 'last_pdf_path' in st.session_state and os.path.exists(st.session_state.get('last_pdf_path', '')):
         st.divider()
         st.markdown("#### ☁️ Upload su Google Drive")
@@ -1697,11 +1682,7 @@ def compute_statistics(events_list_stats):
     new_count = 0
     active_count = 0
     
-    PROV_TO_REG = {
-        'GENOVA': 'LIGURIA', 'LA SPEZIA': 'LIGURIA', 'SAVONA': 'LIGURIA', 'IMPERIA': 'LIGURIA',
-        'MASSA': 'TOSCANA', 'LUCCA': 'TOSCANA',
-        'ALESSANDRIA': 'PIEMONTE', 'ASTI': 'PIEMONTE'
-    }
+    # NOTA: usa PROV_TO_REG dal livello modulo (evita duplicazione)
     
     stats_geo = {
         'LIGURIA': {'total': 0, 'provinces': {'GENOVA': 0, 'LA SPEZIA': 0, 'SAVONA': 0, 'IMPERIA': 0}},
@@ -2116,235 +2097,232 @@ with tab5:
         if total_figurine == 0:
             st.warning("⚠️ Nessuna immagine valida trovata nella cartella uploads.")
         else:
+            # Refresh metadata pre-form (necessario per ordinamento/filtro)
+            refresh_event_metadata()
+
             # =============================================
-            # SEZIONE 1: IMMAGINI PERSONALIZZATE
+            # FORM UNICO — NESSUN RERUN DURANTE CONFIGURAZIONE
             # =============================================
-            st.markdown("### 🖼️ Immagini Copertina e Retro")
-            
-            col_img1, col_img2 = st.columns(2)
-            
-            with col_img1:
-                st.markdown("**📘 Immagine Prima Pagina (Copertina)**")
-                st.caption("Se non carichi nulla, verrà usato il logo di default.")
-                uploaded_cover_img = st.file_uploader(
-                    "Carica immagine copertina", 
-                    type=['png', 'jpg', 'jpeg'],
-                    key="album_cover_upload",
-                    label_visibility="collapsed"
+            with st.form("album_generation_form"):
+                # --- SEZIONE 1: IMMAGINI PERSONALIZZATE ---
+                st.markdown("### 🖼️ Immagini Copertina e Retro")
+                
+                col_img1, col_img2 = st.columns(2)
+                
+                with col_img1:
+                    st.markdown("**📘 Immagine Prima Pagina (Copertina)**")
+                    st.caption("Se non carichi nulla, verrà usato il logo di default.")
+                    uploaded_cover_img = st.file_uploader(
+                        "Carica immagine copertina", 
+                        type=['png', 'jpg', 'jpeg'],
+                        key="album_cover_upload",
+                        label_visibility="collapsed"
+                    )
+                
+                with col_img2:
+                    st.markdown("**📕 Immagine Ultima Pagina (Retro)**")
+                    st.caption("Se non carichi nulla, verrà usato il logo piccolo di default.")
+                    uploaded_back_img = st.file_uploader(
+                        "Carica immagine pagina finale", 
+                        type=['png', 'jpg', 'jpeg'],
+                        key="album_back_upload",
+                        label_visibility="collapsed"
+                    )
+                
+                # Opzione logo con sfondo bianco
+                col_opt1, col_opt2 = st.columns(2)
+                with col_opt1:
+                    logo_white_bg = st.checkbox(
+                        "⚪ Logo ultima pagina con cerchio bianco (non trasparente)",
+                        value=True,
+                        help="Se attivo, l'interno del cerchio del logo nell'ultima pagina avrà sfondo bianco anziché trasparente.",
+                        key="album_logo_white_bg"
+                    )
+                with col_opt2:
+                    logo_cover_white_bg = st.checkbox(
+                        "⚪ Logo PRIMA pagina con cerchio bianco (se predefinito)",
+                        value=False,
+                        help="Se attivo e non carichi una vera copertina, il logo in prima pagina avrà sfondo bianco anziché trasparente.",
+                        key="album_logo_cover_white_bg"
+                    )
+                    
+                col_opt3, col_opt4 = st.columns(2)
+                with col_opt3:
+                    album_logo_cover_full_page = st.checkbox(
+                        "🖼️ Logo PRIMA pagina a tutta altezza",
+                        value=True,
+                        help="Se attivo e non carichi una vera copertina, il logo in copertina proverà a riempire verticalmente lo spazio disponibile.",
+                        key="album_logo_cover_full"
+                    )
+                with col_opt4:
+                    album_show_banner = st.checkbox(
+                        "🚩 Mostra banner in cima alla copertina",
+                        value=False,
+                        help="Se disattivato, il banner verde 'Giusto Dire No' in alto verrà nascosto.",
+                        key="album_show_banner"
+                    )
+
+                sticker_fill_mode = st.radio(
+                    "🎴 Modalità riempimento figurina",
+                    options=["trasparente", "espansione", "opaco"],
+                    format_func=lambda x: {
+                        "opaco": "🟨 Opaco — Sfondo crema classico",
+                        "trasparente": "📸 Trasparente — Si vede la trama dell'album",
+                        "espansione": "✨ Espansione intelligente — Riempie con sfondo sfocato"
+                    }.get(x, x),
+                    index=0,
+                    help=(
+                        "▪ **Trasparente**: lo sfondo della figurina è trasparente, mostra la trama dell'album sotto.\n"
+                        "▪ **Espansione intelligente**: allarga lo sfondo con una versione sfocata dell'immagine stessa "
+                        "senza deformare il soggetto, perfetto per riempire il formato 57×82mm.\n"
+                        "▪ **Opaco**: sfondo classico color crema pieno."
+                    ),
+                    key="album_fill_mode"
                 )
-                if uploaded_cover_img:
-                    st.image(uploaded_cover_img, caption="Anteprima Copertina", width=200)
-            
-            with col_img2:
-                st.markdown("**📕 Immagine Ultima Pagina (Retro)**")
-                st.caption("Se non carichi nulla, verrà usato il logo piccolo di default.")
-                uploaded_back_img = st.file_uploader(
-                    "Carica immagine pagina finale", 
-                    type=['png', 'jpg', 'jpeg'],
-                    key="album_back_upload",
-                    label_visibility="collapsed"
-                )
-                if uploaded_back_img:
-                    st.image(uploaded_back_img, caption="Anteprima Retro", width=200)
-            
-            # Opzione logo con sfondo bianco
-            col_opt1, col_opt2 = st.columns(2)
-            with col_opt1:
-                logo_white_bg = st.checkbox(
-                    "⚪ Logo ultima pagina con cerchio bianco (non trasparente)",
-                    value=True,
-                    help="Se attivo, l'interno del cerchio del logo nell'ultima pagina avrà sfondo bianco anziché trasparente.",
-                    key="album_logo_white_bg"
-                )
-            with col_opt2:
-                logo_cover_white_bg = st.checkbox(
-                    "⚪ Logo PRIMA pagina con cerchio bianco (se predefinito)",
+
+                col_ratio1, col_ratio2 = st.columns([1, 1])
+                with col_ratio1:
+                    album_force_aspect_ratio = st.checkbox(
+                        "📏 Forza proporzione figurina",
+                        value=False,
+                        help="Forza le immagini a rispettare la proporzione classica 57×Hmm. Gli spazi vuoti vengono riempiti secondo la modalità scelta sopra.",
+                        key="album_force_aspect_ratio"
+                    )
+                with col_ratio2:
+                    sticker_height_mm = st.slider(
+                        "Altezza figurina (mm)",
+                        min_value=76, max_value=80, value=80, step=2,
+                        help="57mm è la larghezza fissa. L'altezza va da 76 a 80mm. Riducendola, l'immagine verrà tagliata leggermente ai bordi. Attiva 'Forza proporzione' per usare questo valore.",
+                        key="album_sticker_height"
+                    )
+                
+                st.divider()
+
+                # --- SEZIONE STAMPA ---
+                st.markdown("### 🖨️ Opzioni formato Stampa")
+                col_print1, col_print2 = st.columns(2)
+                with col_print1:
+                    album_empty_mode = st.checkbox(
+                        "📖 Crea Album Fisico (Vuoto)",
+                        value=False,
+                        help="Il PDF dell'album mostrerà solo il bordino vuoto e il numero, per poterci incollare le figurine sopra."
+                    )
+                with col_print2:
+                    album_export_stickers = st.checkbox(
+                        "✂️ Estrai Figurine Singole",
+                        value=False,
+                        help="Genera anche un archivio ZIP con tutte le singole figurine esatte fuso con la trama di sfondo per poterle stampare a parte ed incollarle."
+                    )
+                
+                album_preprocess = st.checkbox(
+                    "🖼️ Ignora elaborazioni manuali e ricalcola tutto",
                     value=False,
-                    help="Se attivo e non carichi una vera copertina, il logo in prima pagina avrà sfondo bianco anziché trasparente.",
-                    key="album_logo_cover_white_bg"
+                    help=(
+                        "Se attivato, verranno ricalcolate e ignorate tutte le elaborazioni grafiche per ciascuna maschera "
+                        "effettuate nella sezione Modifica Dati, e tutto verrà ricalcolato usando le immagini originali."
+                    ),
+                    key="album_preprocess"
                 )
                 
-            col_opt3, col_opt4 = st.columns(2)
-            with col_opt3:
-                album_logo_cover_full_page = st.checkbox(
-                    "🖼️ Logo PRIMA pagina a tutta altezza",
-                    value=True,
-                    help="Se attivo e non carichi una vera copertina, il logo in copertina proverà a riempire verticalmente lo spazio disponibile.",
-                    key="album_logo_cover_full"
-                )
-            with col_opt4:
-                album_show_banner = st.checkbox(
-                    "🚩 Mostra banner in cima alla copertina",
-                    value=False,
-                    help="Se disattivato, il banner verde 'Giusto Dire No' in alto verrà nascosto.",
-                    key="album_show_banner"
-                )
+                st.divider()
+                
+                # --- SEZIONE LAYOUT FIGURINE ---
+                st.markdown("### 📐 Layout Figurine")
+                
+                col_lay1, col_lay2, col_lay3 = st.columns(3)
+                
+                with col_lay1:
+                    album_cols = st.number_input(
+                        "📊 Colonne per pagina",
+                        min_value=1, max_value=4, value=2, step=1,
+                        key="album_cols_input",
+                        help="Numero di colonne di figurine per ogni pagina (1-4)"
+                    )
+                
+                with col_lay2:
+                    album_rows = st.number_input(
+                        "📏 Righe per pagina",
+                        min_value=1, max_value=5, value=3, step=1,
+                        key="album_rows_input",
+                        help="Numero di righe di figurine per ogni pagina (1-5)"
+                    )
+                
+                with col_lay3:
+                    album_layout = st.selectbox(
+                        "🔀 Distribuzione colonne",
+                        ["Verticale (dritte)", "Obliquo (sfalsate)"],
+                        key="album_layout_sel",
+                        help="Verticale: colonne allineate. Obliquo: righe alternate sfalsate."
+                    )
 
-            sticker_fill_mode = st.radio(
-                "🎴 Modalità riempimento figurina",
-                options=["trasparente", "espansione", "opaco"],
-                format_func=lambda x: {
-                    "opaco": "🟨 Opaco — Sfondo crema classico",
-                    "trasparente": "📸 Trasparente — Si vede la trama dell’album",
-                    "espansione": "✨ Espansione intelligente — Riempie con sfondo sfocato"
-                }.get(x, x),
-                index=0,
-                help=(
-                    "▪ **Trasparente**: lo sfondo della figurina è trasparente, mostra la trama dell’album sotto.\n"
-                    "▪ **Espansione intelligente**: allarga lo sfondo con una versione sfocata dell’immagine stessa "
-                    "senza deformare il soggetto, perfetto per riempire il formato 57×82mm.\n"
-                    "▪ **Opaco**: sfondo classico color crema pieno."
-                ),
-                key="album_fill_mode"
-            )
+                st.divider()
+                
+                # --- SEZIONE ORDINAMENTO E FILTRO ---
+                st.markdown("### 🔧 Ordinamento e Filtri")
+                
+                col_opt1, col_opt2 = st.columns(2)
+                with col_opt1:
+                    album_sort = st.selectbox(
+                        "📅 Ordinamento Figurine",
+                        ["Cronologico (Data)", "Alfabetico (Località)", "Ordine di Inserimento"],
+                        key="album_sort_order"
+                    )
+                with col_opt2:
+                    album_filter = st.selectbox(
+                        "🔍 Filtra Eventi",
+                        ["Tutti", "Solo Attivi", "Solo NEW", "Solo Elaborati (OK)"],
+                        key="album_filter_sel"
+                    )
 
-            col_ratio1, col_ratio2 = st.columns([1, 1])
-            with col_ratio1:
-                album_force_aspect_ratio = st.checkbox(
-                    "📏 Forza proporzione figurina",
-                    value=False,
-                    help="Forza le immagini a rispettare la proporzione classica 57×Hmm. Gli spazi vuoti vengono riempiti secondo la modalità scelta sopra.",
-                    key="album_force_aspect_ratio"
-                )
-            with col_ratio2:
-                sticker_height_mm = st.slider(
-                    "Altezza figurina (mm)",
-                    min_value=76, max_value=80, value=80, step=2,
-                    help="57mm è la larghezza fissa. L'altezza va da 76 a 80mm. Riducendola, l'immagine verrà tagliata leggermente ai bordi.",
-                    key="album_sticker_height",
-                    disabled=not album_force_aspect_ratio
-                )
-            
-            st.divider()
+                st.divider()
+                
+                # --- BOTTONE DI GENERAZIONE (form_submit_button) ---
+                genera_album = st.form_submit_button("🏆 Genera Album Figurine", type="primary")
 
             # =============================================
-            # SEZIONE STAMPA 
+            # LOGICA POST-FORM (eseguita solo al submit)
             # =============================================
-            st.markdown("### 🖨️ Opzioni formato Stampa")
-            col_print1, col_print2 = st.columns(2)
-            with col_print1:
-                album_empty_mode = st.checkbox(
-                    "📖 Crea Album Fisico (Vuoto)",
-                    value=False,
-                    help="Il PDF dell'album mostrerà solo il bordino vuoto e il numero, per poterci incollare le figurine sopra."
-                )
-            with col_print2:
-                album_export_stickers = st.checkbox(
-                    "✂️ Estrai Figurine Singole",
-                    value=False,
-                    help="Genera anche un archivio ZIP con tutte le singole figurine esatte fuso con la trama di sfondo per poterle stampare a parte ed incollarle."
-                )
             
-            album_preprocess = st.checkbox(
-                "🖼️ Ignora elaborazioni manuali e ricalcola tutto",
-                value=False,
-                help=(
-                    "Se attivato, verranno ricalcolate e ignorate tutte le elaborazioni grafiche per ciascuna maschera "
-                    "effettuate nella sezione Modifica Dati, e tutto verrà ricalcolato usando le immagini originali."
-                ),
-                key="album_preprocess"
-            )
-            
-            st.divider()
-            
-            # =============================================
-            # SEZIONE 2: LAYOUT FIGURINE
-            # =============================================
-            st.markdown("### 📐 Layout Figurine")
-            
-            col_lay1, col_lay2, col_lay3 = st.columns(3)
-            
-            with col_lay1:
-                album_cols = st.number_input(
-                    "📊 Colonne per pagina",
-                    min_value=1, max_value=4, value=2, step=1,
-                    key="album_cols_input",
-                    help="Numero di colonne di figurine per ogni pagina (1-4)"
-                )
-            
-            with col_lay2:
-                album_rows = st.number_input(
-                    "📏 Righe per pagina",
-                    min_value=1, max_value=5, value=3, step=1,
-                    key="album_rows_input",
-                    help="Numero di righe di figurine per ogni pagina (1-5)"
-                )
-            
-            with col_lay3:
-                album_layout = st.selectbox(
-                    "🔀 Distribuzione colonne",
-                    ["Verticale (dritte)", "Obliquo (sfalsate)"],
-                    key="album_layout_sel",
-                    help="Verticale: colonne allineate. Obliquo: righe alternate sfalsate."
-                )
-            
+            # Metriche (calcolate fuori dal form con i valori correnti)
             layout_value = "obliquo" if "Obliquo" in album_layout else "verticale"
             stickers_per_page = album_cols * album_rows
             total_pages = math.ceil(total_figurine / stickers_per_page)
             
-            # --- Metriche aggiornate ---
             col_m1, col_m2, col_m3, col_m4 = st.columns(4)
             col_m1.metric("🎴 Figurine Totali", total_figurine)
             col_m2.metric("📄 Pagine Album", total_pages)
             col_m3.metric("🖼️ Per Pagina", stickers_per_page)
             col_m4.metric("📐 Layout", f"{album_cols}×{album_rows}")
-            
-            st.divider()
-            
-            # =============================================
-            # SEZIONE 3: ORDINAMENTO E FILTRO
-            # =============================================
-            st.markdown("### 🔧 Ordinamento e Filtri")
-            
-            col_opt1, col_opt2 = st.columns(2)
-            with col_opt1:
-                album_sort = st.selectbox(
-                    "📅 Ordinamento Figurine",
-                    ["Cronologico (Data)", "Alfabetico (Località)", "Ordine di Inserimento"],
-                    key="album_sort_order"
-                )
-            with col_opt2:
-                album_filter = st.selectbox(
-                    "🔍 Filtra Eventi",
-                    ["Tutti", "Solo Attivi", "Solo NEW", "Solo Elaborati (OK)"],
-                    key="album_filter_sel"
-                )
-            
-            # Applicazione ordinamento (usando _dt pre-calcolato)
-            refresh_event_metadata()
-            sorted_album_events = list(valid_album_events)
-            
-            if album_sort == "Cronologico (Data)":
-                sorted_album_events.sort(key=lambda e: e.get('_dt', datetime.max))
-            elif album_sort == "Alfabetico (Località)":
-                sorted_album_events.sort(key=lambda e: e.get('location', '').strip().upper())
-            
-            # Applicazione filtro (veloce)
-            now_album = datetime.now()
-            if album_filter == "Solo Attivi":
-                sorted_album_events = [ev for ev in sorted_album_events 
-                                       if ev.get('_dt', datetime.max).date() >= now_album.date()]
-            elif album_filter == "Solo NEW":
-                sorted_album_events = [ev for ev in sorted_album_events if ev.get('is_new')]
-            elif album_filter == "Solo Elaborati (OK)":
-                sorted_album_events = [ev for ev in sorted_album_events if ev.get('sticker_processed')]
-            
-            if not sorted_album_events:
-                st.warning("Nessun evento corrisponde ai filtri selezionati.")
-            else:
-                # Ricalcola dopo filtro
-                total_figurine_filtered = len(sorted_album_events)
-                total_pages_filtered = math.ceil(total_figurine_filtered / stickers_per_page)
+
+            if genera_album:
+                # Applicazione ordinamento
+                sorted_album_events = list(valid_album_events)
                 
-                if total_figurine_filtered != total_figurine:
-                    st.info(f"📊 Con i filtri attuali: **{total_figurine_filtered}** figurine su **{total_pages_filtered}** pagine")
+                if album_sort == "Cronologico (Data)":
+                    sorted_album_events.sort(key=lambda e: e.get('_dt', datetime.max))
+                elif album_sort == "Alfabetico (Località)":
+                    sorted_album_events.sort(key=lambda e: e.get('location', '').strip().upper())
                 
-                st.divider()
+                # Applicazione filtro
+                now_album = datetime.now()
+                if album_filter == "Solo Attivi":
+                    sorted_album_events = [ev for ev in sorted_album_events 
+                                           if ev.get('_dt', datetime.max).date() >= now_album.date()]
+                elif album_filter == "Solo NEW":
+                    sorted_album_events = [ev for ev in sorted_album_events if ev.get('is_new')]
+                elif album_filter == "Solo Elaborati (OK)":
+                    sorted_album_events = [ev for ev in sorted_album_events if ev.get('sticker_processed')]
                 
-                # =============================================
-                # SEZIONE 4: GENERAZIONE
-                # =============================================
-                if st.button("🏆 Genera Album Figurine", type="primary", key="btn_gen_album"):
+                if not sorted_album_events:
+                    st.warning("Nessun evento corrisponde ai filtri selezionati.")
+                else:
+                    # Ricalcola dopo filtro
+                    total_figurine_filtered = len(sorted_album_events)
+                    total_pages_filtered = math.ceil(total_figurine_filtered / stickers_per_page)
+                    
+                    if total_figurine_filtered != total_figurine:
+                        st.info(f"📊 Con i filtri attuali: **{total_figurine_filtered}** figurine su **{total_pages_filtered}** pagine")
+
                     album_output_dir = os.path.join(OUTPUT_DIR, "album")
                     
                     with st.spinner("🎨 Creazione dell'album in stile Panini... Attendere prego."):
@@ -2405,178 +2383,180 @@ with tab5:
                     
                     st.success(f"✅ Album generato! {len(page_paths) - 1} pagine figurine + copertina + retro.")
                     st.balloons()
+
+            # =============================================
+            # SEZIONE 5: ANTEPRIMA E DOWNLOAD (fuori dal form, sempre visibile se album già generato)
+            # =============================================
+            if 'album_cover' in st.session_state and st.session_state.get('album_pages'):
+                st.divider()
+                st.markdown("### 📖 Anteprima Album")
+                
+                # Download PDF e/o ZIP
+                col_down1, col_down2, col_down3 = st.columns(3)
+                with col_down1:
+                    if st.session_state.get('album_pdf'):
+                        st.download_button(
+                            label="📥 Scarica Album Completo",
+                            data=st.session_state['album_pdf'],
+                            file_name="Album_Figurine.pdf",
+                            mime="application/pdf",
+                            type="primary",
+                            key="btn_download_album_pdf"
+                        )
+                
+                with col_down2:
+                    if st.session_state.get('album_pdf_empty'):
+                        st.download_button(
+                            label="📥 Scarica Album VUOTO",
+                            data=st.session_state['album_pdf_empty'],
+                            file_name="Album_Vuoto.pdf",
+                            mime="application/pdf",
+                            key="btn_download_album_empty"
+                        )
+                        
+                with col_down3:
+                    if st.session_state.get('album_zip'):
+                        st.download_button(
+                            label="📥 Scarica ZIP Figurine",
+                            data=st.session_state['album_zip'],
+                            file_name="Figurine_Singole_da_stampare.zip",
+                            mime="application/zip",
+                            type="primary" if st.session_state.get('album_pdf_empty') else "secondary",
+                            key="btn_download_album_zip"
+                        )
                 
                 # =============================================
-                # SEZIONE 5: ANTEPRIMA E DOWNLOAD
+                # SEZIONE 5b: CREA FLIPBOOK
                 # =============================================
-                if 'album_cover' in st.session_state and st.session_state.get('album_pages'):
-                    st.divider()
-                    st.markdown("### 📖 Anteprima Album")
-                    
-                    # Download PDF e/o ZIP
-                    col_down1, col_down2, col_down3 = st.columns(3)
-                    with col_down1:
-                        if st.session_state.get('album_pdf'):
-                            st.download_button(
-                                label="📥 Scarica Album Completo",
-                                data=st.session_state['album_pdf'],
-                                file_name="Album_Figurine.pdf",
-                                mime="application/pdf",
-                                type="primary",
-                                key="btn_download_album_pdf"
-                            )
-                    
-                    with col_down2:
-                        if st.session_state.get('album_pdf_empty'):
-                            st.download_button(
-                                label="📥 Scarica Album VUOTO",
-                                data=st.session_state['album_pdf_empty'],
-                                file_name="Album_Vuoto.pdf",
-                                mime="application/pdf",
-                                key="btn_download_album_empty"
-                            )
-                            
-                    with col_down3:
-                        if st.session_state.get('album_zip'):
-                            st.download_button(
-                                label="📥 Scarica ZIP Figurine",
-                                data=st.session_state['album_zip'],
-                                file_name="Figurine_Singole_da_stampare.zip",
-                                mime="application/zip",
-                                type="primary" if st.session_state.get('album_pdf_empty') else "secondary",
-                                key="btn_download_album_zip"
-                            )
-                    
-                    # =============================================
-                    # SEZIONE 5b: CREA FLIPBOOK
-                    # =============================================
-                    st.divider()
-                    if st.button("📚 Create Flipbook", type="secondary", key="btn_create_flipbook",
-                                 help="Estrae le pagine dal PDF come immagini JPG, crea pages.json e salva tutto localmente e su GitHub (docs/)."):
-                        pdf_data = st.session_state.get('album_pdf')
-                        if not pdf_data:
-                            st.error("❌ Nessun PDF disponibile. Genera prima l'album.")
-                        else:
-                            with st.spinner("📚 Creazione Flipbook in corso... Estrazione pagine dal PDF a 300 DPI"):
-                                try:
-                                    import fitz  # PyMuPDF
+                st.divider()
+                if st.button("📚 Create Flipbook", type="secondary", key="btn_create_flipbook",
+                             help="Estrae le pagine dal PDF come immagini JPG, crea pages.json e salva tutto localmente e su GitHub (docs/)."):
+                    pdf_data = st.session_state.get('album_pdf')
+                    if not pdf_data:
+                        st.error("❌ Nessun PDF disponibile. Genera prima l'album.")
+                    else:
+                        with st.spinner("📚 Creazione Flipbook in corso... Estrazione pagine dal PDF a 300 DPI"):
+                            try:
+                                import fitz  # PyMuPDF
+                                
+                                # Prepara cartelle locali
+                                flipbook_images_dir = os.path.join("docs", "images")
+                                flipbook_docs_dir = "docs"
+                                os.makedirs(flipbook_images_dir, exist_ok=True)
+                                
+                                # Apri il PDF dal buffer
+                                pdf_data.seek(0)
+                                pdf_bytes = pdf_data.read()
+                                pdf_data.seek(0)  # Reset per usi futuri
+                                
+                                doc = fitz.open(stream=pdf_bytes, filetype="pdf")
+                                total_pdf_pages = len(doc)
+                                
+                                progress_bar = st.progress(0, text="Estraendo pagine...")
+                                
+                                pages_json = []
+                                github_mgr = st.session_state.get('github_manager')
+                                upload_errors = []
+                                
+                                for page_idx in range(total_pdf_pages):
+                                    page_num = page_idx + 1
+                                    progress_bar.progress(
+                                        page_num / (total_pdf_pages + 1),
+                                        text=f"Estraendo pagina {page_num} di {total_pdf_pages}..."
+                                    )
                                     
-                                    # Prepara cartelle locali
-                                    flipbook_images_dir = os.path.join("docs", "images")
-                                    flipbook_docs_dir = "docs"
-                                    os.makedirs(flipbook_images_dir, exist_ok=True)
+                                    # Renderizza la pagina a 300 DPI
+                                    page = doc.load_page(page_idx)
+                                    # 300 DPI / 72 DPI default = ~4.17x zoom
+                                    zoom = 300.0 / 72.0
+                                    mat = fitz.Matrix(zoom, zoom)
+                                    pix = page.get_pixmap(matrix=mat)
                                     
-                                    # Apri il PDF dal buffer
-                                    pdf_data.seek(0)
-                                    pdf_bytes = pdf_data.read()
-                                    pdf_data.seek(0)  # Reset per usi futuri
+                                    # Converti in PIL Image e salva come JPEG
+                                    img = Image.frombytes("RGB", [pix.width, pix.height], pix.samples)
                                     
-                                    doc = fitz.open(stream=pdf_bytes, filetype="pdf")
-                                    total_pdf_pages = len(doc)
+                                    img_filename = f"page_{page_num}.jpg"
+                                    img_local_path = os.path.join(flipbook_images_dir, img_filename)
+                                    img.save(img_local_path, "JPEG", quality=90, dpi=(300, 300))
                                     
-                                    progress_bar = st.progress(0, text="Estraendo pagine...")
+                                    # Determina tipo: prime due e ultime due = "cartone"
+                                    if page_num in [1, 2, total_pdf_pages - 1, total_pdf_pages]:
+                                        page_type = "cartone"
+                                    else:
+                                        page_type = "carta"
                                     
-                                    pages_json = []
-                                    github_mgr = st.session_state.get('github_manager')
-                                    upload_errors = []
+                                    pages_json.append({
+                                        "page_number": page_num,
+                                        "image": f"images/page_{page_num}.jpg",
+                                        "type": page_type,
+                                        "dpi": 300
+                                    })
                                     
-                                    for page_idx in range(total_pdf_pages):
-                                        page_num = page_idx + 1
-                                        progress_bar.progress(
-                                            page_num / (total_pdf_pages + 1),
-                                            text=f"Estraendo pagina {page_num} di {total_pdf_pages}..."
-                                        )
-                                        
-                                        # Renderizza la pagina a 300 DPI
-                                        page = doc.load_page(page_idx)
-                                        # 300 DPI / 72 DPI default = ~4.17x zoom
-                                        zoom = 300.0 / 72.0
-                                        mat = fitz.Matrix(zoom, zoom)
-                                        pix = page.get_pixmap(matrix=mat)
-                                        
-                                        # Converti in PIL Image e salva come JPEG
-                                        img = Image.frombytes("RGB", [pix.width, pix.height], pix.samples)
-                                        
-                                        img_filename = f"page_{page_num}.jpg"
-                                        img_local_path = os.path.join(flipbook_images_dir, img_filename)
-                                        img.save(img_local_path, "JPEG", quality=90, dpi=(300, 300))
-                                        
-                                        # Determina tipo: prime due e ultime due = "cartone"
-                                        if page_num in [1, 2, total_pdf_pages - 1, total_pdf_pages]:
-                                            page_type = "cartone"
-                                        else:
-                                            page_type = "carta"
-                                        
-                                        pages_json.append({
-                                            "page_number": page_num,
-                                            "image": f"images/page_{page_num}.jpg",
-                                            "type": page_type,
-                                            "dpi": 300
-                                        })
-                                        
-                                        # Upload immagine su GitHub
-                                        if github_mgr:
-                                            with open(img_local_path, "rb") as f_img:
-                                                img_bytes = f_img.read()
-                                            repo_path = f"docs/images/{img_filename}"
-                                            ok, msg = github_mgr.upload_file(
-                                                repo_path, img_bytes,
-                                                commit_message=f"Flipbook: upload {img_filename}"
-                                            )
-                                            if not ok:
-                                                upload_errors.append(msg)
-                                    
-                                    doc.close()
-                                    
-                                    # Salva pages.json localmente
-                                    pages_json_path = os.path.join(flipbook_docs_dir, "pages.json")
-                                    pages_json_content = json.dumps(pages_json, ensure_ascii=False, indent=4)
-                                    with open(pages_json_path, "w", encoding="utf-8") as f_json:
-                                        f_json.write(pages_json_content)
-                                    
-                                    # Upload pages.json su GitHub
+                                    # Upload immagine su GitHub
                                     if github_mgr:
+                                        with open(img_local_path, "rb") as f_img:
+                                            img_bytes = f_img.read()
+                                        repo_path = f"docs/images/{img_filename}"
                                         ok, msg = github_mgr.upload_file(
-                                            "docs/pages.json",
-                                            pages_json_content.encode("utf-8"),
-                                            commit_message=f"Flipbook: upload pages.json ({total_pdf_pages} pagine)"
+                                            repo_path, img_bytes,
+                                            commit_message=f"Flipbook: upload {img_filename}"
                                         )
                                         if not ok:
                                             upload_errors.append(msg)
-                                    
-                                    progress_bar.progress(1.0, text="Completato!")
-                                    
-                                    # Report finale
-                                    st.success(
-                                        f"✅ Flipbook creato con successo!\n\n"
-                                        f"📄 **{total_pdf_pages}** pagine estratte a 300 DPI\n\n"
-                                        f"💾 Immagini salvate in `docs/images/`\n\n"
-                                        f"📋 `pages.json` salvato in `docs/`\n\n"
-                                        f"{'☁️ File caricati su GitHub' if github_mgr else '⚠️ GitHub non configurato, salvato solo localmente'}"
+                                
+                                doc.close()
+                                
+                                # Salva pages.json localmente
+                                pages_json_path = os.path.join(flipbook_docs_dir, "pages.json")
+                                pages_json_content = json.dumps(pages_json, ensure_ascii=False, indent=4)
+                                with open(pages_json_path, "w", encoding="utf-8") as f_json:
+                                    f_json.write(pages_json_content)
+                                
+                                # Upload pages.json su GitHub
+                                if github_mgr:
+                                    ok, msg = github_mgr.upload_file(
+                                        "docs/pages.json",
+                                        pages_json_content.encode("utf-8"),
+                                        commit_message=f"Flipbook: upload pages.json ({total_pdf_pages} pagine)"
                                     )
-                                    
-                                    if upload_errors:
-                                        st.warning("⚠️ Alcuni upload su GitHub hanno avuto problemi:\n" + "\n".join(upload_errors))
-                                    
-                                except ImportError:
-                                    st.error(
-                                        "❌ **PyMuPDF non installato!**\n\n"
-                                        "Per usare il Flipbook è necessario installare PyMuPDF:\n\n"
-                                        "```\npip install PyMuPDF\n```"
-                                    )
-                                except Exception as e:
-                                    st.error(f"❌ Errore creazione Flipbook: {e}")
-                    
-                    st.divider()
-                    
-                    # Copertina
-                    st.markdown("#### 🎨 Copertina")
-                    if os.path.exists(st.session_state['album_cover']):
-                        st.image(st.session_state['album_cover'], caption="Copertina Album", **IMG_WIDTH_ARG)
-                    
-                    st.divider()
-                    
-                    # Pagine
+                                    if not ok:
+                                        upload_errors.append(msg)
+                                
+                                progress_bar.progress(1.0, text="Completato!")
+                                
+                                # Report finale
+                                st.success(
+                                    f"✅ Flipbook creato con successo!\n\n"
+                                    f"📄 **{total_pdf_pages}** pagine estratte a 300 DPI\n\n"
+                                    f"💾 Immagini salvate in `docs/images/`\n\n"
+                                    f"📋 `pages.json` salvato in `docs/`\n\n"
+                                    f"{'☁️ File caricati su GitHub' if github_mgr else '⚠️ GitHub non configurato, salvato solo localmente'}"
+                                )
+                                
+                                if upload_errors:
+                                    st.warning("⚠️ Alcuni upload su GitHub hanno avuto problemi:\n" + "\n".join(upload_errors))
+                                
+                            except ImportError:
+                                st.error(
+                                    "❌ **PyMuPDF non installato!**\n\n"
+                                    "Per usare il Flipbook è necessario installare PyMuPDF:\n\n"
+                                    "```\npip install PyMuPDF\n```"
+                                )
+                            except Exception as e:
+                                st.error(f"❌ Errore creazione Flipbook: {e}")
+                
+                st.divider()
+                
+                # Copertina
+                st.markdown("#### 🎨 Copertina")
+                if os.path.exists(st.session_state['album_cover']):
+                    st.image(st.session_state['album_cover'], caption="Copertina Album", **IMG_WIDTH_ARG)
+                
+                st.divider()
+                
+                # Pagine — @st.fragment per navigazione fluida senza rerun pagina intera
+                @st.fragment
+                def album_page_browser():
                     st.markdown("#### 📄 Pagine dell'Album")
                     album_pages = st.session_state['album_pages']
                     
@@ -2611,3 +2591,5 @@ with tab5:
                                         is_back = (idx == len(album_pages) - 1)
                                         cap = "Retro" if is_back else f"Pag. {idx + 1}"
                                         st.image(pg_path, caption=cap, width=280)
+                
+                album_page_browser()
