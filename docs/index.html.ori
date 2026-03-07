@@ -89,59 +89,35 @@
 <body>
 
     <h1>La Tua Libreria Flipbook</h1>
-    <p>Gli album vengono visualizzati solo se generati correttamente nel repository</p>
+    <p>Scegli il formato dell'album che desideri sfogliare</p>
 
     <div class="grid-container" id="album-grid">
-        <!-- Verranno mostrati solo i formati esistenti -->
+        <!-- Verranno generati dinamicamente o inseriti manualmente -->
+
+        <a href="flipbook/album.html?format=2x3" class="album-card">
+            <div class="icon">📘</div>
+            <div class="album-title">Formato 2x3</div>
+            <div class="album-desc">L'album classico verticale (Standard)</div>
+        </a>
+
+        <a href="flipbook/album.html?format=3x3" class="album-card">
+            <div class="icon">📗</div>
+            <div class="album-title">Formato 3x3</div>
+            <div class="album-desc">Formato espanso per più contenuti</div>
+        </a>
+
+        <a href="flipbook/album.html?format=3x4" class="album-card">
+            <div class="icon">📙</div>
+            <div class="album-title">Formato 3x4</div>
+            <div class="album-desc">Modello denso a 3 colonne e 4 righe</div>
+        </a>
+
     </div>
 
     <div class="footer">
         Generato con Locandine2Word
     </div>
 
-    <script>
-        // Lista dei formati potenziali da controllare
-        const formats = [
-            { id: "2x3", title: "Formato 2x3", desc: "L'album classico verticale (Standard)", icon: "📘" },
-            { id: "3x3", title: "Formato 3x3", desc: "Formato espanso per più contenuti", icon: "📗" },
-            { id: "3x4", title: "Formato 3x4", desc: "Modello denso a 3 colonne e 4 righe", icon: "📙" }
-        ];
-
-        const grid = document.getElementById('album-grid');
-
-        // Funzione per controllare se un album esiste (cercando il suo pages.json)
-        // e caricarlo dinamicamente nella grid
-        async function checkAndLoadAlbums() {
-            let found = 0;
-            for (const f of formats) {
-                try {
-                    // Controlliamo se esiste il file pages.json nella sottocartella albums/ID/
-                    const response = await fetch(`albums/${f.id}/pages.json`, { method: 'HEAD' });
-
-                    if (response.ok) {
-                        found++;
-                        const card = document.createElement('a');
-                        card.href = `flipbook/album.html?format=${f.id}`;
-                        card.className = 'album-card';
-                        card.innerHTML = `
-                            <div class="icon">${f.icon}</div>
-                            <div class="album-title">${f.title}</div>
-                            <div class="album-desc">${f.desc}</div>
-                        `;
-                        grid.appendChild(card);
-                    }
-                } catch (e) {
-                    console.log(`Album ${f.id} non presente.`);
-                }
-            }
-
-            if (found === 0) {
-                grid.innerHTML = "<p style='grid-column: 1/-1;'>Nessun album generato trovato. <br>Usa l'app per esportare il tuo primo Flipbook su GitHub!</p>";
-            }
-        }
-
-        checkAndLoadAlbums();
-    </script>
 </body>
 
 </html>
