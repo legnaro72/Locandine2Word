@@ -100,17 +100,20 @@
     </div>
 
     <script>
-        // Lista dei formati potenziali da controllare
+        // Lista di tutti i formati supportati nell'app che l'utente può aver generato
         const formats = [
+            { id: "1x1", title: "Formato 1x1", desc: "Una singola grande locandina per pagina", icon: "🖼️" },
+            { id: "1x2", title: "Formato 1x2", desc: "Due locandine incolonnate o affiancate", icon: "🃏" },
+            { id: "2x2", title: "Formato 2x2", desc: "Quattro locandine per pagina", icon: "🎴" },
             { id: "2x3", title: "Formato 2x3", desc: "L'album classico verticale (Standard)", icon: "📘" },
-            { id: "3x3", title: "Formato 3x3", desc: "Formato espanso per più contenuti", icon: "📗" },
-            { id: "3x4", title: "Formato 3x4", desc: "Modello denso a 3 colonne e 4 righe", icon: "📙" }
+            { id: "2x4", title: "Formato 2x4", desc: "Otto locandine per pagina", icon: "📓" },
+            { id: "3x3", title: "Formato 3x3", desc: "Nove locandine per pagina", icon: "📗" },
+            { id: "3x4", title: "Formato 3x4", desc: "Dodici locandine per pagina", icon: "📙" },
+            { id: "4x4", title: "Formato 4x4", desc: "Sedici locandine miniaturizzate", icon: "📚" }
         ];
 
         const grid = document.getElementById('album-grid');
 
-        // Funzione per controllare se un album esiste (cercando il suo pages.json)
-        // e caricarlo dinamicamente nella grid
         async function checkAndLoadAlbums() {
             let found = 0;
             for (const f of formats) {
@@ -136,7 +139,7 @@
             }
 
             if (found === 0) {
-                grid.innerHTML = "<p style='grid-column: 1/-1;'>Nessun album generato trovato. <br>Usa l'app per esportare il tuo primo Flipbook su GitHub!</p>";
+                grid.innerHTML = "<p style='grid-column: 1/-1;'>Nessun album generato trovato. <br>Usa l'app per esportare il tuo primo Flipbook o attendi il deploy su GitHub Pages!</p>";
             }
         }
 
