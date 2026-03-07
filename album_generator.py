@@ -383,6 +383,9 @@ class AlbumGenerator:
                 poster = Image.open(full_path).convert("RGBA")
                 p_w, p_h = poster.size
                 
+                # Rilevamento figurina pre-elaborata: se il path contiene 'images_album', assumiamo sia già una figurina finita
+                is_preprocessed_sticker = "images_album" in str(full_path).lower()
+
                 if self.force_aspect_ratio:
                     # Proporzione configurabile: 57mm larghezza x (76-80)mm altezza
                     target_ratio = 57.0 / float(self.sticker_height_mm)
@@ -398,7 +401,7 @@ class AlbumGenerator:
                     fitted_h = int(p_h * fit_w_ratio)
                     height_excess = (fitted_h - box_h) / box_h if fitted_h > box_h else 0
                     
-                    if 0 < height_excess <= 0.05:
+                    if 0 < height_excess <= 0.05 and not is_preprocessed_sticker:
                         # Micro-crop verticale (max 5%): scala per larghezza, taglia sopra/sotto
                         poster_fitted = poster.resize((box_w, fitted_h), Image.LANCZOS)
                         crop_top = (fitted_h - box_h) // 2
@@ -411,7 +414,8 @@ class AlbumGenerator:
                         new_ph = int(p_h * ratio)
                         poster_resized = poster.resize((new_pw, new_ph), Image.LANCZOS)
 
-                        if self.sticker_fill_mode == "espansione" and (new_pw < box_w or new_ph < box_h):
+                        # Applica espansione solo se NON è già una figurina pre-elaborata
+                        if self.sticker_fill_mode == "espansione" and (new_pw < box_w or new_ph < box_h) and not is_preprocessed_sticker:
                             # === ESPANSIONE INTELLIGENTE (sfocatura) ===
                             cover_ratio = max(box_w / p_w, box_h / p_h)
                             cover_w = int(p_w * cover_ratio)
@@ -422,7 +426,6 @@ class AlbumGenerator:
                             cy = (cover_h - box_h) // 2
                             bg_img = bg_img.crop((cx, cy, cx + box_w, cy + box_h))
                             
-                            # SFOCATURA: Ridotta pesantemente in preview per fluidità
                             blur_radius = 6 if self.preview_mode else 18
                             bg_img = bg_img.filter(ImageFilter.GaussianBlur(radius=blur_radius))
                             enhancer = ImageEnhance.Brightness(bg_img)
@@ -433,8 +436,8 @@ class AlbumGenerator:
                             off_p_y = (box_h - new_ph) // 2
                             final_poster.paste(poster_resized, (off_p_x, off_p_y), poster_resized)
                         else:
-                            # Trasparente o Opaco: canvas vuoto per l'immagine
-                            if self.sticker_fill_mode == "opaco":
+                            # Trasparente o Opaco (o se è già una figurina): canvas vuoto per l'immagine
+                            if self.sticker_fill_mode == "opaco" and not is_preprocessed_sticker:
                                 fill_color = self.COLOR_STICKER_BG  # Riempi di crema
                             else:
                                 fill_color = (0, 0, 0, 0) # Trasparente
@@ -455,7 +458,7 @@ class AlbumGenerator:
                     new_ph = int(p_h * ratio)
                     poster_resized = poster.resize((new_pw, new_ph), Image.LANCZOS)
                     
-                    if self.sticker_fill_mode == "espansione" and (new_pw < box_w or new_ph < box_h):
+                    if self.sticker_fill_mode == "espansione" and (new_pw < box_w or new_ph < box_h) and not is_preprocessed_sticker:
                         # === ESPANSIONE INTELLIGENTE (sfocatura) ===
                         cover_ratio = max(box_w / p_w, box_h / p_h)
                         cover_w = int(p_w * cover_ratio)
@@ -477,8 +480,8 @@ class AlbumGenerator:
                         final_poster.paste(poster_resized, (off_p_x, off_p_y), poster_resized)
                         
                     else:
-                        # Trasparente o Opaco: canvas vuoto per l'immagine
-                        if self.sticker_fill_mode == "opaco":
+                        # Trasparente o Opaco (o se è già una figurina): canvas vuoto per l'immagine
+                        if self.sticker_fill_mode == "opaco" and not is_preprocessed_sticker:
                             fill_color = self.COLOR_STICKER_BG  # Riempi di crema
                         else:
                             fill_color = (0, 0, 0, 0) # Trasparente
@@ -1044,7 +1047,7 @@ class AlbumGenerator:
 
         cover_path = self.generate_cover(len(valid_events), output_dir)
         guard_front = self.generate_logo_page(output_dir, "album_page_000_guard_f.png")
-        pages_full, pages_empty = self.generate_album_pages(events, output_dir)
+        pages_full, pages_empty = self.generate_album_pages(valid_events, output_dir)
         
         # --- Controllo numero pagine pari ---
         # Se len(pages_full) è dispari, aggiungiamo una pagina vuota (terzultima)

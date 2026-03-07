@@ -2091,7 +2091,11 @@ with tab5:
             if os.path.exists(os.path.join(os.getcwd(), p)): return True
             return False
 
-        valid_album_events = [ev for ev in events_album if _check_img_path(ev.get('image_path'))]
+        # Includi eventi se hanno un'immagine originale O una figurina valida
+        valid_album_events = [
+            ev for ev in events_album 
+            if _check_img_path(ev.get('image_path')) or _check_img_path(ev.get('sticker_image_path'))
+        ]
         total_figurine = len(valid_album_events)
         
         if total_figurine == 0:
@@ -2332,14 +2336,28 @@ with tab5:
                     with st.spinner("🎨 Creazione dell'album in stile Panini... Attendere prego."):
                         # Sostituisci i path nelle copie degli eventi
                         album_events_to_use = []
+                        used_stickers_count = 0
                         for ev in sorted_album_events:
                             ev_copy = dict(ev)
                             stk_p = ev_copy.get('sticker_image_path', '').replace('\\', '/')
-                            stk_exists = os.path.exists(stk_p) or (stk_p and os.path.exists(os.path.join(os.getcwd(), stk_p)))
                             
-                            if not album_preprocess and ev_copy.get('sticker_processed') and stk_exists:
+                            # Verifica robusta esistenza figurina
+                            stk_exists = False
+                            if stk_p:
+                                if os.path.exists(stk_p): 
+                                    stk_exists = True
+                                elif os.path.exists(os.path.join(os.getcwd(), stk_p)):
+                                    stk_exists = True
+                                    stk_p = os.path.join(os.getcwd(), stk_p).replace('\\', '/')
+                            
+                            # Se non vogliamo ricalcolare e la figurina esiste, USALA come immagine sorgente
+                            if not album_preprocess and stk_exists:
                                 ev_copy['image_path'] = stk_p
+                                used_stickers_count += 1
                             album_events_to_use.append(ev_copy)
+                        
+                        if used_stickers_count > 0:
+                            st.info(f"✨ Utilizzate **{used_stickers_count}** figurine elaborate trovate in `output/images_album`.")
                         
                         # Prepara immagini custom come PIL Image
                         custom_cover_pil = None
