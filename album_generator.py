@@ -157,8 +157,6 @@ class AlbumGenerator:
         self.empty_album_mode = empty_album_mode
         self.export_stickers = export_stickers
         self.preview_mode = preview_mode
-        self._image_cache = {}
-
         # --- Caricamento immagini ottimizzato (con cache globale per risorsa base) ---
         self.bg_image = self._get_cached_resource(bg_image_path)
         self.logo_image = self._get_cached_resource(logo_path)
@@ -382,11 +380,7 @@ class AlbumGenerator:
 
         if full_path:
             try:
-                if full_path in self._image_cache:
-                    poster = self._image_cache[full_path]
-                else:
-                    poster = Image.open(full_path).convert("RGBA")
-                    self._image_cache[full_path] = poster
+                poster = Image.open(full_path).convert("RGBA")
                 p_w, p_h = poster.size
                 
                 if self.force_aspect_ratio:
@@ -1067,14 +1061,16 @@ class AlbumGenerator:
         pdf_buffer = None
         all_pages_full = [cover_path, guard_front] + pages_full + [guard_back, back_path]
         try:
-            images = []
-            first_img = Image.open(all_pages_full[0]).convert("RGB")
-            for p in all_pages_full[1:]:
-                images.append(Image.open(p).convert("RGB"))
+            def image_generator(paths):
+                for p in paths:
+                    with Image.open(p) as img:
+                        yield img.convert("RGB")
 
             pdf_buffer = io.BytesIO()
-            first_img.save(pdf_buffer, "PDF", save_all=True, append_images=images, resolution=150.0)
+            first_img = Image.open(all_pages_full[0]).convert("RGB")
+            first_img.save(pdf_buffer, "PDF", save_all=True, append_images=image_generator(all_pages_full[1:]), resolution=150.0)
             pdf_buffer.seek(0)
+            first_img.close()
         except Exception as e:
             print(f"Errore generazione PDF: {e}")
             pdf_buffer = None
@@ -1084,14 +1080,16 @@ class AlbumGenerator:
         if self.empty_album_mode and pages_empty:
             all_pages_empty = [cover_path, guard_front] + pages_empty + [guard_back, back_path]
             try:
-                images_e = []
-                first_img_e = Image.open(all_pages_empty[0]).convert("RGB")
-                for p in all_pages_empty[1:]:
-                    images_e.append(Image.open(p).convert("RGB"))
+                def image_generator_empty(paths):
+                    for p in paths:
+                        with Image.open(p) as img:
+                            yield img.convert("RGB")
 
                 pdf_empty_buffer = io.BytesIO()
-                first_img_e.save(pdf_empty_buffer, "PDF", save_all=True, append_images=images_e, resolution=150.0)
+                first_img_e = Image.open(all_pages_empty[0]).convert("RGB")
+                first_img_e.save(pdf_empty_buffer, "PDF", save_all=True, append_images=image_generator_empty(all_pages_empty[1:]), resolution=150.0)
                 pdf_empty_buffer.seek(0)
+                first_img_e.close()
             except Exception as e:
                 print(f"Errore generazione PDF vuoto: {e}")
                 pdf_empty_buffer = None
