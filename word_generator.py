@@ -96,9 +96,14 @@ class WordGenerator:
             # Calcola dimensioni reali per evitare immagini troppo alte
             try:
                 from PIL import Image as PILImage
-                with PILImage.open(image_path) as img:
-                    img_w, img_h = img.size
-                    # Rapporto aspetto: se l'immagine è più alta che larga,
+                if image_path in WordGenerator._image_dims_cache:
+                    img_w, img_h = WordGenerator._image_dims_cache[image_path]
+                else:
+                    with PILImage.open(image_path) as img:
+                        img_w, img_h = img.size
+                        WordGenerator._image_dims_cache[image_path] = (img_w, img_h)
+                
+                # Rapporto aspetto: se l'immagine è più alta che larga,
                     # alla larghezza desiderata potrebbe superare max_height
                     aspect_ratio = img_h / img_w  # >1 = portrait
                     result_height_inches = (width / 914400) * aspect_ratio  # width è in EMU, 914400 EMU = 1 inch
@@ -187,6 +192,23 @@ class WordGenerator:
 
     
     _city_fallback_cache = None
+    _image_dims_cache = {}
+
+    PROV_TO_REG = {
+        'GENOVA': 'LIGURIA', 'GE': 'LIGURIA',
+        'LA SPEZIA': 'LIGURIA', 'SP': 'LIGURIA',
+        'SAVONA': 'LIGURIA', 'SV': 'LIGURIA',
+        'IMPERIA': 'LIGURIA', 'IM': 'LIGURIA',
+        'ASTI': 'PIEMONTE', 'AT': 'PIEMONTE', 'ALESSANDRIA': 'PIEMONTE', 'AL': 'PIEMONTE',
+        'MASSA': 'TOSCANA', 'MS': 'TOSCANA', 'MASSA CARRARA': 'TOSCANA', 'CARRARA': 'TOSCANA', 
+        'LUCCA': 'TOSCANA', 'LU': 'TOSCANA'
+    }
+    PROV_NORM = {
+        'GE': 'GENOVA', 'SP': 'LA SPEZIA', 'SV': 'SAVONA', 'IM': 'IMPERIA', 
+        'AL': 'ALESSANDRIA', 'AT': 'ASTI',
+        'LU': 'LUCCA',
+        'MS': 'MASSA', 'MASSA CARRARA': 'MASSA', 'CARRARA': 'MASSA'
+    }
 
     @staticmethod
     def _get_city_fallback_dict():
@@ -214,22 +236,6 @@ class WordGenerator:
     @staticmethod
     def get_province(event: Dict) -> str:
         """Determina la provincia di un evento in base a indirizzo e location."""
-        PROV_TO_REG = {
-            'GENOVA': 'LIGURIA', 'GE': 'LIGURIA',
-            'LA SPEZIA': 'LIGURIA', 'SP': 'LIGURIA',
-            'SAVONA': 'LIGURIA', 'SV': 'LIGURIA',
-            'IMPERIA': 'LIGURIA', 'IM': 'LIGURIA',
-            'ASTI': 'PIEMONTE', 'AT': 'PIEMONTE', 'ALESSANDRIA': 'PIEMONTE', 'AL': 'PIEMONTE',
-            'MASSA': 'TOSCANA', 'MS': 'TOSCANA', 'MASSA CARRARA': 'TOSCANA', 'CARRARA': 'TOSCANA', 
-            'LUCCA': 'TOSCANA', 'LU': 'TOSCANA'
-        }
-        PROV_NORM = {
-            'GE': 'GENOVA', 'SP': 'LA SPEZIA', 'SV': 'SAVONA', 'IM': 'IMPERIA', 
-            'AL': 'ALESSANDRIA', 'AT': 'ASTI',
-            'LU': 'LUCCA',
-            'MS': 'MASSA', 'MASSA CARRARA': 'MASSA', 'CARRARA': 'MASSA'
-        }
-        
         # Carica il dizionario dinamico dal file JSON
         CITY_FALLBACK = WordGenerator._get_city_fallback_dict()
 
@@ -242,7 +248,7 @@ class WordGenerator:
         prov_found = None
         
         # 1. Cerca Province note nell'indirizzo (check suffisso robusto)
-        sorted_provs = sorted(PROV_TO_REG.keys(), key=len, reverse=True)
+        sorted_provs = sorted(WordGenerator.PROV_TO_REG.keys(), key=len, reverse=True)
         
         if addr:
             # Pulisce l'indirizzo da caratteri non alfanumerici finali
@@ -252,7 +258,7 @@ class WordGenerator:
                     # Verifica che prima ci sia un separatore o spazio
                     suffix_start = len(addr_clean) - len(p)
                     if suffix_start == 0 or not addr_clean[suffix_start-1].isalnum():
-                        prov_found = PROV_NORM.get(p, p)
+                        prov_found = WordGenerator.PROV_NORM.get(p, p)
                         break
         
         # 2. Cerca nel dizionario fallback (con location normalizzata)
@@ -261,8 +267,8 @@ class WordGenerator:
 
         # 3. Cerca se la location stessa è una provincia
         if not prov_found:
-             if loc in PROV_TO_REG:
-                 prov_found = PROV_NORM.get(loc, loc)
+             if loc in WordGenerator.PROV_TO_REG:
+                 prov_found = WordGenerator.PROV_NORM.get(loc, loc)
         
         return prov_found or "ALTRO"
 
@@ -301,12 +307,6 @@ class WordGenerator:
             total_ev = len(sorted_events)
             self.doc.add_paragraph(f"Totale Locandine caricate: {total_ev}", style='List Bullet')
             
-            PROV_TO_REG = {
-                'GENOVA': 'LIGURIA', 'LA SPEZIA': 'LIGURIA', 'SAVONA': 'LIGURIA', 'IMPERIA': 'LIGURIA',
-                'MASSA': 'TOSCANA', 'LUCCA': 'TOSCANA',
-                'ASTI': 'PIEMONTE', 'ALESSANDRIA': 'PIEMONTE'
-            }
-
             stats = {
                 'LIGURIA': {'total': 0, 'provinces': {'GENOVA': 0, 'LA SPEZIA': 0, 'SAVONA': 0, 'IMPERIA': 0}},
                 'TOSCANA': {'total': 0, 'provinces': {'MASSA': 0, 'LUCCA': 0}},
@@ -318,7 +318,7 @@ class WordGenerator:
                 prov_found = self.get_province(ev)
                 loc = ev.get('location', 'N/D').strip().upper()
                 
-                reg = PROV_TO_REG.get(prov_found)
+                reg = WordGenerator.PROV_TO_REG.get(prov_found)
                 if reg:
                     stats[reg]['total'] += 1
                     if prov_found in stats[reg]['provinces']:
