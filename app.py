@@ -2295,6 +2295,10 @@ with tab5:
             col_m4.metric("📐 Layout", f"{album_cols}×{album_rows}")
 
             if genera_album:
+                # Salva il layout selezionato per la successiva generazione del flipbook
+                st.session_state['album_cols'] = album_cols
+                st.session_state['album_rows'] = album_rows
+                
                 # Applicazione ordinamento
                 sorted_album_events = list(valid_album_events)
                 
