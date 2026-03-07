@@ -110,108 +110,12 @@
     {
         "page_number": 19,
         "image": "albums/2x3/page_19.jpg",
-        "type": "carta",
+        "type": "cartone",
         "dpi": 300
     },
     {
         "page_number": 20,
         "image": "albums/2x3/page_20.jpg",
-        "type": "carta",
-        "dpi": 300
-    },
-    {
-        "page_number": 21,
-        "image": "albums/2x3/page_21.jpg",
-        "type": "carta",
-        "dpi": 300
-    },
-    {
-        "page_number": 22,
-        "image": "albums/2x3/page_22.jpg",
-        "type": "carta",
-        "dpi": 300
-    },
-    {
-        "page_number": 23,
-        "image": "albums/2x3/page_23.jpg",
-        "type": "carta",
-        "dpi": 300
-    },
-    {
-        "page_number": 24,
-        "image": "albums/2x3/page_24.jpg",
-        "type": "carta",
-        "dpi": 300
-    },
-    {
-        "page_number": 25,
-        "image": "albums/2x3/page_25.jpg",
-        "type": "carta",
-        "dpi": 300
-    },
-    {
-        "page_number": 26,
-        "image": "albums/2x3/page_26.jpg",
-        "type": "carta",
-        "dpi": 300
-    },
-    {
-        "page_number": 27,
-        "image": "albums/2x3/page_27.jpg",
-        "type": "carta",
-        "dpi": 300
-    },
-    {
-        "page_number": 28,
-        "image": "albums/2x3/page_28.jpg",
-        "type": "carta",
-        "dpi": 300
-    },
-    {
-        "page_number": 29,
-        "image": "albums/2x3/page_29.jpg",
-        "type": "carta",
-        "dpi": 300
-    },
-    {
-        "page_number": 30,
-        "image": "albums/2x3/page_30.jpg",
-        "type": "carta",
-        "dpi": 300
-    },
-    {
-        "page_number": 31,
-        "image": "albums/2x3/page_31.jpg",
-        "type": "carta",
-        "dpi": 300
-    },
-    {
-        "page_number": 32,
-        "image": "albums/2x3/page_32.jpg",
-        "type": "carta",
-        "dpi": 300
-    },
-    {
-        "page_number": 33,
-        "image": "albums/2x3/page_33.jpg",
-        "type": "carta",
-        "dpi": 300
-    },
-    {
-        "page_number": 34,
-        "image": "albums/2x3/page_34.jpg",
-        "type": "carta",
-        "dpi": 300
-    },
-    {
-        "page_number": 35,
-        "image": "albums/2x3/page_35.jpg",
-        "type": "cartone",
-        "dpi": 300
-    },
-    {
-        "page_number": 36,
-        "image": "albums/2x3/page_36.jpg",
         "type": "cartone",
         "dpi": 300
     }
