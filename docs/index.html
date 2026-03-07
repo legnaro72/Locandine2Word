@@ -3,614 +3,120 @@
 
 <head>
     <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>Flipbook Album</title>
-
-
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Scegli l'Album - Locandine2Word</title>
     <style>
         body {
             margin: 0;
-            background: #2c2c2c;
-            font-family: sans-serif;
-            overflow: hidden;
-        }
-
-        #book-wrapper {
-            width: 100vw;
-            height: 100vh;
-            background: #1a1a1a;
-            position: relative;
-            overflow: hidden;
-            touch-action: none;
-        }
-
-        #zoom-layer {
-            width: 2400px;
-            height: 1600px;
-            transform-origin: 0 0;
-            position: absolute;
-        }
-
-        #book {
-            width: 2400px;
-            height: 1600px;
-        }
-
-        .page {
-            background: white;
-            overflow: hidden;
-        }
-
-        .page img {
-            width: 100%;
-            height: 100%;
-            object-fit: contain;
-            pointer-events: none;
-        }
-
-        /* Pulsanti zoom e controlli */
-        .controls-container {
-            position: fixed;
-            bottom: 20px;
-            right: 20px;
+            background: #121212;
+            color: #ffffff;
+            font-family: 'Inter', -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
             display: flex;
-            gap: 10px;
-            z-index: 9999;
-        }
-
-        .zoom-btn {
-            padding: 14px 18px;
-            font-size: 20px;
-            background: rgba(255, 255, 255, 0.5);
-            backdrop-filter: blur(5px);
-            -webkit-backdrop-filter: blur(5px);
-            border: 1px solid rgba(255, 255, 255, 0.3);
-            border-radius: 10px;
-            cursor: pointer;
-            box-shadow: 0 4px 6px rgba(0, 0, 0, 0.3);
-            display: flex;
-            align-items: center;
-            justify-content: center;
-            transition: background 0.2s;
-        }
-
-        .zoom-btn:hover {
-            background: rgba(255, 255, 255, 0.8);
-        }
-
-        /* Frecce navigazione */
-        .nav-btn {
-            position: fixed;
-            top: 50%;
-            transform: translateY(-50%);
-            z-index: 9998;
-            font-size: 40px;
-            background: rgba(255, 255, 255, 0.5);
-            backdrop-filter: blur(5px);
-            -webkit-backdrop-filter: blur(5px);
-            border: 1px solid rgba(255, 255, 255, 0.3);
-            border-radius: 50%;
-            width: 60px;
-            height: 60px;
-            cursor: pointer;
-            display: flex;
-            align-items: center;
-            justify-content: center;
-            transition: background 0.2s;
-        }
-
-        .nav-btn:hover {
-            background: rgba(255, 255, 255, 0.8);
-        }
-
-        #prev {
-            left: 15px;
-        }
-
-        #next {
-            right: 15px;
-        }
-
-        #zoom-indicator {
-            position: fixed;
-            top: 15px;
-            right: 20px;
-            color: white;
-            background: rgba(0, 0, 0, 0.6);
-            padding: 6px 12px;
-            border-radius: 8px;
-            z-index: 9999;
-        }
-
-        #mobile-start-overlay {
-            position: fixed;
-            top: 0;
-            left: 0;
-            width: 100vw;
-            height: 100vh;
-            background: rgba(0, 0, 0, 0.8);
-            display: flex;
-            /* VERO DISPLAY DI DEFAULT */
             flex-direction: column;
             align-items: center;
             justify-content: center;
-            z-index: 10000;
-            color: white;
+            min-height: 100vh;
+        }
+
+        h1 {
+            font-size: 2.5rem;
+            margin-bottom: 0.5rem;
             text-align: center;
+            color: #f1f1f1;
         }
 
-        #mobile-start-overlay button {
-            margin-top: 20px;
-            padding: 15px 30px;
-            font-size: 20px;
-            border-radius: 30px;
-            border: none;
-            background: #007bff;
-            color: white;
+        p {
+            color: #aaaaaa;
+            margin-bottom: 2rem;
+            text-align: center;
+            font-size: 1.1rem;
+        }
+
+        .grid-container {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(250px, 1fr));
+            gap: 20px;
+            width: 90%;
+            max-width: 800px;
+        }
+
+        .album-card {
+            background: #1e1e1e;
+            border-radius: 12px;
+            padding: 24px;
+            text-align: center;
             cursor: pointer;
-        }
-
-        #portrait-warning {
-            position: fixed;
-            top: 0;
-            left: 0;
-            width: 100vw;
-            height: 100vh;
-            background: #1a1a1a;
-            color: white;
-            display: none;
+            transition: transform 0.2s ease, box-shadow 0.2s ease;
+            text-decoration: none;
+            color: #ffffff;
+            display: flex;
             flex-direction: column;
             align-items: center;
-            justify-content: center;
-            z-index: 10001;
-            text-align: center;
-            padding: 20px;
+            border: 1px solid #333;
         }
 
-        @media screen and (orientation: portrait) and (max-width: 1024px) {
-            #portrait-warning {
-                display: flex;
-            }
+        .album-card:hover {
+            transform: translateY(-5px);
+            box-shadow: 0 10px 20px rgba(0, 0, 0, 0.4);
+            border-color: #555;
+            background: #252525;
         }
 
-        /* Dimensioni PC/Desktop: Bottoni piccoli e trasparenti (Ripristinati) */
-        @media screen and (min-width: 1025px) {
-            .zoom-btn {
-                padding: 4px 6px;
-                font-size: 12px;
-                background: rgba(255, 255, 255, 0.15);
-            }
+        .icon {
+            font-size: 3rem;
+            margin-bottom: 15px;
+        }
 
-            .nav-btn {
-                width: 24px;
-                height: 24px;
-                font-size: 14px;
-                background: rgba(255, 255, 255, 0.15);
-            }
+        .album-title {
+            font-size: 1.5rem;
+            font-weight: bold;
+            margin-bottom: 8px;
+        }
 
-            .zoom-btn:hover,
-            .nav-btn:hover {
-                background: rgba(255, 255, 255, 0.35);
-            }
+        .album-desc {
+            font-size: 0.95rem;
+            color: #888;
+        }
+
+        .footer {
+            margin-top: 50px;
+            color: #555;
+            font-size: 0.9rem;
         }
     </style>
 </head>
 
 <body>
 
-    <div id="book-wrapper">
-        <div id="zoom-layer">
-            <div id="book"></div>
-        </div>
+    <h1>La Tua Libreria Flipbook</h1>
+    <p>Scegli il formato dell'album che desideri sfogliare</p>
+
+    <div class="grid-container" id="album-grid">
+        <!-- Verranno generati dinamicamente o inseriti manualmente -->
+
+        <a href="flipbook/album.html?format=2x3" class="album-card">
+            <div class="icon">📘</div>
+            <div class="album-title">Formato 2x3</div>
+            <div class="album-desc">L'album classico verticale (Standard)</div>
+        </a>
+
+        <a href="flipbook/album.html?format=3x3" class="album-card">
+            <div class="icon">📗</div>
+            <div class="album-title">Formato 3x3</div>
+            <div class="album-desc">Formato espanso per più contenuti</div>
+        </a>
+
+        <a href="flipbook/album.html?format=4x3" class="album-card">
+            <div class="icon">📙</div>
+            <div class="album-title">Formato 4x3</div>
+            <div class="album-desc">Modello orizzontale a 4 colonne</div>
+        </a>
+
     </div>
 
-    <div id="zoom-indicator">100%</div>
-
-    <div class="controls-container">
-        <button id="audio-toggle" class="zoom-btn" title="Mute/Unmute Musica">🔊</button>
-        <button id="fullscreen-toggle" class="zoom-btn" title="Full Screen">⛶</button>
-        <button id="zoom-reset" class="zoom-btn" title="Mostra 2 Pagine">🏚️</button>
+    <div class="footer">
+        Generato con Locandine2Word
     </div>
-
-    <button id="prev" class="nav-btn">⟨</button>
-    <button id="next" class="nav-btn">⟩</button>
-
-    <div id="mobile-start-overlay">
-        <h2>Album Giusto dire NO</h2>
-        <p>Clicca per avviare l'album e la musica!</p>
-        <button id="start-app">INIZIA</button>
-    </div>
-
-    <!-- Portrait Warning -->
-    <div id="portrait-warning">
-        <div class="warning-content">
-            <span style="font-size: 50px;">🔄</span>
-            <p>Per una visione ottimale, ruota il dispositivo in orizzontale</p>
-        </div>
-    </div>
-
-    <audio id="flipSound" src="flip.mp3"></audio>
-    <audio id="openSound" src="open.mp3"></audio>
-    <audio id="closeSound" src="close.mp3"></audio>
-    <audio id="bgMusic" src="GiustoDireNo.mp3" loop
-        onerror="console.error('⚠️ ALARM FILE MANCANTE! Il file non è stato trovato dal server a questo indirizzo: ' + this.src); alert('Errore: impossibile caricare GiustoDireNo.mp3 on line. Controlla maiuscole/minuscole su GitHub!');"></audio>
-
-    <script src="https://cdn.jsdelivr.net/npm/page-flip/dist/js/page-flip.browser.min.js"></script>
-
-    <script>
-        // Risoluzione aumentata (doppia rispetto a prima per maggiore nitidezza)
-        const BASE_WIDTH = 2400;
-        const BASE_HEIGHT = 1600;
-
-        let scale = 1;
-        let maxScale = 8;
-
-        let posX = 0;
-        let posY = 0;
-
-        let pageFlip;
-
-        const zoomLayer = document.getElementById("zoom-layer");
-        const wrapper = document.getElementById("book-wrapper");
-        const zoomIndicator = document.getElementById("zoom-indicator");
-
-        /* ==== AUTO FIT INIZIALE ==== */
-        function calculateInitialScale() {
-            const scaleX = wrapper.clientWidth / BASE_WIDTH;
-            const scaleY = wrapper.clientHeight / BASE_HEIGHT;
-            scale = Math.min(scaleX, scaleY);
-            centerContent();
-        }
-
-        function centerContent() {
-            const scaledWidth = BASE_WIDTH * scale;
-            const scaledHeight = BASE_HEIGHT * scale;
-
-            posX = (wrapper.clientWidth - scaledWidth) / 2;
-            posY = (wrapper.clientHeight - scaledHeight) / 2;
-        }
-
-        function clampPosition() {
-            const scaledWidth = BASE_WIDTH * scale;
-            const scaledHeight = BASE_HEIGHT * scale;
-
-            const minX = wrapper.clientWidth - scaledWidth;
-            const minY = wrapper.clientHeight - scaledHeight;
-
-            if (scaledWidth > wrapper.clientWidth) {
-                posX = Math.min(0, Math.max(minX, posX));
-            } else {
-                posX = (wrapper.clientWidth - scaledWidth) / 2;
-            }
-
-            if (scaledHeight > wrapper.clientHeight) {
-                posY = Math.min(0, Math.max(minY, posY));
-            } else {
-                posY = (wrapper.clientHeight - scaledHeight) / 2;
-            }
-        }
-
-        function updateTransform() {
-            clampPosition();
-            zoomLayer.style.transform =
-                `translate(${posX}px, ${posY}px) scale(${scale})`;
-            zoomIndicator.innerText = Math.round(scale * 100) + "%";
-        }
-
-        /* ==== ZOOM CONTROLS E ROTTELLA (WHEEL) ==== */
-        wrapper.addEventListener('wheel', (e) => {
-            e.preventDefault();
-
-            // Trova il punto esatto del mouse per zoomare verso di esso
-            const rect = wrapper.getBoundingClientRect();
-            const mouseX = e.clientX - rect.left;
-            const mouseY = e.clientY - rect.top;
-
-            const offsetX = (mouseX - posX) / scale;
-            const offsetY = (mouseY - posY) / scale;
-
-            // Determina la direzione dello zoom dalla rotellina del mouse
-            const zoomAmount = e.deltaY > 0 ? -0.15 : 0.15;
-            let newScale = Math.min(Math.max(scale + zoomAmount, 0.05), maxScale);
-
-            scale = newScale;
-            posX = mouseX - offsetX * scale;
-            posY = mouseY - offsetY * scale;
-
-            updateTransform();
-        }, { passive: false });
-
-        document.getElementById("zoom-reset").onclick = (e) => {
-            e.stopPropagation();
-            calculateInitialScale();
-            updateTransform();
-        };
-
-        function toggleFullScreen() {
-            const btn = document.getElementById("fullscreen-toggle");
-            if (!document.fullscreenElement) {
-                document.documentElement.requestFullscreen().then(() => {
-                    btn.innerText = "❌";
-                    if (screen.orientation && screen.orientation.lock) {
-                        screen.orientation.lock('landscape').catch(e => console.log("Orientation lock not supported", e));
-                    }
-                }).catch(err => {
-                    console.error(`Error: ${err.message}`);
-                });
-            } else {
-                if (document.exitFullscreen) {
-                    document.exitFullscreen().then(() => {
-                        btn.innerText = "⛶";
-                    });
-                }
-            }
-        }
-
-        document.getElementById("fullscreen-toggle").onclick = (e) => {
-            e.stopPropagation();
-            toggleFullScreen();
-        };
-
-        // Aggiorna pulsante se si esce con ESC o tasti sistema
-        document.addEventListener("fullscreenchange", () => {
-            const btn = document.getElementById("fullscreen-toggle");
-            if (!document.fullscreenElement) {
-                btn.innerText = "⛶";
-            } else {
-                btn.innerText = "❌";
-            }
-        });
-
-        /* ==== DOUBLE CLICK / TAP CON ZOOM CENTRATO ==== */
-        let lastTap = 0;
-
-        wrapper.addEventListener("pointerup", e => {
-            if (dragOccurred) return;
-
-            const now = Date.now();
-            if (now - lastTap < 300) {
-
-                const rect = wrapper.getBoundingClientRect();
-                const clickX = e.clientX - rect.left;
-                const clickY = e.clientY - rect.top;
-
-                const offsetX = (clickX - posX) / scale;
-                const offsetY = (clickY - posY) / scale;
-
-                if (scale < 2) scale = 2;
-                else if (scale < 4) scale = 4;
-                else if (scale < 6) scale = 6;
-                else if (scale < 8) scale = 8;
-                else {
-                    calculateInitialScale();
-                    updateTransform();
-                    lastTap = now;
-                    return;
-                }
-
-                posX = clickX - offsetX * scale;
-                posY = clickY - offsetY * scale;
-
-                updateTransform();
-            }
-            lastTap = now;
-        });
-
-        /* ==== DRAG ==== */
-        let isDragging = false;
-        let dragOccurred = false;
-        let startX, startY;
-
-        wrapper.addEventListener("pointerdown", e => {
-            isDragging = true;
-            dragOccurred = false;
-            startX = e.clientX - posX;
-            startY = e.clientY - posY;
-        });
-
-        wrapper.addEventListener("pointermove", e => {
-            if (isDragging) {
-                const newX = e.clientX - startX;
-                const newY = e.clientY - startY;
-
-                if (Math.abs(newX - posX) > 5 || Math.abs(newY - posY) > 5) {
-                    dragOccurred = true;
-                }
-
-                posX = newX;
-                posY = newY;
-                updateTransform();
-            }
-        });
-
-        wrapper.addEventListener("pointerup", () => {
-            isDragging = false;
-        });
-
-        /* ==== PINCH TO ZOOM ==== */
-        let initialPinchDistance = null;
-        let initialScale = 1;
-        let pinchCenter = { x: 0, y: 0 };
-
-        wrapper.addEventListener('touchstart', (e) => {
-            if (e.touches.length === 2) {
-                isDragging = false;
-                dragOccurred = true; // prevent double tap zoom
-
-                initialPinchDistance = Math.hypot(
-                    e.touches[0].clientX - e.touches[1].clientX,
-                    e.touches[0].clientY - e.touches[1].clientY
-                );
-                initialScale = scale;
-
-                // Calculate center point of the pinch
-                pinchCenter = {
-                    x: (e.touches[0].clientX + e.touches[1].clientX) / 2,
-                    y: (e.touches[0].clientY + e.touches[1].clientY) / 2
-                };
-            }
-        });
-
-        wrapper.addEventListener('touchmove', (e) => {
-            if (e.touches.length === 2) {
-                // e.preventDefault() here might be needed if passive: false is set, but pointer events handle most
-                const currentDistance = Math.hypot(
-                    e.touches[0].clientX - e.touches[1].clientX,
-                    e.touches[0].clientY - e.touches[1].clientY
-                );
-
-                if (initialPinchDistance) {
-                    const pinchScale = currentDistance / initialPinchDistance;
-                    let newScale = Math.min(Math.max(initialScale * pinchScale, 0.05), maxScale);
-
-                    // Zoom toward pinch center
-                    const rect = wrapper.getBoundingClientRect();
-                    const centerX = pinchCenter.x - rect.left;
-                    const centerY = pinchCenter.y - rect.top;
-
-                    // Calculate offset from current transform origin (posX, posY)
-                    const offsetX = (centerX - posX) / scale;
-                    const offsetY = (centerY - posY) / scale;
-
-                    scale = newScale;
-                    posX = centerX - offsetX * scale;
-                    posY = centerY - offsetY * scale;
-
-                    updateTransform();
-                }
-            }
-        });
-
-        wrapper.addEventListener('touchend', (e) => {
-            if (e.touches.length < 2) {
-                initialPinchDistance = null;
-            }
-        });
-
-        /* ==== AUDIO BACKGROUND E MOBILE/PC START ==== */
-        const bgMusic = document.getElementById("bgMusic");
-        const audioToggleBtn = document.getElementById("audio-toggle");
-        const startOverlay = document.getElementById("mobile-start-overlay");
-        let musicStarted = false;
-
-        const isMobile = /iPhone|iPad|iPod|Android/i.test(navigator.userAgent);
-
-        function startMusic() {
-            if (!musicStarted) {
-                console.log("▶️ Tentativo di avvio audio...");
-                bgMusic.play().then(() => {
-                    console.log("✅ Audio avviato con successo!");
-                    musicStarted = true;
-                    audioToggleBtn.innerText = "🔊";
-                }).catch(err => {
-                    console.log("⚠️ Audio autoplay bloccato dal browser (richiede interazione utente).", err);
-                });
-            }
-        }
-
-        audioToggleBtn.onclick = (e) => {
-            e.stopPropagation();
-            if (!musicStarted) {
-                startMusic();
-                return;
-            }
-            if (bgMusic.paused) {
-                bgMusic.play();
-                audioToggleBtn.innerText = "🔊";
-            } else {
-                bgMusic.pause();
-                audioToggleBtn.innerText = "🔇";
-            }
-        };
-
-        // Click sul pulsantone gigante INIZIA!
-        document.getElementById("start-app").onclick = () => {
-            if (isMobile) {
-                toggleFullScreen();
-            }
-            startMusic();
-            startOverlay.style.display = "none";
-        };
-
-        /* ==== FRECCE ==== */
-        document.getElementById("next").onclick = () => pageFlip.flipNext();
-        document.getElementById("prev").onclick = () => pageFlip.flipPrev();
-
-        /* ==== LOAD BOOK ==== */
-        fetch('pages.json')
-            .then(r => r.json())
-            .then(pages => {
-
-                const bookDiv = document.getElementById("book");
-
-                pages.forEach(p => {
-                    const div = document.createElement("div");
-                    div.className = "page " + p.type;
-
-                    const img = document.createElement("img");
-                    img.src = p.image;
-
-                    div.appendChild(img);
-                    bookDiv.appendChild(div);
-                });
-
-                pageFlip = new St.PageFlip(bookDiv, {
-                    width: 1200, // Dimensione aumentata per maggiore risoluzione (metà di BASE_WIDTH)
-                    height: 1600, // Dimensione aumentata 
-                    size: "fixed",
-                    showCover: true,
-                    mobileScrollSupport: false,
-                    useMouseEvents: false
-                });
-
-                pageFlip.loadFromHTML(document.querySelectorAll('.page'));
-
-                /* ==== SUONO FLIP, APERTURA E CHIUSURA ==== */
-                const flipAudio = document.getElementById("flipSound");
-                const openAudio = document.getElementById("openSound");
-                const closeAudio = document.getElementById("closeSound");
-
-                let currentPage = 0;
-
-                pageFlip.on('flip', (e) => {
-                    const targetPage = e.data;
-                    const totalPages = pages.length;
-                    let audioToPlay = flipAudio;
-
-                    // Se eravamo alla pagina 0 (copertina chiusa frontale) e andiamo avanti -> Apriamo l'album
-                    if (currentPage === 0 && targetPage > 0 && openAudio) {
-                        audioToPlay = openAudio;
-                    }
-                    // Se eravamo all'ultima pagina (copertina chiusa posteriore) e torniamo indietro -> Apriamo l'album dal retro
-                    else if (currentPage >= totalPages - 1 && targetPage < currentPage && openAudio) {
-                        audioToPlay = openAudio;
-                    }
-                    // Se ritorniamo alla pagina 0 (chiusura frontale) o andiamo all'ultima (chiusura posteriore) -> Chiudiamo
-                    else if ((targetPage === 0 || targetPage >= totalPages - 1) && closeAudio) {
-                        audioToPlay = closeAudio;
-                    }
-
-                    currentPage = targetPage;
-
-                    if (audioToPlay) {
-                        audioToPlay.currentTime = 0;
-                        audioToPlay.play().catch(err => console.log("Audio play blocked by browser:", err));
-                    }
-                });
-
-                calculateInitialScale();
-                updateTransform();
-            });
-        window.addEventListener("resize", () => {
-            // Non ricalcolare la scala automaticamente se l'utente ha zoomato manualimente
-            // ma ricalcola se siamo alla scala iniziale (auto-fit)
-            const oldInitialScale = Math.min(wrapper.clientWidth / BASE_WIDTH, wrapper.clientHeight / BASE_HEIGHT);
-            if (Math.abs(scale - oldInitialScale) < 0.01) {
-                calculateInitialScale();
-            }
-            updateTransform();
-        });
-    </script>
 
 </body>
 

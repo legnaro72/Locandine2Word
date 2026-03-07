@@ -47,3 +47,8 @@ output/*
 
 # OCR models (vengono scaricati automaticamente)
 .EasyOCR/
+
+# Google Drive OAuth (file sensibili - NON committare!)
+client_secrets.json
+gdrive_token_secrets.txt
+gdrive_setup.py
