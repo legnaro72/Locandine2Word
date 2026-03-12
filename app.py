@@ -2091,11 +2091,8 @@ with tab5:
             if os.path.exists(os.path.join(os.getcwd(), p)): return True
             return False
 
-        # Includi eventi se hanno un'immagine originale O una figurina valida
-        valid_album_events = [
-            ev for ev in events_album 
-            if _check_img_path(ev.get('image_path')) or _check_img_path(ev.get('sticker_image_path'))
-        ]
+        # Includi TUTTI gli eventi per permettere la generazione di placeholder per quelli senza immagine
+        valid_album_events = list(events_album)
         total_figurine = len(valid_album_events)
         
         if total_figurine == 0:

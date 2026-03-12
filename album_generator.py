@@ -1,5 +1,6 @@
+# -*- coding: utf-8 -*-
 """
-Album Generator – Stile Figurine Panini (A4 Portrait)
+Album Generator - Stile Figurine Panini (A4 Portrait)
 Genera pagine di album A4 verticali con le locandine disposte come figurine,
 con giustidireno.png come sfondo visibile in secondo piano e cornici realistiche.
 
@@ -592,66 +593,207 @@ class AlbumGenerator:
     # ---------------------------------------------------------------
 
     def generate_cover(self, total_events, output_dir="output"):
-        """Genera la copertina: banner in alto, titolo, immagine a tutta pagina, sottotitolo."""
+        """Genera la copertina: se c'è immagine custom → full-bleed senza testi; altrimenti layout classico."""
         os.makedirs(output_dir, exist_ok=True)
 
         cover = Image.new("RGBA", (self.PAGE_W, self.PAGE_H), self.COLOR_PAGE_BG)
         self._apply_bg_to_page(cover)
         draw = ImageDraw.Draw(cover)
 
-        # Cornice lusso
-        draw.rounded_rectangle([15, 15, self.PAGE_W - 16, self.PAGE_H - 16],
-                              radius=25, outline=self.COLOR_STICKER_BORDER, width=5)
-        draw.rounded_rectangle([25, 25, self.PAGE_W - 26, self.PAGE_H - 26],
-                              radius=20, outline=(self.COLOR_STICKER_BORDER[0],
-                                                   self.COLOR_STICKER_BORDER[1],
-                                                   self.COLOR_STICKER_BORDER[2], 100), width=2)
+        # -- MODALITA FULL-BLEED (immagine custom caricata) --
+        if self.custom_cover_image:
+            # Area interna alla cornice (margini 30px per lato)
+            frame_margin = 30
+            inner_x = frame_margin
+            inner_y = frame_margin
+            inner_w = self.PAGE_W - frame_margin * 2
+            inner_h = self.PAGE_H - frame_margin * 2
 
-        # Decorazioni angoli
-        corner_s = 50
-        for cx, cy in [(30, 30), (self.PAGE_W - 30 - corner_s, 30),
-                       (30, self.PAGE_H - 30 - corner_s),
-                       (self.PAGE_W - 30 - corner_s, self.PAGE_H - 30 - corner_s)]:
-            draw.rounded_rectangle([cx, cy, cx + corner_s, cy + corner_s],
-                                  radius=8, outline=self.COLOR_STICKER_BORDER, width=2)
-            draw.rounded_rectangle([cx + 6, cy + 6, cx + corner_s - 6, cy + corner_s - 6],
-                                  radius=4, fill=self.COLOR_NUMBER_BG)
+            ci_w, ci_h = self.custom_cover_image.size
+            # Scala cover-mode: riempie completamente l'area interna
+            ratio = max(inner_w / ci_w, inner_h / ci_h)
+            new_ci_w = int(ci_w * ratio)
+            new_ci_h = int(ci_h * ratio)
+            cover_resized = self.custom_cover_image.resize((new_ci_w, new_ci_h), Image.LANCZOS)
 
-        # === BANNER in cima (bannerprimapaginainalto.png) ===
-        current_y = 35
-        if self.show_banner and self.banner_image:
-            ban_w, ban_h = self.banner_image.size
-            # Scala a larghezza pagina interna (con margini)
-            target_ban_w = self.PAGE_W - 70
-            ban_scale = target_ban_w / ban_w
-            new_ban_w = int(ban_w * ban_scale)
-            new_ban_h = int(ban_h * ban_scale)
-            banner_resized = self.banner_image.resize((new_ban_w, new_ban_h), Image.LANCZOS)
-            bx = (self.PAGE_W - new_ban_w) // 2
-            cover.paste(banner_resized, (bx, current_y), banner_resized)
-            current_y += new_ban_h + 15
+            # Centra e ritaglia per coprire esattamente l'area interna
+            crop_x = (new_ci_w - inner_w) // 2
+            crop_y = (new_ci_h - inner_h) // 2
+            cover_cropped = cover_resized.crop((crop_x, crop_y, crop_x + inner_w, crop_y + inner_h))
+            cover.paste(cover_cropped, (inner_x, inner_y), cover_cropped)
+
+            # Cornice lusso (disegnata SOPRA l'immagine)
+            draw.rounded_rectangle([15, 15, self.PAGE_W - 16, self.PAGE_H - 16],
+                                  radius=25, outline=self.COLOR_STICKER_BORDER, width=5)
+            draw.rounded_rectangle([25, 25, self.PAGE_W - 26, self.PAGE_H - 26],
+                                  radius=20, outline=(self.COLOR_STICKER_BORDER[0],
+                                                       self.COLOR_STICKER_BORDER[1],
+                                                       self.COLOR_STICKER_BORDER[2], 100), width=2)
+
+            # Decorazioni angoli
+            corner_s = 50
+            for cx, cy in [(30, 30), (self.PAGE_W - 30 - corner_s, 30),
+                           (30, self.PAGE_H - 30 - corner_s),
+                           (self.PAGE_W - 30 - corner_s, self.PAGE_H - 30 - corner_s)]:
+                draw.rounded_rectangle([cx, cy, cx + corner_s, cy + corner_s],
+                                      radius=8, outline=self.COLOR_STICKER_BORDER, width=2)
+                draw.rounded_rectangle([cx + 6, cy + 6, cx + corner_s - 6, cy + corner_s - 6],
+                                      radius=4, fill=self.COLOR_NUMBER_BG)
+
+            # NESSUN testo sulla copertina full-bleed: verranno spostati nella inner cover
+
         else:
-            current_y = 60
+            # -- MODALITA CLASSICA (logo / senza immagine custom) --
+            # Cornice lusso
+            draw.rounded_rectangle([15, 15, self.PAGE_W - 16, self.PAGE_H - 16],
+                                  radius=25, outline=self.COLOR_STICKER_BORDER, width=5)
+            draw.rounded_rectangle([25, 25, self.PAGE_W - 26, self.PAGE_H - 26],
+                                  radius=20, outline=(self.COLOR_STICKER_BORDER[0],
+                                                       self.COLOR_STICKER_BORDER[1],
+                                                       self.COLOR_STICKER_BORDER[2], 100), width=2)
 
-        # === TITOLO sotto il banner ===
-        font_title = self._get_font(92, bold=True)
-        title = "ALBUM"
-        bbox = draw.textbbox((0, 0), title, font=font_title)
-        tw = bbox[2] - bbox[0]
-        draw.text(((self.PAGE_W - tw) // 2, current_y), title,
-                 fill=self.COLOR_HEADER_TEXT, font=font_title)
-        current_y += 140 # Aumentato ulteriormente per evitare sovrapposizioni (font size 92!)
+            # Decorazioni angoli
+            corner_s = 50
+            for cx, cy in [(30, 30), (self.PAGE_W - 30 - corner_s, 30),
+                           (30, self.PAGE_H - 30 - corner_s),
+                           (self.PAGE_W - 30 - corner_s, self.PAGE_H - 30 - corner_s)]:
+                draw.rounded_rectangle([cx, cy, cx + corner_s, cy + corner_s],
+                                      radius=8, outline=self.COLOR_STICKER_BORDER, width=2)
+                draw.rounded_rectangle([cx + 6, cy + 6, cx + corner_s - 6, cy + corner_s - 6],
+                                      radius=4, fill=self.COLOR_NUMBER_BG)
 
-        # Sottotitolo
-        font_sub = self._get_font(26, bold=True)
-        subtitle = "GIUSTO DIRE NO"
-        bbox2 = draw.textbbox((0, 0), subtitle, font=font_sub)
-        sw = bbox2[2] - bbox2[0]
-        draw.text(((self.PAGE_W - sw) // 2, current_y), subtitle,
-                 fill=(255, 255, 255), font=font_sub)
-        current_y += 40
+            # === BANNER in cima ===
+            current_y = 35
+            if self.show_banner and self.banner_image:
+                ban_w, ban_h = self.banner_image.size
+                target_ban_w = self.PAGE_W - 70
+                ban_scale = target_ban_w / ban_w
+                new_ban_w = int(ban_w * ban_scale)
+                new_ban_h = int(ban_h * ban_scale)
+                banner_resized = self.banner_image.resize((new_ban_w, new_ban_h), Image.LANCZOS)
+                bx = (self.PAGE_W - new_ban_w) // 2
+                cover.paste(banner_resized, (bx, current_y), banner_resized)
+                current_y += new_ban_h + 15
+            else:
+                current_y = 60
 
-        # Linea decorativa
+            # === TITOLO ===
+            font_title = self._get_font(92, bold=True)
+            title = "ALBUM"
+            bbox = draw.textbbox((0, 0), title, font=font_title)
+            tw = bbox[2] - bbox[0]
+            draw.text(((self.PAGE_W - tw) // 2, current_y), title,
+                     fill=self.COLOR_HEADER_TEXT, font=font_title)
+            current_y += 140
+
+            # Sottotitolo
+            font_sub = self._get_font(26, bold=True)
+            subtitle = "GIUSTO DIRE NO"
+            bbox2 = draw.textbbox((0, 0), subtitle, font=font_sub)
+            sw = bbox2[2] - bbox2[0]
+            draw.text(((self.PAGE_W - sw) // 2, current_y), subtitle,
+                     fill=(255, 255, 255), font=font_sub)
+            current_y += 40
+
+            # Linea decorativa
+            line_margin = 120
+            draw.line([(line_margin, current_y), (self.PAGE_W - line_margin, current_y)],
+                     fill=self.COLOR_STICKER_BORDER, width=2)
+            mid_x = self.PAGE_W // 2
+            diamond = 8
+            draw.polygon([(mid_x, current_y - diamond), (mid_x + diamond, current_y),
+                          (mid_x, current_y + diamond), (mid_x - diamond, current_y)],
+                        fill=self.COLOR_STICKER_BORDER)
+            current_y += 20
+
+            # === LOGO ===
+            footer_zone = 200
+            available_h = self.PAGE_H - current_y - footer_zone
+            available_w = self.PAGE_W - 80
+
+            if self.logo_image:
+                target_size = min(available_w, available_h) - 40
+                if not self.logo_cover_full_page and target_size > 400:
+                    target_size = 400
+                logo_prepared = self._prepare_logo(self.logo_image, target_size, white_bg=self.logo_cover_white_bg)
+                cx = (self.PAGE_W - logo_prepared.size[0]) // 2
+                cy = current_y + (available_h - logo_prepared.size[1]) // 2
+                cover.paste(logo_prepared, (cx, cy), logo_prepared)
+
+            # === Testi footer (solo in modalità classica) ===
+            footer_start_y = self.PAGE_H - footer_zone + 10
+
+            font_ed = self._get_font(9)
+            ed_text = "Referendum Giustizia 2026"
+            bbox_ed = draw.textbbox((0, 0), ed_text, font=font_ed)
+            ew = bbox_ed[2] - bbox_ed[0]
+            draw.text(((self.PAGE_W - ew) // 2, footer_start_y), ed_text,
+                     fill=(180, 170, 140), font=font_ed)
+
+            font_desc = self._get_font(14)
+            desc_lines = [
+                "Tutti gli eventi del Comitato",
+                "Coordinamento Liguria e Massa",
+                "per il referendum sulla Giustizia"
+            ]
+            desc_y = footer_start_y + 35
+            for line in desc_lines:
+                bbox_l = draw.textbbox((0, 0), line, font=font_desc)
+                lwd = bbox_l[2] - bbox_l[0]
+                draw.text(((self.PAGE_W - lwd) // 2, desc_y), line,
+                         fill=(150, 142, 120), font=font_desc)
+                desc_y += 22
+
+            draw.line([(line_margin, desc_y + 10), (self.PAGE_W - line_margin, desc_y + 10)],
+                     fill=(self.COLOR_STICKER_BORDER[0], self.COLOR_STICKER_BORDER[1],
+                           self.COLOR_STICKER_BORDER[2], 120), width=1)
+
+            font_footer = self._get_font(12)
+            footer = "Edizione Speciale 2026 — Comitato Giusto Dire No"
+            bbox5 = draw.textbbox((0, 0), footer, font=font_footer)
+            fw = bbox5[2] - bbox5[0]
+            draw.text(((self.PAGE_W - fw) // 2, self.PAGE_H - 70),
+                     footer, fill=(110, 105, 90), font=font_footer)
+
+            footer2 = "Coordinamento Liguria e Massa"
+            bbox6 = draw.textbbox((0, 0), footer2, font=font_footer)
+            fw2 = bbox6[2] - bbox6[0]
+            draw.text(((self.PAGE_W - fw2) // 2, self.PAGE_H - 48),
+                     footer2, fill=(95, 90, 75), font=font_footer)
+
+        # Salva a 300 DPI per stampa tipografica
+        cover_rgb = self._page_to_rgb(cover)
+        cover_rgb = cover_rgb.resize((2480, 3508), Image.LANCZOS)
+        cover_path = os.path.join(output_dir, "album_000_cover.png")
+        cover_rgb.save(cover_path, "PNG", quality=95)
+        return cover_path
+
+    # ---------------------------------------------------------------
+    #  SECONDA PAGINA — RETRO COPERTINA (Inner Cover)
+    # ---------------------------------------------------------------
+
+    def generate_inner_cover(self, total_events, output_dir="output"):
+        """
+        Genera la seconda pagina (retro copertina interna).
+        Contiene titolo album, sottotitoli e testi che normalmente starebbero
+        sulla copertina, ma vengono spostati qui quando la copertina è full-bleed.
+        """
+        os.makedirs(output_dir, exist_ok=True)
+
+        page = Image.new("RGBA", (self.PAGE_W, self.PAGE_H), self.COLOR_PAGE_BG)
+        self._apply_bg_to_page(page)
+        draw = ImageDraw.Draw(page)
+        self._draw_page_frame(draw)
+
+        # === Logo piccolo in alto ===
+        current_y = 100
+        if self.logo_image:
+            logo_prepared = self._prepare_logo(self.logo_image, 200, white_bg=self.logo_cover_white_bg)
+            lx = (self.PAGE_W - logo_prepared.size[0]) // 2
+            page.paste(logo_prepared, (lx, current_y), logo_prepared)
+            current_y += logo_prepared.size[1] + 30
+
+        # === Linea decorativa superiore ===
         line_margin = 120
         draw.line([(line_margin, current_y), (self.PAGE_W - line_margin, current_y)],
                  fill=self.COLOR_STICKER_BORDER, width=2)
@@ -660,86 +802,86 @@ class AlbumGenerator:
         draw.polygon([(mid_x, current_y - diamond), (mid_x + diamond, current_y),
                       (mid_x, current_y + diamond), (mid_x - diamond, current_y)],
                     fill=self.COLOR_STICKER_BORDER)
-        current_y += 20
+        current_y += 40
 
-        # === IMMAGINE A TUTTA PAGINA o LOGO PICCOLO ===
-        # Spazio disponibile per l'immagine (dal punto attuale fino al footer)
-        footer_zone = 200  # spazio riservato al footer in basso
-        available_h = self.PAGE_H - current_y - footer_zone
-        available_w = self.PAGE_W - 80  # margini laterali
+        # === TITOLO grande ===
+        font_title = self._get_font(82, bold=True)
+        title = "ALBUM"
+        bbox = draw.textbbox((0, 0), title, font=font_title)
+        tw = bbox[2] - bbox[0]
+        draw.text(((self.PAGE_W - tw) // 2, current_y), title,
+                 fill=self.COLOR_HEADER_TEXT, font=font_title)
+        current_y += 120
 
-        if self.custom_cover_image:
-            # Utente ha caricato una foto custom: riempiamo lo spazio
-            ci_w, ci_h = self.custom_cover_image.size
-            ratio = min(available_w / ci_w, available_h / ci_h)
-            new_ci_w = int(ci_w * ratio)
-            new_ci_h = int(ci_h * ratio)
-            cover_resized = self.custom_cover_image.resize((new_ci_w, new_ci_h), Image.LANCZOS)
-            cx = (self.PAGE_W - new_ci_w) // 2
-            cy = current_y + (available_h - new_ci_h) // 2
-            cover.paste(cover_resized, (cx, cy), cover_resized)
-        elif self.logo_image:
-            target_size = min(available_w, available_h) - 40
-            
-            # Se NON deve essere a tutta pagina, limitiamo la grandezza massima
-            if not self.logo_cover_full_page and target_size > 400:
-                target_size = 400
-                
-            logo_prepared = self._prepare_logo(self.logo_image, target_size, white_bg=self.logo_cover_white_bg)
-            cx = (self.PAGE_W - logo_prepared.size[0]) // 2
-            cy = current_y + (available_h - logo_prepared.size[1]) // 2
-            cover.paste(logo_prepared, (cx, cy), logo_prepared)
+        # === SOTTOTITOLO ===
+        font_sub = self._get_font(30, bold=True)
+        subtitle = "GIUSTO DIRE NO"
+        bbox2 = draw.textbbox((0, 0), subtitle, font=font_sub)
+        sw = bbox2[2] - bbox2[0]
+        draw.text(((self.PAGE_W - sw) // 2, current_y), subtitle,
+                 fill=(255, 255, 255), font=font_sub)
+        current_y += 55
 
-        # === Sottotitolo edizione (sotto l'immagine, prima del footer) ===
-        footer_start_y = self.PAGE_H - footer_zone + 10
+        # === Linea decorativa ===
+        draw.line([(line_margin, current_y), (self.PAGE_W - line_margin, current_y)],
+                 fill=self.COLOR_STICKER_BORDER, width=2)
+        draw.polygon([(mid_x, current_y - diamond), (mid_x + diamond, current_y),
+                      (mid_x, current_y + diamond), (mid_x - diamond, current_y)],
+                    fill=self.COLOR_STICKER_BORDER)
+        current_y += 50
 
-        font_ed = self._get_font(9)
+        # === Sottotitolo edizione ===
+        font_ed = self._get_font(16)
         ed_text = "Referendum Giustizia 2026"
         bbox_ed = draw.textbbox((0, 0), ed_text, font=font_ed)
         ew = bbox_ed[2] - bbox_ed[0]
-        draw.text(((self.PAGE_W - ew) // 2, footer_start_y), ed_text,
-                 fill=(180, 170, 140), font=font_ed)
+        draw.text(((self.PAGE_W - ew) // 2, current_y), ed_text,
+                 fill=(200, 190, 160), font=font_ed)
+        current_y += 50
 
-        # Descrizione
-        font_desc = self._get_font(14)
+        # === Descrizione eventi (blocco centrale) ===
+        font_desc = self._get_font(20)
         desc_lines = [
             "Tutti gli eventi del Comitato",
             "Coordinamento Liguria e Massa",
-            "per il referendum sulla Giustizia"
+            "per il referendum sulla Giustizia",
+            "",
+            f"Collezione Completa - {total_events} Eventi"
         ]
-        desc_y = footer_start_y + 35
         for line in desc_lines:
-            bbox_l = draw.textbbox((0, 0), line, font=font_desc)
-            lwd = bbox_l[2] - bbox_l[0]
-            draw.text(((self.PAGE_W - lwd) // 2, desc_y), line,
-                     fill=(150, 142, 120), font=font_desc)
-            desc_y += 22
+            if line:
+                bbox_l = draw.textbbox((0, 0), line, font=font_desc)
+                lwd = bbox_l[2] - bbox_l[0]
+                draw.text(((self.PAGE_W - lwd) // 2, current_y), line,
+                         fill=(170, 162, 140), font=font_desc)
+            current_y += 35
 
-        # Linea decorativa prima del footer
-        draw.line([(line_margin, desc_y + 10), (self.PAGE_W - line_margin, desc_y + 10)],
+        # === Linea decorativa inferiore ===
+        current_y += 30
+        draw.line([(line_margin, current_y), (self.PAGE_W - line_margin, current_y)],
                  fill=(self.COLOR_STICKER_BORDER[0], self.COLOR_STICKER_BORDER[1],
                        self.COLOR_STICKER_BORDER[2], 120), width=1)
 
-        # Footer
-        font_footer = self._get_font(12)
-        footer = "Edizione Speciale 2026 — Comitato Giusto Dire No"
+        # === Footer ===
+        font_footer = self._get_font(14)
+        footer = "Edizione Speciale 2026 - Comitato Giusto Dire No"
         bbox5 = draw.textbbox((0, 0), footer, font=font_footer)
         fw = bbox5[2] - bbox5[0]
-        draw.text(((self.PAGE_W - fw) // 2, self.PAGE_H - 70),
-                 footer, fill=(110, 105, 90), font=font_footer)
+        draw.text(((self.PAGE_W - fw) // 2, self.PAGE_H - 90),
+                 footer, fill=(120, 115, 100), font=font_footer)
 
         footer2 = "Coordinamento Liguria e Massa"
         bbox6 = draw.textbbox((0, 0), footer2, font=font_footer)
         fw2 = bbox6[2] - bbox6[0]
-        draw.text(((self.PAGE_W - fw2) // 2, self.PAGE_H - 48),
-                 footer2, fill=(95, 90, 75), font=font_footer)
+        draw.text(((self.PAGE_W - fw2) // 2, self.PAGE_H - 65),
+                 footer2, fill=(100, 95, 80), font=font_footer)
 
-        # Salva a 300 DPI per stampa tipografica
-        cover_rgb = self._page_to_rgb(cover)
-        cover_rgb = cover_rgb.resize((2480, 3508), Image.LANCZOS)
-        cover_path = os.path.join(output_dir, "album_000_cover.png")
-        cover_rgb.save(cover_path, "PNG", quality=95)
-        return cover_path
+        # Salva a 300 DPI
+        page_rgb = self._page_to_rgb(page)
+        page_rgb = page_rgb.resize((2480, 3508), Image.LANCZOS)
+        inner_path = os.path.join(output_dir, "album_001_inner_cover.png")
+        page_rgb.save(inner_path, "PNG", quality=95)
+        return inner_path
 
     # ---------------------------------------------------------------
     #  ULTIMA PAGINA (CHIUSURA)
@@ -754,8 +896,8 @@ class AlbumGenerator:
         draw = ImageDraw.Draw(back)
         self._draw_page_frame(draw)
 
-        # === Testo di ringraziamento in alto ===
-        font_body = self._get_font(9)
+        # === Testo di ringraziamento in alto (font grande e leggibile per stampa) ===
+        font_body = self._get_font(18)
         body_lines = [
             "Quest'album raccoglie tutti gli eventi organizzati",
             "dal Comitato \"Giusto Dire No\"",
@@ -776,8 +918,8 @@ class AlbumGenerator:
                 bbox_l = draw.textbbox((0, 0), line, font=font_body)
                 lw = bbox_l[2] - bbox_l[0]
                 draw.text(((self.PAGE_W - lw) // 2, body_y), line,
-                         fill=(170, 162, 140), font=font_body)
-            body_y += 32
+                         fill=(190, 182, 160), font=font_body)
+            body_y += 42
 
         # === LOGO === (spostato più in basso e centrato rispetto al footer)
         back_img_source = self.custom_back_image if self.custom_back_image else self.logo_image
@@ -877,15 +1019,14 @@ class AlbumGenerator:
         """
         Genera le pagine dell'album come immagini PNG (A4 portrait).
         Supporta layout verticale (dritto) e obliquo (sfalsato).
+        Gli slot senza immagine vengono mostrati come placeholder figurina
+        (stile album vuoto) con bordo, numero e effetto rilievo.
         Ritorna la lista dei percorsi delle immagini generate.
         """
         os.makedirs(output_dir, exist_ok=True)
 
-        # Filtra solo eventi con immagine valida (usando la risoluzione robusta)
-        valid_events = []
-        for ev in events:
-            if self._resolve_image_path(ev.get('image_path', '')):
-                valid_events.append(ev)
+        # Usa TUTTI gli eventi (quelli senza immagine avranno placeholder)
+        valid_events = list(events)
 
         if not valid_events:
             return []
@@ -958,38 +1099,49 @@ class AlbumGenerator:
                 if self.layout == "obliquo" and row % 2 == 1:
                     x += oblique_offset
 
-                # 1. Genera la figurina piena, necessaria in ogni caso per export o modalità normale
-                sticker_full, inner_rect = self._create_sticker(
-                    image_path=ev.get('image_path', ''),
-                    number=ev_idx + 1,
-                    location=ev.get('location', ''),
-                    date=ev.get('date', ''),
-                    sticker_w=sticker_w,
-                    sticker_h=sticker_h,
-                    empty=False
-                )
-                ox, oy, dw, dh = inner_rect
+                # Controlla se l'evento ha un'immagine valida
+                has_valid_image = bool(self._resolve_image_path(ev.get('image_path', '')))
 
-                # 2. Esporta la figurina pura "Stile Effetto Album" (solo l'immagine fusa col background)
-                if self.export_stickers:
-                    # Ritaglia sfondino "page_full" alla coordinata INTERNA della figurina esatta (es. 57x82)
-                    bx, by = int(x + ox), int(y + oy)
-                    bx2, by2 = bx + dw, by + dh
-                    bg_crop = page_full.crop((bx, by, bx2, by2))
-                    
-                    # Ritaglia la figurina INTERNA esatta dallo sticker_full originario
-                    st_crop = sticker_full.crop((ox, oy, ox + dw, oy + dh))
-                    
-                    # Fonde e salva PNG finale
-                    bg_crop.paste(st_crop, (0, 0), st_crop)
-                    
-                    stickers_dir = os.path.join(output_dir, "stickers")
-                    os.makedirs(stickers_dir, exist_ok=True)
-                    stk_path = os.path.join(stickers_dir, f"{ev_idx + 1:03d}.png")
-                    bg_crop.save(stk_path, "PNG", quality=100)
+                if has_valid_image:
+                    # 1. Genera la figurina piena con l'immagine
+                    sticker_full, inner_rect = self._create_sticker(
+                        image_path=ev.get('image_path', ''),
+                        number=ev_idx + 1,
+                        location=ev.get('location', ''),
+                        date=ev.get('date', ''),
+                        sticker_w=sticker_w,
+                        sticker_h=sticker_h,
+                        empty=False
+                    )
+                    ox, oy, dw, dh = inner_rect
 
-                # 3. Incolla lo sticker pieno sulla pagina piena
-                page_full.paste(sticker_full, (int(x), int(y)), sticker_full)
+                    # 2. Esporta la figurina pura "Stile Effetto Album"
+                    if self.export_stickers:
+                        bx, by = int(x + ox), int(y + oy)
+                        bx2, by2 = bx + dw, by + dh
+                        bg_crop = page_full.crop((bx, by, bx2, by2))
+                        st_crop = sticker_full.crop((ox, oy, ox + dw, oy + dh))
+                        bg_crop.paste(st_crop, (0, 0), st_crop)
+                        stickers_dir = os.path.join(output_dir, "stickers")
+                        os.makedirs(stickers_dir, exist_ok=True)
+                        stk_path = os.path.join(stickers_dir, f"{ev_idx + 1:03d}.png")
+                        bg_crop.save(stk_path, "PNG", quality=100)
+
+                    # 3. Incolla lo sticker pieno sulla pagina piena
+                    page_full.paste(sticker_full, (int(x), int(y)), sticker_full)
+                else:
+                    # Slot senza immagine: genera placeholder stile album vuoto
+                    # (bordo visibile, numero identificativo, effetto rilievo)
+                    sticker_placeholder, _ = self._create_sticker(
+                        image_path=ev.get('image_path', ''),
+                        number=ev_idx + 1,
+                        location=ev.get('location', ''),
+                        date=ev.get('date', ''),
+                        sticker_w=sticker_w,
+                        sticker_h=sticker_h,
+                        empty=True
+                    )
+                    page_full.paste(sticker_placeholder, (int(x), int(y)), sticker_placeholder)
 
                 # 4. Incolla lo sticker vuoto sulla pagina vuota se richiesta
                 if self.empty_album_mode and page_empty:
@@ -1036,33 +1188,40 @@ class AlbumGenerator:
     def generate_full_album(self, events, output_dir="output"):
         """
         Genera l'album completo: copertina + pagine figurine + ultima pagina.
-        Ritorna:
-         - cover_path: percorso copertina
-         - page_paths: lista percorsi pagine piene_ (include back cover come ultima)
-         - pdf_buffer: BytesIO con il PDF completo (pien0)
-         - pdf_empty_buffer: BytesIO con PDF formato vuoto (o None se non generato)
-         - zip_buffer: BytesIO con ZIP figurine estratte (se export_stickers=True) oppure None
         """
-        valid_events = [ev for ev in events if self._resolve_image_path(ev.get('image_path', ''))]
+        # NON filtrare qui, per permettere i placeholder degli eventi senza immagine
+        valid_events = list(events)
 
         cover_path = self.generate_cover(len(valid_events), output_dir)
+
+        # Se c'è un'immagine custom sulla copertina, genera la inner cover
+        # (seconda pagina con titoli, sottotitoli, descrizione spostati dalla copertina)
+        inner_cover_path = None
+        if self.custom_cover_image:
+            inner_cover_path = self.generate_inner_cover(len(valid_events), output_dir)
+
         guard_front = self.generate_logo_page(output_dir, "album_page_000_guard_f.png")
         pages_full, pages_empty = self.generate_album_pages(valid_events, output_dir)
         
         # --- Controllo numero pagine pari ---
-        # Se len(pages_full) è dispari, aggiungiamo una pagina vuota (terzultima)
         if len(pages_full) % 2 != 0:
             blank_page = self.generate_blank_page(output_dir, "album_page_filler_blank.png")
             pages_full.append(blank_page)
-            # Nota: pages_empty rimane così com'è o dovrebbe essere pareggiato anche lui?
-            # Per ora pareggiamo solo il PDF 'Pieno' che è quello principale
         
         guard_back = self.generate_logo_page(output_dir, "album_page_zzz_guard_b.png")
         back_path = self.generate_back_cover(len(valid_events), output_dir)
 
+        # Costruisci la sequenza completa delle pagine
+        # Se c'e' inner cover: cover -> inner_cover -> guard -> pagine -> guard -> back
+        # Altrimenti: cover -> guard -> pagine -> guard -> back
+        pre_pages = [cover_path]
+        if inner_cover_path:
+            pre_pages.append(inner_cover_path)
+        pre_pages.append(guard_front)
+
         # Genera PDF combinato Pieno
         pdf_buffer = None
-        all_pages_full = [cover_path, guard_front] + pages_full + [guard_back, back_path]
+        all_pages_full = pre_pages + pages_full + [guard_back, back_path]
         try:
             def image_generator(paths):
                 for p in paths:
@@ -1081,7 +1240,7 @@ class AlbumGenerator:
         # Genera PDF combinato Vuoto (se richiesto)
         pdf_empty_buffer = None
         if self.empty_album_mode and pages_empty:
-            all_pages_empty = [cover_path, guard_front] + pages_empty + [guard_back, back_path]
+            all_pages_empty = pre_pages + pages_empty + [guard_back, back_path]
             try:
                 def image_generator_empty(paths):
                     for p in paths:
@@ -1097,8 +1256,9 @@ class AlbumGenerator:
                 print(f"Errore generazione PDF vuoto: {e}")
                 pdf_empty_buffer = None
 
-        # Aggiungiamo le pagine di guardia e il back cover alla lista pagine per la preview
-        # Inseriamo guard_front all'inizio (dopo cover) e guard_back alla fine (prima di back)
+        # Aggiungiamo le pagine supplementari alla lista per la preview
+        if inner_cover_path:
+            pages_full.insert(0, inner_cover_path)
         pages_full.insert(0, guard_front)
         pages_full.append(guard_back)
         pages_full.append(back_path)
