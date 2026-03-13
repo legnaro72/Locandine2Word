@@ -2102,33 +2102,36 @@ with tab5:
             refresh_event_metadata()
 
             # =============================================
+            # IMMAGINI PERSONALIZZATE (Fuori dal form per vitare crash/reset su mobile)
+            # =============================================
+            st.markdown("### 🖼️ Immagini Copertina e Retro")
+            
+            col_img1, col_img2 = st.columns(2)
+            
+            with col_img1:
+                st.markdown("**📘 Immagine Prima Pagina (Copertina)**")
+                st.caption("Se non carichi nulla, verrà usato il logo di default.")
+                uploaded_cover_img = st.file_uploader(
+                    "Carica immagine copertina", 
+                    type=['png', 'jpg', 'jpeg'],
+                    key="album_cover_upload",
+                    label_visibility="collapsed"
+                )
+            
+            with col_img2:
+                st.markdown("**📕 Immagine Ultima Pagina (Retro)**")
+                st.caption("Se non carichi nulla, verrà usato il logo piccolo di default.")
+                uploaded_back_img = st.file_uploader(
+                    "Carica immagine pagina finale", 
+                    type=['png', 'jpg', 'jpeg'],
+                    key="album_back_upload",
+                    label_visibility="collapsed"
+                )
+
+            # =============================================
             # FORM UNICO — NESSUN RERUN DURANTE CONFIGURAZIONE
             # =============================================
             with st.form("album_generation_form"):
-                # --- SEZIONE 1: IMMAGINI PERSONALIZZATE ---
-                st.markdown("### 🖼️ Immagini Copertina e Retro")
-                
-                col_img1, col_img2 = st.columns(2)
-                
-                with col_img1:
-                    st.markdown("**📘 Immagine Prima Pagina (Copertina)**")
-                    st.caption("Se non carichi nulla, verrà usato il logo di default.")
-                    uploaded_cover_img = st.file_uploader(
-                        "Carica immagine copertina", 
-                        type=['png', 'jpg', 'jpeg'],
-                        key="album_cover_upload",
-                        label_visibility="collapsed"
-                    )
-                
-                with col_img2:
-                    st.markdown("**📕 Immagine Ultima Pagina (Retro)**")
-                    st.caption("Se non carichi nulla, verrà usato il logo piccolo di default.")
-                    uploaded_back_img = st.file_uploader(
-                        "Carica immagine pagina finale", 
-                        type=['png', 'jpg', 'jpeg'],
-                        key="album_back_upload",
-                        label_visibility="collapsed"
-                    )
                 
                 # Opzione logo con sfondo bianco
                 col_opt1, col_opt2 = st.columns(2)

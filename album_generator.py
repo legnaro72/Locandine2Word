@@ -375,6 +375,18 @@ class AlbumGenerator:
         draw_w, draw_h = img_max_w, img_max_h
 
         if empty:
+            # Calcola le proporzioni target per mostrare il rettangolo (57x80mm) corretto
+            target_ratio = 57.0 / float(self.sticker_height_mm)
+            box_w, box_h = img_max_w, img_max_h
+            if box_w / box_h > target_ratio:
+                box_w = int(box_h * target_ratio)
+            else:
+                box_h = int(box_w / target_ratio)
+            
+            draw_w, draw_h = box_w, box_h
+            offset_x = img_x + (img_max_w - draw_w) // 2
+            offset_y = img_y + (img_max_h - draw_h) // 2
+
             draw.rectangle(
                 [offset_x - 1, offset_y - 1, offset_x + draw_w, offset_y + draw_h],
                 outline=(180, 160, 120), width=1
@@ -852,7 +864,7 @@ class AlbumGenerator:
         self._draw_page_frame(draw)
 
         # === Testo di ringraziamento in alto (font grande e leggibile per stampa) ===
-        font_body = self._get_font(36)
+        font_body = self._get_font(30)
         body_lines = [
             "Quest'album raccoglie tutti gli eventi organizzati",
             "dal Comitato \"Giusto Dire No\"",
@@ -987,6 +999,11 @@ class AlbumGenerator:
             return []
 
         total_pages = math.ceil(len(valid_events) / self.stickers_per_page)
+        
+        # Affinché ci siano pagine a coppie destinate all'incollaggio prima del cartone posteriore
+        if total_pages % 2 != 0:
+            total_pages += 1
+            
         generated_pages_full = []
         generated_pages_empty = []
 
@@ -1040,10 +1057,7 @@ class AlbumGenerator:
 
             for slot in range(self.stickers_per_page):
                 ev_idx = page_idx * self.stickers_per_page + slot
-                if ev_idx >= len(valid_events):
-                    break
 
-                ev = valid_events[ev_idx]
                 row = slot // self.cols
                 col = slot % self.cols
 
@@ -1053,6 +1067,25 @@ class AlbumGenerator:
                 # Layout obliquo: righe dispari sfalsate a destra
                 if self.layout == "obliquo" and row % 2 == 1:
                     x += oblique_offset
+
+                # Se ci sono slot vuoti alla fine dell'album (ultima pagina), riempi con rettangolini numerati
+                if ev_idx >= len(valid_events):
+                    sticker_placeholder, _ = self._create_sticker(
+                        image_path='',
+                        number=ev_idx + 1,
+                        location='',
+                        date='',
+                        sticker_w=sticker_w,
+                        sticker_h=sticker_h,
+                        empty=True
+                    )
+                    page_full.paste(sticker_placeholder, (int(x), int(y)), sticker_placeholder)
+                    
+                    if self.empty_album_mode and page_empty:
+                        page_empty.paste(sticker_placeholder, (int(x), int(y)), sticker_placeholder)
+                    continue
+
+                ev = valid_events[ev_idx]
 
                 # Controlla se l'evento ha un'immagine valida
                 has_valid_image = bool(self._resolve_image_path(ev.get('image_path', '')))
@@ -1149,19 +1182,11 @@ class AlbumGenerator:
 
         cover_path = self.generate_cover(len(valid_events), output_dir)
 
-        # Se c'è un'immagine custom sulla copertina, genera la inner cover
-        # (seconda pagina con titoli, sottotitoli, descrizione spostati dalla copertina)
+        # Se c'è un'immagine custom sulla copertina, non creiamo più la pagina aggiuntiva con le scritte (come richiesto)
         inner_cover_path = None
-        if self.custom_cover_image:
-            inner_cover_path = self.generate_inner_cover(len(valid_events), output_dir)
 
         guard_front = self.generate_logo_page(output_dir, "album_page_000_guard_f.png")
         pages_full, pages_empty = self.generate_album_pages(valid_events, output_dir)
-        
-        # --- Controllo numero pagine pari ---
-        if len(pages_full) % 2 != 0:
-            blank_page = self.generate_blank_page(output_dir, "album_page_filler_blank.png")
-            pages_full.append(blank_page)
         
         guard_back = self.generate_logo_page(output_dir, "album_page_zzz_guard_b.png")
         back_path = self.generate_back_cover(len(valid_events), output_dir)
