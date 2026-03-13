@@ -374,48 +374,109 @@ class AlbumGenerator:
         offset_x, offset_y = img_x, img_y
         draw_w, draw_h = img_max_w, img_max_h
 
-        # RISOLUZIONE PATH DEFINITIVA
-        full_path = self._resolve_image_path(image_path)
+        if empty:
+            draw.rectangle(
+                [offset_x - 1, offset_y - 1, offset_x + draw_w, offset_y + draw_h],
+                outline=(180, 160, 120), width=1
+            )
+            dash_offset = 2
+            draw.rectangle(
+                [offset_x + dash_offset, offset_y + dash_offset, offset_x + draw_w - dash_offset, offset_y + draw_h - dash_offset],
+                outline=(150, 150, 150, 80), width=1
+            )
+            
+            # Numero gigante per incollaggio
+            big_font = self._get_font(int(draw_h * 0.35), bold=True)
+            big_txt = str(number)
+            bbx = draw.textbbox((0, 0), big_txt, font=big_font)
+            bw = bbx[2] - bbx[0]
+            bh = bbx[3] - bbx[1]
+            draw.text((offset_x + (draw_w - bw) // 2, offset_y + (draw_h - bh) // 2 - int(draw_h * 0.05)),
+                      big_txt, fill=(180, 160, 120, 200), font=big_font)
+        else:
+            # RISOLUZIONE PATH DEFINITIVA
+            full_path = self._resolve_image_path(image_path)
 
-        # print(f"CHECK PATH: {image_path} -> {full_path}")
-
-        if full_path:
-            try:
-                poster = Image.open(full_path).convert("RGBA")
-                p_w, p_h = poster.size
-                
-                # Rilevamento figurina pre-elaborata: se il path contiene 'images_album', assumiamo sia già una figurina finita
-                is_preprocessed_sticker = "images_album" in str(full_path).lower()
-
-                if self.force_aspect_ratio:
-                    # Proporzione configurabile: 57mm larghezza x (76-80)mm altezza
-                    target_ratio = 57.0 / float(self.sticker_height_mm)
-                    box_w, box_h = img_max_w, img_max_h
+            if full_path:
+                try:
+                    poster = Image.open(full_path).convert("RGBA")
+                    p_w, p_h = poster.size
                     
-                    if box_w / box_h > target_ratio:
-                        box_w = int(box_h * target_ratio)
+                    # Rilevamento figurina pre-elaborata: se il path contiene 'images_album', assumiamo sia già una figurina finita
+                    is_preprocessed_sticker = "images_album" in str(full_path).lower()
+
+                    if self.force_aspect_ratio:
+                        # Proporzione configurabile: 57mm larghezza x (76-80)mm altezza
+                        target_ratio = 57.0 / float(self.sticker_height_mm)
+                        box_w, box_h = img_max_w, img_max_h
+                        
+                        if box_w / box_h > target_ratio:
+                            box_w = int(box_h * target_ratio)
+                        else:
+                            box_h = int(box_w / target_ratio)
+                        
+                        # Prova a fittare per larghezza: se l'eccesso in altezza è ≤5%, croppa solo verticalmente
+                        fit_w_ratio = box_w / p_w
+                        fitted_h = int(p_h * fit_w_ratio)
+                        height_excess = (fitted_h - box_h) / box_h if fitted_h > box_h else 0
+                        
+                        if 0 < height_excess <= 0.05 and not is_preprocessed_sticker:
+                            # Micro-crop verticale (max 5%): scala per larghezza, taglia sopra/sotto
+                            poster_fitted = poster.resize((box_w, fitted_h), Image.LANCZOS)
+                            crop_top = (fitted_h - box_h) // 2
+                            poster_to_draw = poster_fitted.crop((0, crop_top, box_w, crop_top + box_h))
+                            draw_w, draw_h = box_w, box_h
+                        else:
+                            # Fit completo dentro il box (nessun crop)
+                            ratio = min(box_w / p_w, box_h / p_h)
+                            new_pw = int(p_w * ratio)
+                            new_ph = int(p_h * ratio)
+                            poster_resized = poster.resize((new_pw, new_ph), Image.LANCZOS)
+
+                            # Applica espansione solo se NON è già una figurina pre-elaborata
+                            if self.sticker_fill_mode == "espansione" and (new_pw < box_w or new_ph < box_h) and not is_preprocessed_sticker:
+                                # === ESPANSIONE INTELLIGENTE (sfocatura) ===
+                                cover_ratio = max(box_w / p_w, box_h / p_h)
+                                cover_w = int(p_w * cover_ratio)
+                                cover_h = int(p_h * cover_ratio)
+                                bg_img = poster.resize((cover_w, cover_h), Image.LANCZOS)
+                                
+                                cx = (cover_w - box_w) // 2
+                                cy = (cover_h - box_h) // 2
+                                bg_img = bg_img.crop((cx, cy, cx + box_w, cy + box_h))
+                                
+                                blur_radius = 6 if self.preview_mode else 18
+                                bg_img = bg_img.filter(ImageFilter.GaussianBlur(radius=blur_radius))
+                                enhancer = ImageEnhance.Brightness(bg_img)
+                                bg_img = enhancer.enhance(0.65)
+                                
+                                final_poster = bg_img.convert("RGBA")
+                                off_p_x = (box_w - new_pw) // 2
+                                off_p_y = (box_h - new_ph) // 2
+                                final_poster.paste(poster_resized, (off_p_x, off_p_y), poster_resized)
+                            else:
+                                # Trasparente o Opaco (o se è già una figurina): canvas vuoto per l'immagine
+                                if self.sticker_fill_mode == "opaco" and not is_preprocessed_sticker:
+                                    fill_color = self.COLOR_STICKER_BG  # Riempi di crema
+                                else:
+                                    fill_color = (0, 0, 0, 0) # Trasparente
+                                
+                                final_poster = Image.new("RGBA", (box_w, box_h), fill_color)
+                                off_p_x = (box_w - new_pw) // 2
+                                off_p_y = (box_h - new_ph) // 2
+                                final_poster.paste(poster_resized, (off_p_x, off_p_y), poster_resized)
+                            
+                            poster_to_draw = final_poster
+                            draw_w, draw_h = box_w, box_h
+
                     else:
-                        box_h = int(box_w / target_ratio)
-                    
-                    # Prova a fittare per larghezza: se l'eccesso in altezza è ≤5%, croppa solo verticalmente
-                    fit_w_ratio = box_w / p_w
-                    fitted_h = int(p_h * fit_w_ratio)
-                    height_excess = (fitted_h - box_h) / box_h if fitted_h > box_h else 0
-                    
-                    if 0 < height_excess <= 0.05 and not is_preprocessed_sticker:
-                        # Micro-crop verticale (max 5%): scala per larghezza, taglia sopra/sotto
-                        poster_fitted = poster.resize((box_w, fitted_h), Image.LANCZOS)
-                        crop_top = (fitted_h - box_h) // 2
-                        poster_to_draw = poster_fitted.crop((0, crop_top, box_w, crop_top + box_h))
-                        draw_w, draw_h = box_w, box_h
-                    else:
-                        # Fit completo dentro il box (nessun crop)
+                        # Comportamento classico: sfrutta massimo spazio
+                        box_w, box_h = img_max_w, img_max_h
                         ratio = min(box_w / p_w, box_h / p_h)
                         new_pw = int(p_w * ratio)
                         new_ph = int(p_h * ratio)
                         poster_resized = poster.resize((new_pw, new_ph), Image.LANCZOS)
-
-                        # Applica espansione solo se NON è già una figurina pre-elaborata
+                        
                         if self.sticker_fill_mode == "espansione" and (new_pw < box_w or new_ph < box_h) and not is_preprocessed_sticker:
                             # === ESPANSIONE INTELLIGENTE (sfocatura) ===
                             cover_ratio = max(box_w / p_w, box_h / p_h)
@@ -436,97 +497,37 @@ class AlbumGenerator:
                             off_p_x = (box_w - new_pw) // 2
                             off_p_y = (box_h - new_ph) // 2
                             final_poster.paste(poster_resized, (off_p_x, off_p_y), poster_resized)
+                            
                         else:
                             # Trasparente o Opaco (o se è già una figurina): canvas vuoto per l'immagine
                             if self.sticker_fill_mode == "opaco" and not is_preprocessed_sticker:
                                 fill_color = self.COLOR_STICKER_BG  # Riempi di crema
                             else:
                                 fill_color = (0, 0, 0, 0) # Trasparente
-                            
+                                
                             final_poster = Image.new("RGBA", (box_w, box_h), fill_color)
                             off_p_x = (box_w - new_pw) // 2
                             off_p_y = (box_h - new_ph) // 2
                             final_poster.paste(poster_resized, (off_p_x, off_p_y), poster_resized)
-                        
+                            
                         poster_to_draw = final_poster
                         draw_w, draw_h = box_w, box_h
 
-                else:
-                    # Comportamento classico: sfrutta massimo spazio
-                    box_w, box_h = img_max_w, img_max_h
-                    ratio = min(box_w / p_w, box_h / p_h)
-                    new_pw = int(p_w * ratio)
-                    new_ph = int(p_h * ratio)
-                    poster_resized = poster.resize((new_pw, new_ph), Image.LANCZOS)
-                    
-                    if self.sticker_fill_mode == "espansione" and (new_pw < box_w or new_ph < box_h) and not is_preprocessed_sticker:
-                        # === ESPANSIONE INTELLIGENTE (sfocatura) ===
-                        cover_ratio = max(box_w / p_w, box_h / p_h)
-                        cover_w = int(p_w * cover_ratio)
-                        cover_h = int(p_h * cover_ratio)
-                        bg_img = poster.resize((cover_w, cover_h), Image.LANCZOS)
-                        
-                        cx = (cover_w - box_w) // 2
-                        cy = (cover_h - box_h) // 2
-                        bg_img = bg_img.crop((cx, cy, cx + box_w, cy + box_h))
-                        
-                        blur_radius = 6 if self.preview_mode else 18
-                        bg_img = bg_img.filter(ImageFilter.GaussianBlur(radius=blur_radius))
-                        enhancer = ImageEnhance.Brightness(bg_img)
-                        bg_img = enhancer.enhance(0.65)
-                        
-                        final_poster = bg_img.convert("RGBA")
-                        off_p_x = (box_w - new_pw) // 2
-                        off_p_y = (box_h - new_ph) // 2
-                        final_poster.paste(poster_resized, (off_p_x, off_p_y), poster_resized)
-                        
-                    else:
-                        # Trasparente o Opaco (o se è già una figurina): canvas vuoto per l'immagine
-                        if self.sticker_fill_mode == "opaco" and not is_preprocessed_sticker:
-                            fill_color = self.COLOR_STICKER_BG  # Riempi di crema
-                        else:
-                            fill_color = (0, 0, 0, 0) # Trasparente
-                            
-                        final_poster = Image.new("RGBA", (box_w, box_h), fill_color)
-                        off_p_x = (box_w - new_pw) // 2
-                        off_p_y = (box_h - new_ph) // 2
-                        final_poster.paste(poster_resized, (off_p_x, off_p_y), poster_resized)
-                        
-                    poster_to_draw = final_poster
-                    draw_w, draw_h = box_w, box_h
+                    offset_x = img_x + (img_max_w - draw_w) // 2
+                    offset_y = img_y + (img_max_h - draw_h) // 2
 
-                offset_x = img_x + (img_max_w - draw_w) // 2
-                offset_y = img_y + (img_max_h - draw_h) // 2
-
-                draw.rectangle(
-                    [offset_x - 1, offset_y - 1, offset_x + draw_w, offset_y + draw_h],
-                    outline=(180, 160, 120), width=1
-                )
-                
-                if empty:
-                    # Non incollo l'immagine. Metto un trattino interno e il testone del numero.
-                    dash_offset = 2
                     draw.rectangle(
-                        [offset_x + dash_offset, offset_y + dash_offset, offset_x + draw_w - dash_offset, offset_y + draw_h - dash_offset],
-                        outline=(150, 150, 150, 80), width=1
+                        [offset_x - 1, offset_y - 1, offset_x + draw_w, offset_y + draw_h],
+                        outline=(180, 160, 120), width=1
                     )
                     
-                    # Numero gigante per incollaggio
-                    big_font = self._get_font(int(draw_h * 0.35), bold=True)
-                    big_txt = str(number)
-                    bbx = draw.textbbox((0, 0), big_txt, font=big_font)
-                    bw = bbx[2] - bbx[0]
-                    bh = bbx[3] - bbx[1]
-                    draw.text((offset_x + (draw_w - bw) // 2, offset_y + (draw_h - bh) // 2 - int(draw_h * 0.05)),
-                              big_txt, fill=(180, 160, 120, 200), font=big_font)
-                else:
                     # Incollo la vera figurina
                     canvas.paste(poster_to_draw, (offset_x, offset_y), poster_to_draw)
                     
-            except Exception:
+                except Exception:
+                    self._draw_placeholder(draw, img_x, img_y, img_max_w, img_max_h)
+            else:
                 self._draw_placeholder(draw, img_x, img_y, img_max_w, img_max_h)
-        else:
-            self._draw_placeholder(draw, img_x, img_y, img_max_w, img_max_h)
 
         # --- Numero Figurina (Badge dorato) ---
         badge_size = max(24, min(34, sticker_w // 16))
@@ -815,7 +816,7 @@ class AlbumGenerator:
 
         # === SOTTOTITOLO ===
         font_sub = self._get_font(30, bold=True)
-        subtitle = "GIUSTO DIRE NO"
+        subtitle = "Campagna Referendaria Giusto Dire NO!!"
         bbox2 = draw.textbbox((0, 0), subtitle, font=font_sub)
         sw = bbox2[2] - bbox2[0]
         draw.text(((self.PAGE_W - sw) // 2, current_y), subtitle,
@@ -829,52 +830,6 @@ class AlbumGenerator:
                       (mid_x, current_y + diamond), (mid_x - diamond, current_y)],
                     fill=self.COLOR_STICKER_BORDER)
         current_y += 50
-
-        # === Sottotitolo edizione ===
-        font_ed = self._get_font(16)
-        ed_text = "Referendum Giustizia 2026"
-        bbox_ed = draw.textbbox((0, 0), ed_text, font=font_ed)
-        ew = bbox_ed[2] - bbox_ed[0]
-        draw.text(((self.PAGE_W - ew) // 2, current_y), ed_text,
-                 fill=(200, 190, 160), font=font_ed)
-        current_y += 50
-
-        # === Descrizione eventi (blocco centrale) ===
-        font_desc = self._get_font(20)
-        desc_lines = [
-            "Tutti gli eventi del Comitato",
-            "Coordinamento Liguria e Massa",
-            "per il referendum sulla Giustizia",
-            "",
-            f"Collezione Completa - {total_events} Eventi"
-        ]
-        for line in desc_lines:
-            if line:
-                bbox_l = draw.textbbox((0, 0), line, font=font_desc)
-                lwd = bbox_l[2] - bbox_l[0]
-                draw.text(((self.PAGE_W - lwd) // 2, current_y), line,
-                         fill=(170, 162, 140), font=font_desc)
-            current_y += 35
-
-        # === Linea decorativa inferiore ===
-        current_y += 30
-        draw.line([(line_margin, current_y), (self.PAGE_W - line_margin, current_y)],
-                 fill=(self.COLOR_STICKER_BORDER[0], self.COLOR_STICKER_BORDER[1],
-                       self.COLOR_STICKER_BORDER[2], 120), width=1)
-
-        # === Footer ===
-        font_footer = self._get_font(14)
-        footer = "Edizione Speciale 2026 - Comitato Giusto Dire No"
-        bbox5 = draw.textbbox((0, 0), footer, font=font_footer)
-        fw = bbox5[2] - bbox5[0]
-        draw.text(((self.PAGE_W - fw) // 2, self.PAGE_H - 90),
-                 footer, fill=(120, 115, 100), font=font_footer)
-
-        footer2 = "Coordinamento Liguria e Massa"
-        bbox6 = draw.textbbox((0, 0), footer2, font=font_footer)
-        fw2 = bbox6[2] - bbox6[0]
-        draw.text(((self.PAGE_W - fw2) // 2, self.PAGE_H - 65),
-                 footer2, fill=(100, 95, 80), font=font_footer)
 
         # Salva a 300 DPI
         page_rgb = self._page_to_rgb(page)
@@ -897,7 +852,7 @@ class AlbumGenerator:
         self._draw_page_frame(draw)
 
         # === Testo di ringraziamento in alto (font grande e leggibile per stampa) ===
-        font_body = self._get_font(18)
+        font_body = self._get_font(36)
         body_lines = [
             "Quest'album raccoglie tutti gli eventi organizzati",
             "dal Comitato \"Giusto Dire No\"",
@@ -912,14 +867,14 @@ class AlbumGenerator:
             "Grazie a tutti i volontari e ai cittadini",
             "che hanno partecipato!",
         ]
-        body_y = 200
+        body_y = 120
         for line in body_lines:
             if line:
                 bbox_l = draw.textbbox((0, 0), line, font=font_body)
                 lw = bbox_l[2] - bbox_l[0]
                 draw.text(((self.PAGE_W - lw) // 2, body_y), line,
                          fill=(190, 182, 160), font=font_body)
-            body_y += 42
+            body_y += 65
 
         # === LOGO === (spostato più in basso e centrato rispetto al footer)
         back_img_source = self.custom_back_image if self.custom_back_image else self.logo_image
@@ -938,17 +893,17 @@ class AlbumGenerator:
             
             back.paste(logo_prepared, (bx, by), logo_prepared)
         # Footer
-        font_footer = self._get_font(12)
+        font_footer = self._get_font(24)
         footer = "© 2026 Comitato Giusto Dire No — Coordinamento Liguria e Massa"
         bbox5 = draw.textbbox((0, 0), footer, font=font_footer)
         fw = bbox5[2] - bbox5[0]
-        draw.text(((self.PAGE_W - fw) // 2, self.PAGE_H - 90),
+        draw.text(((self.PAGE_W - fw) // 2, self.PAGE_H - 110),
                  footer, fill=(100, 95, 80), font=font_footer)
 
         footer2 = "Referendum Giustizia — Edizione Speciale 2026"
         bbox6 = draw.textbbox((0, 0), footer2, font=font_footer)
         fw2 = bbox6[2] - bbox6[0]
-        draw.text(((self.PAGE_W - fw2) // 2, self.PAGE_H - 65),
+        draw.text(((self.PAGE_W - fw2) // 2, self.PAGE_H - 75),
                  footer2, fill=(90, 85, 70), font=font_footer)
 
         # Salva a 300 DPI per stampa tipografica
