@@ -925,25 +925,83 @@ class AlbumGenerator:
         back_rgb.save(back_path, "PNG", quality=95)
         return back_path
 
-    def generate_logo_page(self, output_dir, filename="album_page_guard.png"):
-        """Genera una pagina di 'cartone' (sfondo album) con il logo centrale."""
+    def generate_logo_page(self, output_dir, filename="album_page_guard.png", is_front=False):
+        """Genera una pagina di 'cartone' (sfondo album) con il logo centrale (e opzionalmente un testo)."""
+        import textwrap
         page = Image.new("RGBA", (self.PAGE_W, self.PAGE_H), self.COLOR_PAGE_BG)
         self._apply_bg_to_page(page)
         
         draw = ImageDraw.Draw(page)
         self._draw_page_frame(draw)
         
-        # Prepara il logo grande centrale
+        # Prepara il logo (sempre al centro, in trasparenza se c'è testo per fare da sfondo)
         if self.logo_image:
             logo = self._prepare_logo(self.logo_image, target_size=900)
+            if is_front:
+                # Applica una forte trasparenza per farlo stare in secondo piano come filigrana
+                alpha = logo.split()[3]
+                alpha = alpha.point(lambda p: p * 0.15)
+                logo.putalpha(alpha)
+                
             lx = (self.PAGE_W - logo.size[0]) // 2
             ly = (self.PAGE_H - logo.size[1]) // 2
             page.paste(logo, (lx, ly), logo)
             
-        # Aggiungi un titolo decorativo per non farla sembrare vuota
-        draw.text((self.PAGE_W // 2 - 100, self.PAGE_H - 150), 
-                  "COLLEZIONE 2026", fill=(100, 95, 80), 
-                  font=self._get_font(18, bold=True))
+        if is_front:
+            current_y = 160
+            testo_raw = [
+                "Il 22 e 23 marzo non sono soltanto due date sul calendario. Sono un passaggio di coscienza civile.",
+                "",
+                "In queste settimane ho visto magistrati, pubblici ministeri, avvocati ed ex magistrati metterci la faccia, la voce, la dignità delle loro toghe per difendere qualcosa che appartiene a tutti: la giustizia come pilastro della nostra democrazia e della nostra Costituzione.",
+                "",
+                "A loro va un pensiero pieno di rispetto. Non per una battaglia di parte, ma per aver ricordato che la giustizia non è un terreno da smontare pezzo dopo pezzo, bensì una casa comune da custodire.",
+                "",
+                "C’è qualcosa di profondamente romantico — nel senso più alto del termine — nella speranza civile: credere che le istituzioni possano ancora essere difese con la parola, con lo studio, con la partecipazione. Credere che la Costituzione non sia un libro antico, ma una promessa viva.",
+                "",
+                "Se il 22 e 23 marzo gli italiani sceglieranno di difendere questi principi, allora potrà davvero cominciare una nuova primavera: una primavera di libertà, di legalità, di fiducia nella democrazia.",
+                "",
+                "Una primavera antifascista, nel senso più autentico della nostra Repubblica: quello di un Paese che non ha paura della giustizia, ma la protegge.",
+                "",
+                "Massimiliano Ferrando"
+            ]
+            
+            font_testo = self._get_font(34)
+            font_firma = self._get_font(40, bold=True)
+            colore_oro = (218, 165, 32) # Dorato scuro / Gold lucido
+            colore_ombra = (20, 20, 20, 200) # Ombra scura per risaltare chiaramente in primo piano
+            
+            max_width_chars = 58
+            
+            for i, paragrafo in enumerate(testo_raw):
+                if not paragrafo:
+                    current_y += 30
+                    continue
+                
+                is_firma = (i == len(testo_raw) - 1)
+                font_da_usare = font_firma if is_firma else font_testo
+                if is_firma:
+                    current_y += 40
+                
+                righe_wrappate = textwrap.wrap(paragrafo, width=max_width_chars)
+                for riga in righe_wrappate:
+                    bbox = draw.textbbox((0, 0), riga, font=font_da_usare)
+                    tw = bbox[2] - bbox[0]
+                    th = bbox[3] - bbox[1]
+                    
+                    if is_firma:
+                        x = self.PAGE_W - tw - 150
+                    else:
+                        x = (self.PAGE_W - tw) // 2
+                    
+                    # Ombra del testo per spiccare fortemente dallo sfondo
+                    draw.text((x + 2, current_y + 2), riga, fill=colore_ombra, font=font_da_usare)
+                    draw.text((x, current_y), riga, fill=colore_oro, font=font_da_usare)
+                    current_y += th + 15
+        else:
+            # Aggiungi un titolo decorativo per non farla sembrare vuota
+            draw.text((self.PAGE_W // 2 - 100, self.PAGE_H - 150), 
+                      "COLLEZIONE 2026", fill=(100, 95, 80), 
+                      font=self._get_font(18, bold=True))
 
         # Salva a 300 DPI
         page_rgb = self._page_to_rgb(page)
@@ -1185,7 +1243,7 @@ class AlbumGenerator:
         # Se c'è un'immagine custom sulla copertina, non creiamo più la pagina aggiuntiva con le scritte (come richiesto)
         inner_cover_path = None
 
-        guard_front = self.generate_logo_page(output_dir, "album_page_000_guard_f.png")
+        guard_front = self.generate_logo_page(output_dir, "album_page_000_guard_f.png", is_front=True)
         pages_full, pages_empty = self.generate_album_pages(valid_events, output_dir)
         
         guard_back = self.generate_logo_page(output_dir, "album_page_zzz_guard_b.png")
