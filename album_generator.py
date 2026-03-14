@@ -868,10 +868,10 @@ class AlbumGenerator:
         self._draw_page_frame(draw)
 
         # === Testo di ringraziamento in alto (font grande e leggibile per stampa) ===
-        font_testo = self._get_font(40)
+        font_testo = self._get_font(85)
         colore_oro = (218, 165, 32) # Dorato scuro / Gold lucido
         colore_ombra = (20, 20, 20, 200) # Ombra scura per risaltare chiaramente in primo piano
-        max_width_chars = 58
+        max_width_chars = 45
 
         body_lines = [
             "Quest'album raccoglie tutti gli eventi organizzati",
@@ -888,10 +888,10 @@ class AlbumGenerator:
             "che hanno partecipato!",
         ]
 
-        body_y = 120
+        body_y = 350
         for paragrafo in body_lines:
             if not paragrafo:
-                body_y += 35
+                body_y += 60
                 continue
 
             righe_wrappate = textwrap.wrap(paragrafo, width=max_width_chars)
@@ -901,10 +901,10 @@ class AlbumGenerator:
                 th = bbox[3] - bbox[1]
                 x = (self.PAGE_W - tw) // 2
                 
-                # Ombra del testo
-                draw.text((x + 2, body_y + 2), riga, fill=colore_ombra, font=font_testo)
+                # Ombra del testo (più spessa visto il font grande)
+                draw.text((x + 4, body_y + 4), riga, fill=colore_ombra, font=font_testo)
                 draw.text((x, body_y), riga, fill=colore_oro, font=font_testo)
-                body_y += th + 18
+                body_y += th + 30
 
         # === LOGO === (spostato più in basso e centrato rispetto al footer)
         back_img_source = self.custom_back_image if self.custom_back_image else self.logo_image
@@ -966,7 +966,7 @@ class AlbumGenerator:
             page.paste(logo, (lx, ly), logo)
             
         if is_front:
-            current_y = 160
+            current_y = 600
             testo_raw = [
                 "Il 22 e 23 marzo non sono soltanto due date sul calendario. Sono un passaggio di coscienza civile.",
                 "",
@@ -983,22 +983,23 @@ class AlbumGenerator:
                 "Massimiliano Ferrando"
             ]
             
-            font_testo = self._get_font(40)
-            font_firma = self._get_font(50, bold=True)
+            # Valori adeguati per una risoluzione di 2480x3508 (A4 a 300 DPI)
+            font_testo = self._get_font(80)
+            font_firma = self._get_font(105, bold=True)
             colore_oro = (218, 165, 32) # Dorato scuro / Gold lucido
             colore_ombra = (20, 20, 20, 200) # Ombra scura per risaltare chiaramente in primo piano
             
-            max_width_chars = 58
+            max_width_chars = 46
             
             for i, paragrafo in enumerate(testo_raw):
                 if not paragrafo:
-                    current_y += 30
+                    current_y += 60
                     continue
                 
                 is_firma = (i == len(testo_raw) - 1)
                 font_da_usare = font_firma if is_firma else font_testo
                 if is_firma:
-                    current_y += 40
+                    current_y += 80
                 
                 righe_wrappate = textwrap.wrap(paragrafo, width=max_width_chars)
                 for riga in righe_wrappate:
@@ -1007,19 +1008,19 @@ class AlbumGenerator:
                     th = bbox[3] - bbox[1]
                     
                     if is_firma:
-                        x = self.PAGE_W - tw - 150
+                        x = self.PAGE_W - tw - 250
                     else:
                         x = (self.PAGE_W - tw) // 2
                     
                     # Ombra del testo per spiccare fortemente dallo sfondo
-                    draw.text((x + 2, current_y + 2), riga, fill=colore_ombra, font=font_da_usare)
+                    draw.text((x + 4, current_y + 4), riga, fill=colore_ombra, font=font_da_usare)
                     draw.text((x, current_y), riga, fill=colore_oro, font=font_da_usare)
-                    current_y += th + 15
+                    current_y += th + 30
         else:
             # Aggiungi un titolo decorativo per non farla sembrare vuota
             draw.text((self.PAGE_W // 2 - 100, self.PAGE_H - 150), 
                       "COLLEZIONE 2026", fill=(100, 95, 80), 
-                      font=self._get_font(18, bold=True))
+                      font=self._get_font(40, bold=True))
 
         # Salva a 300 DPI
         page_rgb = self._page_to_rgb(page)
