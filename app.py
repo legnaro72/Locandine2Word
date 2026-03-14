@@ -2228,6 +2228,22 @@ with tab5:
                     key="album_preprocess"
                 )
                 
+                col_sum1, col_sum2 = st.columns(2)
+                with col_sum1:
+                    album_show_summary = st.checkbox(
+                        "📋 Includi Elenco Riepilogativo",
+                        value=False,
+                        help="Aggiunge una o più pagine con l'elenco cronologico di tutti gli eventi presenti nell'album, prima delle pagine di chiusura.",
+                        key="album_show_summary"
+                    )
+                with col_sum2:
+                    album_summary_epp = st.slider(
+                        "Eventi per pagina riepilogo",
+                        min_value=30, max_value=80, value=50, step=5,
+                        help="Quanti eventi mostrare per ogni pagina di riepilogo (layout a 2 colonne).",
+                        key="album_summary_epp"
+                    )
+
                 st.divider()
                 
                 # --- SEZIONE LAYOUT FIGURINE ---
@@ -2391,7 +2407,9 @@ with tab5:
                             force_aspect_ratio=album_force_aspect_ratio,
                             sticker_height_mm=sticker_height_mm,
                             empty_album_mode=album_empty_mode,
-                            export_stickers=album_export_stickers
+                            export_stickers=album_export_stickers,
+                            show_summary=album_show_summary,
+                            summary_events_per_page=album_summary_epp
                         )
                         cover_path, page_paths, pdf_buffer, pdf_empty_buffer, zip_buffer = gen.generate_full_album(
                             album_events_to_use, output_dir=album_output_dir

@@ -14,6 +14,7 @@ Supporta:
 import os
 import io
 import math
+import textwrap
 from PIL import Image, ImageDraw, ImageFont, ImageFilter, ImageEnhance
 
 
@@ -140,7 +141,8 @@ class AlbumGenerator:
                  logo_white_bg=False, logo_cover_white_bg=False, logo_cover_full_page=True,
                  show_banner=True, sticker_fill_mode="trasparente", force_aspect_ratio=False,
                   sticker_height_mm=80,
-                  empty_album_mode=False, export_stickers=False, preview_mode=False):
+                  empty_album_mode=False, export_stickers=False, preview_mode=False,
+                  show_summary=False, summary_events_per_page=50):
         """
         ...
         """
@@ -158,6 +160,8 @@ class AlbumGenerator:
         self.empty_album_mode = empty_album_mode
         self.export_stickers = export_stickers
         self.preview_mode = preview_mode
+        self.show_summary = show_summary
+        self.summary_events_per_page = max(30, min(80, summary_events_per_page))
         # --- Caricamento immagini ottimizzato (con cache globale per risorsa base) ---
         self.bg_image = self._get_cached_resource(bg_image_path)
         self.logo_image = self._get_cached_resource(logo_path)
@@ -864,7 +868,11 @@ class AlbumGenerator:
         self._draw_page_frame(draw)
 
         # === Testo di ringraziamento in alto (font grande e leggibile per stampa) ===
-        font_body = self._get_font(30)
+        font_testo = self._get_font(40)
+        colore_oro = (218, 165, 32) # Dorato scuro / Gold lucido
+        colore_ombra = (20, 20, 20, 200) # Ombra scura per risaltare chiaramente in primo piano
+        max_width_chars = 58
+
         body_lines = [
             "Quest'album raccoglie tutti gli eventi organizzati",
             "dal Comitato \"Giusto Dire No\"",
@@ -879,14 +887,24 @@ class AlbumGenerator:
             "Grazie a tutti i volontari e ai cittadini",
             "che hanno partecipato!",
         ]
+
         body_y = 120
-        for line in body_lines:
-            if line:
-                bbox_l = draw.textbbox((0, 0), line, font=font_body)
-                lw = bbox_l[2] - bbox_l[0]
-                draw.text(((self.PAGE_W - lw) // 2, body_y), line,
-                         fill=(190, 182, 160), font=font_body)
-            body_y += 65
+        for paragrafo in body_lines:
+            if not paragrafo:
+                body_y += 35
+                continue
+
+            righe_wrappate = textwrap.wrap(paragrafo, width=max_width_chars)
+            for riga in righe_wrappate:
+                bbox = draw.textbbox((0, 0), riga, font=font_testo)
+                tw = bbox[2] - bbox[0]
+                th = bbox[3] - bbox[1]
+                x = (self.PAGE_W - tw) // 2
+                
+                # Ombra del testo
+                draw.text((x + 2, body_y + 2), riga, fill=colore_ombra, font=font_testo)
+                draw.text((x, body_y), riga, fill=colore_oro, font=font_testo)
+                body_y += th + 18
 
         # === LOGO === (spostato più in basso e centrato rispetto al footer)
         back_img_source = self.custom_back_image if self.custom_back_image else self.logo_image
@@ -965,8 +983,8 @@ class AlbumGenerator:
                 "Massimiliano Ferrando"
             ]
             
-            font_testo = self._get_font(34)
-            font_firma = self._get_font(40, bold=True)
+            font_testo = self._get_font(40)
+            font_firma = self._get_font(50, bold=True)
             colore_oro = (218, 165, 32) # Dorato scuro / Gold lucido
             colore_ombra = (20, 20, 20, 200) # Ombra scura per risaltare chiaramente in primo piano
             
@@ -1035,6 +1053,244 @@ class AlbumGenerator:
         path = os.path.join(output_dir, filename)
         page_rgb.save(path, "PNG", quality=95)
         return path
+
+    def generate_summary_pages(self, events, output_dir="output"):
+        """
+        Genera pagine riepilogative con l'elenco di tutti gli eventi in ordine cronologico.
+        Layout a DUE COLONNE: ogni colonna mostra #, Data, Ora, Localita', Indirizzo.
+        self.summary_events_per_page e' la soglia MINIMA di eventi per pagina;
+        il sistema puo' aumentarla per riempire meglio le pagine ed evitare vuoti.
+        L'altezza delle righe viene calcolata una sola volta sulla prima pagina
+        (la piu' piena) e mantenuta identica su tutte le pagine successive.
+        """
+        if not events:
+            return []
+
+        os.makedirs(output_dir, exist_ok=True)
+
+        # 1. Recupera date e mantieni indice originale (numero figurina)
+        indexed_events = []
+        from datetime import datetime
+        import dateparser
+
+        for i, ev in enumerate(events):
+            dt = ev.get('_dt')
+            if not dt:
+                d_str = ev.get('date', '').strip()
+                try:
+                    dt = dateparser.parse(d_str, languages=['it', 'en']) or datetime.max
+                except:
+                    dt = datetime.max
+            indexed_events.append((ev, dt, i + 1))
+
+        # 2. Ordina per data cronologica
+        indexed_events.sort(key=lambda x: x[1])
+
+        total = len(indexed_events)
+
+        # 3. Distribuzione intelligente
+        #    Il valore dello slider e' la soglia minima. Proviamo a ridurre il
+        #    numero di pagine (aumentando gli eventi per pagina) purche' le righe
+        #    restino fisicamente leggibili (altezza minima 22px).
+        margin_x = 50
+        col_gap = 20
+        start_y = 140
+        header_h = 36
+        footer_margin = 50
+        usable_h = self.PAGE_H - start_y - footer_margin
+        min_row_h = 22
+
+        # Massimo eventi che entrano fisicamente in una pagina (2 colonne)
+        max_rows_per_col = (usable_h - header_h) // min_row_h
+        max_events_physical = max_rows_per_col * 2
+
+        min_per_page = self.summary_events_per_page  # soglia minima dall'utente
+
+        # Calcola il numero di pagine partendo dal massimo necessario
+        # e prova a ridurlo finche' gli eventi per pagina restano nel limite fisico
+        total_pages = math.ceil(total / min_per_page)
+        while total_pages > 1:
+            candidate = math.ceil(total / (total_pages - 1))
+            if candidate <= max_events_physical:
+                total_pages -= 1
+            else:
+                break
+        # Anche con 1 pagina, verifica che ci stia
+        if total_pages == 1 and total > max_events_physical:
+            total_pages = math.ceil(total / max_events_physical)
+
+        actual_per_page = math.ceil(total / total_pages)
+
+        # 4. Calcola altezza riga UNA VOLTA (basata sulla pagina piu' piena = actual_per_page)
+        rows_first_page = math.ceil(actual_per_page / 2)
+        row_h = max(min_row_h, (usable_h - header_h) // rows_first_page)
+
+        # 5. Larghezze colonne
+        total_col_w = (self.PAGE_W - margin_x * 2 - col_gap) // 2
+        # Sotto-colonne: #, DATA, ORA, LOCALITA', INDIRIZZO
+        sub_num_w = 28
+        sub_date_w = 105
+        sub_ora_w = 38
+        sub_loc_w = 115
+        sub_addr_w = total_col_w - sub_num_w - sub_date_w - sub_ora_w - sub_loc_w
+
+        summary_paths = []
+
+        font_title = self._get_font(24, bold=True)
+        font_sub = self._get_font(11)
+        font_col_header = self._get_font(11, bold=True)
+        font_row = self._get_font(11)
+        font_num = self._get_font(11, bold=True)
+
+        colore_oro = (218, 165, 32)
+        colore_testo = (230, 225, 210)
+        colore_dim = (170, 162, 140)
+        colore_riga_alt = (35, 55, 95, 80)
+
+        for p_idx in range(total_pages):
+            page = self._create_page_background()
+            draw = ImageDraw.Draw(page)
+
+            # Header Pagina
+            h_text = "ELENCO RIEPILOGATIVO EVENTI"
+            hb = draw.textbbox((0, 0), h_text, font=font_title)
+            draw.text(((self.PAGE_W - (hb[2] - hb[0])) // 2, 30), h_text,
+                      fill=self.COLOR_HEADER_TEXT, font=font_title)
+
+            pg_label = f"Pagina {p_idx + 1} di {total_pages}  —  {total} eventi totali"
+            plb = draw.textbbox((0, 0), pg_label, font=font_sub)
+            draw.text(((self.PAGE_W - (plb[2] - plb[0])) // 2, 62), pg_label,
+                      fill=(160, 150, 120), font=font_sub)
+
+            # Linea decorativa
+            draw.line([(margin_x, start_y - 18), (self.PAGE_W - margin_x, start_y - 18)],
+                      fill=colore_oro, width=1)
+
+            # Eventi per questa pagina
+            page_start = p_idx * actual_per_page
+            page_end = min(page_start + actual_per_page, total)
+            page_events = indexed_events[page_start:page_end]
+
+            # Dividi eventi in due colonne (sx prende il ceil)
+            mid = math.ceil(len(page_events) / 2)
+            col_left_events = page_events[:mid]
+            col_right_events = page_events[mid:]
+
+            for col_idx, col_events in enumerate([col_left_events, col_right_events]):
+                cx = margin_x + col_idx * (total_col_w + col_gap)
+
+                # Testata colonna
+                draw.rectangle(
+                    [cx, start_y, cx + total_col_w, start_y + header_h],
+                    fill=(30, 50, 90), outline=colore_oro, width=1
+                )
+                hdr_labels = ["#", "DATA", "ORA", "LOCALITA'", "INDIRIZZO"]
+                hdr_offsets = [
+                    4,
+                    sub_num_w + 4,
+                    sub_num_w + sub_date_w + 2,
+                    sub_num_w + sub_date_w + sub_ora_w + 4,
+                    sub_num_w + sub_date_w + sub_ora_w + sub_loc_w + 4
+                ]
+                for hi, hl in enumerate(hdr_labels):
+                    draw.text(
+                        (cx + hdr_offsets[hi], start_y + (header_h - 12) // 2),
+                        hl, fill=colore_oro, font=font_col_header
+                    )
+
+                cy = start_y + header_h
+
+                for row_i, (ev, dt, num) in enumerate(col_events):
+                    # Riga alterna
+                    if row_i % 2 == 1:
+                        draw.rectangle(
+                            [cx, cy, cx + total_col_w, cy + row_h],
+                            fill=colore_riga_alt
+                        )
+                    # Linea separatrice
+                    draw.line(
+                        [(cx, cy + row_h), (cx + total_col_w, cy + row_h)],
+                        fill=(80, 90, 120, 80), width=1
+                    )
+
+                    text_y = cy + (row_h - 12) // 2
+
+                    # -- # (numero figurina) --
+                    ns = str(num)
+                    nb = draw.textbbox((0, 0), ns, font=font_num)
+                    draw.text(
+                        (cx + (sub_num_w - (nb[2] - nb[0])) // 2, text_y),
+                        ns, fill=colore_oro, font=font_num
+                    )
+
+                    # -- DATA --
+                    ds = ev.get('date', '')
+                    self._draw_truncated(draw, ds, font_row,
+                                         cx + sub_num_w + 3, text_y,
+                                         sub_date_w - 6, colore_testo)
+
+                    # -- ORA --
+                    ora = ev.get('time', '')
+                    self._draw_truncated(draw, ora, font_row,
+                                         cx + sub_num_w + sub_date_w + 2, text_y,
+                                         sub_ora_w - 4, colore_testo)
+
+                    # -- LOCALITA' --
+                    loc = ev.get('location', '').upper()
+                    self._draw_truncated(draw, loc, font_row,
+                                         cx + sub_num_w + sub_date_w + sub_ora_w + 3, text_y,
+                                         sub_loc_w - 6, colore_dim)
+
+                    # -- INDIRIZZO --
+                    addr = ev.get('address', '')
+                    self._draw_truncated(draw, addr, font_row,
+                                         cx + sub_num_w + sub_date_w + sub_ora_w + sub_loc_w + 3,
+                                         text_y, sub_addr_w - 6, colore_dim)
+
+                    cy += row_h
+
+                # Bordi verticali colonna
+                draw.line([(cx, start_y), (cx, cy)], fill=colore_oro, width=1)
+                draw.line([(cx + total_col_w, start_y), (cx + total_col_w, cy)],
+                          fill=colore_oro, width=1)
+                # Separatori interni verticali
+                sep_x_list = [
+                    sub_num_w,
+                    sub_num_w + sub_date_w,
+                    sub_num_w + sub_date_w + sub_ora_w,
+                    sub_num_w + sub_date_w + sub_ora_w + sub_loc_w,
+                ]
+                for sx in sep_x_list:
+                    draw.line([(cx + sx, start_y), (cx + sx, cy)],
+                              fill=(80, 90, 120, 60), width=1)
+
+            # Footer pagina
+            ft = self._get_font(9)
+            ft_text = "\u00a9 Comitato Giusto Dire No \u2014 Collezione Completa Eventi \u2014 Coordinamento Liguria e Massa"
+            ftb = draw.textbbox((0, 0), ft_text, font=ft)
+            draw.text(((self.PAGE_W - (ftb[2] - ftb[0])) // 2, self.PAGE_H - 32),
+                      ft_text, fill=(100, 95, 80), font=ft)
+
+            # Salva a 300 DPI
+            page_rgb = self._page_to_rgb(page)
+            page_rgb = page_rgb.resize((2480, 3508), Image.LANCZOS)
+            filename = f"album_summary_{p_idx + 1:02d}.png"
+            path = os.path.join(output_dir, filename)
+            page_rgb.save(path, "PNG", quality=95)
+            summary_paths.append(path)
+
+        return summary_paths
+
+    def _draw_truncated(self, draw, text, font, x, y, max_w, color):
+        """Helper: disegna testo troncato con '..' se eccede max_w pixel."""
+        if not text:
+            return
+        if draw.textbbox((0, 0), text, font=font)[2] <= max_w:
+            draw.text((x, y), text, fill=color, font=font)
+            return
+        while text and draw.textbbox((0, 0), text + "..", font=font)[2] > max_w:
+            text = text[:-1]
+        draw.text((x, y), text + "..", fill=color, font=font)
 
     # ---------------------------------------------------------------
     #  PAGINE FIGURINE
@@ -1246,12 +1502,17 @@ class AlbumGenerator:
         guard_front = self.generate_logo_page(output_dir, "album_page_000_guard_f.png", is_front=True)
         pages_full, pages_empty = self.generate_album_pages(valid_events, output_dir)
         
+        # Genera pagine riepilogative (Summary) — solo se attivato
+        summary_pages = []
+        if self.show_summary:
+            summary_pages = self.generate_summary_pages(valid_events, output_dir)
+        
         guard_back = self.generate_logo_page(output_dir, "album_page_zzz_guard_b.png")
         back_path = self.generate_back_cover(len(valid_events), output_dir)
 
         # Costruisci la sequenza completa delle pagine
-        # Se c'e' inner cover: cover -> inner_cover -> guard -> pagine -> guard -> back
-        # Altrimenti: cover -> guard -> pagine -> guard -> back
+        # Se c'e' inner cover: cover -> inner_cover -> guard -> pagine -> summary -> guard -> back
+        # Altrimenti: cover -> guard -> pagine -> summary -> guard -> back
         pre_pages = [cover_path]
         if inner_cover_path:
             pre_pages.append(inner_cover_path)
@@ -1259,7 +1520,7 @@ class AlbumGenerator:
 
         # Genera PDF combinato Pieno
         pdf_buffer = None
-        all_pages_full = pre_pages + pages_full + [guard_back, back_path]
+        all_pages_full = pre_pages + pages_full + summary_pages + [guard_back, back_path]
         try:
             def image_generator(paths):
                 for p in paths:
@@ -1278,7 +1539,7 @@ class AlbumGenerator:
         # Genera PDF combinato Vuoto (se richiesto)
         pdf_empty_buffer = None
         if self.empty_album_mode and pages_empty:
-            all_pages_empty = pre_pages + pages_empty + [guard_back, back_path]
+            all_pages_empty = pre_pages + pages_empty + summary_pages + [guard_back, back_path]
             try:
                 def image_generator_empty(paths):
                     for p in paths:
@@ -1298,6 +1559,11 @@ class AlbumGenerator:
         if inner_cover_path:
             pages_full.insert(0, inner_cover_path)
         pages_full.insert(0, guard_front)
+        
+        # Aggiungiamo il summary alla lista preview
+        for s_pg in summary_pages:
+            pages_full.append(s_pg)
+            
         pages_full.append(guard_back)
         pages_full.append(back_path)
 
