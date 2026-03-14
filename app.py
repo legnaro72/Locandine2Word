@@ -2105,24 +2105,43 @@ with tab5:
             # IMMAGINI PERSONALIZZATE (Fuori dal form per vitare crash/reset su mobile)
             # =============================================
             st.markdown("### 🖼️ Immagini Copertina e Retro")
-            
+
+            # Selectbox per copertine preset da GitHub
+            cover_preset_options = {
+                "Nessuna (logo o upload manuale)": None,
+                "🇲 Genova 46 — CopertinaAlbumGenova46OK.png": "CopertinaAlbumGenova46OK.png",
+                "🏋 Pilli — PilliCopertinaAlbum.png": "PilliCopertinaAlbum.png",
+            }
+            album_cover_preset = st.selectbox(
+                "📚 Copertina Predefinita",
+                options=list(cover_preset_options.keys()),
+                index=0,
+                help="Scegli una delle copertine predefinite oppure 'Nessuna' per caricare la tua o usare il logo di default.",
+                key="album_cover_preset"
+            )
+            selected_preset_file = cover_preset_options[album_cover_preset]
+
             col_img1, col_img2 = st.columns(2)
-            
+
             with col_img1:
-                st.markdown("**📘 Immagine Prima Pagina (Copertina)**")
-                st.caption("Se non carichi nulla, verrà usato il logo di default.")
-                uploaded_cover_img = st.file_uploader(
-                    "Carica immagine copertina", 
-                    type=['png', 'jpg', 'jpeg'],
-                    key="album_cover_upload",
-                    label_visibility="collapsed"
-                )
-            
+                st.markdown("**Immagine Prima Pagina (Copertina)**")
+                if selected_preset_file:
+                    st.success(f"Copertina preset selezionata: `{selected_preset_file}`")
+                    uploaded_cover_img = None
+                else:
+                    st.caption("Se non carichi nulla, viene usato il logo di default.")
+                    uploaded_cover_img = st.file_uploader(
+                        "Carica immagine copertina",
+                        type=['png', 'jpg', 'jpeg'],
+                        key="album_cover_upload",
+                        label_visibility="collapsed"
+                    )
+
             with col_img2:
-                st.markdown("**📕 Immagine Ultima Pagina (Retro)**")
-                st.caption("Se non carichi nulla, verrà usato il logo piccolo di default.")
+                st.markdown("**Immagine Ultima Pagina (Retro)**")
+                st.caption("Se non carichi nulla, viene usato il logo piccolo di default.")
                 uploaded_back_img = st.file_uploader(
-                    "Carica immagine pagina finale", 
+                    "Carica immagine pagina finale",
                     type=['png', 'jpg', 'jpeg'],
                     key="album_back_upload",
                     label_visibility="collapsed"
@@ -2378,12 +2397,27 @@ with tab5:
                         # Prepara immagini custom come PIL Image
                         custom_cover_pil = None
                         custom_back_pil = None
-                        
-                        if uploaded_cover_img:
+
+                        # Priorita: 1) Copertina preset  2) Upload manuale  3) default (logo)
+                        if selected_preset_file:
+                            # Carica la copertina preset dal filesystem locale
+                            preset_path = selected_preset_file
+                            if not os.path.exists(preset_path):
+                                # Prova nella directory corrente
+                                preset_path = os.path.join(os.getcwd(), selected_preset_file)
+                            if os.path.exists(preset_path):
+                                try:
+                                    custom_cover_pil = Image.open(preset_path).convert("RGBA")
+                                    st.info(f"Copertina preset: `{selected_preset_file}`")
+                                except Exception as e:
+                                    st.warning(f"Impossibile leggere la copertina preset: {e}. Uso default.")
+                            else:
+                                st.warning(f"File copertina preset `{selected_preset_file}` non trovato. Uso default.")
+                        elif uploaded_cover_img:
                             try:
                                 custom_cover_pil = Image.open(uploaded_cover_img).convert("RGBA")
                             except Exception:
-                                st.warning("⚠️ Impossibile leggere l'immagine copertina. Uso default.")
+                                st.warning("Impossibile leggere l'immagine copertina. Uso default.")
                         
                         if uploaded_back_img:
                             try:
