@@ -110,12 +110,48 @@
     {
         "page_number": 19,
         "image": "page_19.jpg",
-        "type": "cartone",
+        "type": "carta",
         "dpi": 300
     },
     {
         "page_number": 20,
         "image": "page_20.jpg",
+        "type": "carta",
+        "dpi": 300
+    },
+    {
+        "page_number": 21,
+        "image": "page_21.jpg",
+        "type": "carta",
+        "dpi": 300
+    },
+    {
+        "page_number": 22,
+        "image": "page_22.jpg",
+        "type": "carta",
+        "dpi": 300
+    },
+    {
+        "page_number": 23,
+        "image": "page_23.jpg",
+        "type": "carta",
+        "dpi": 300
+    },
+    {
+        "page_number": 24,
+        "image": "page_24.jpg",
+        "type": "carta",
+        "dpi": 300
+    },
+    {
+        "page_number": 25,
+        "image": "page_25.jpg",
+        "type": "cartone",
+        "dpi": 300
+    },
+    {
+        "page_number": 26,
+        "image": "page_26.jpg",
         "type": "cartone",
         "dpi": 300
     }
