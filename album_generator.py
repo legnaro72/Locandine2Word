@@ -204,8 +204,8 @@ class AlbumGenerator:
             fallback_path = os.path.join(fallback_dir, "Roboto-Bold.ttf" if bold else "Roboto-Regular.ttf")
             
             if not os.path.exists(fallback_path):
-                # Usiamo jsdelivr come CDN affidabile (Github blocca spesso con 403)
-                url = "https://cdn.jsdelivr.net/gh/google/fonts@main/ofl/roboto/Roboto-Bold.ttf" if bold else "https://cdn.jsdelivr.net/gh/google/fonts@main/ofl/roboto/Roboto-Regular.ttf"
+                # Usiamo githubusercontent crudo (testato e funzionante, no 404/403)
+                url = "https://raw.githubusercontent.com/googlefonts/roboto/main/src/hinted/Roboto-Bold.ttf" if bold else "https://raw.githubusercontent.com/googlefonts/roboto/main/src/hinted/Roboto-Regular.ttf"
                 try:
                     import urllib.request
                     req = urllib.request.Request(url, headers={'User-Agent': 'Mozilla/5.0'})
