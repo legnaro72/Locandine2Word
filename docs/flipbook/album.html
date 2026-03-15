@@ -29,6 +29,8 @@
             height: 1600px;
             transform-origin: 0 0;
             position: absolute;
+            will-change: transform;
+            transform: translateZ(0);
         }
 
         #book {
@@ -253,6 +255,36 @@
         const zoomLayer = document.getElementById("zoom-layer");
         const wrapper = document.getElementById("book-wrapper");
         const zoomIndicator = document.getElementById("zoom-indicator");
+
+        /* ===== MODALITÀ IMMERSIVA MOBILE ===== */
+
+        function enterFullscreen() {
+            const el = document.documentElement;
+            const rfs =
+                el.requestFullscreen ||
+                el.webkitRequestFullscreen ||
+                el.msRequestFullscreen;
+
+            if (rfs) {
+                rfs.call(el).catch(() => {});
+            }
+        }
+
+        /* Nasconde la barra indirizzi mobile */
+        function hideAddressBar() {
+            setTimeout(() => {
+                window.scrollTo(0, 1);
+            }, 50);
+        }
+
+        /* quando ruoti il telefono aggiorna layout */
+        window.addEventListener("orientationchange", () => {
+            setTimeout(() => {
+                hideAddressBar();
+                calculateInitialScale();
+                updateTransform();
+            }, 300);
+        });
 
         /* ==== AUTO FIT INIZIALE ==== */
         function calculateInitialScale() {
@@ -510,22 +542,6 @@
 
         const isMobile = /iPhone|iPad|iPod|Android/i.test(navigator.userAgent);
 
-        function enterFullscreen() {
-            const el = document.documentElement;
-            const rfs =
-                el.requestFullscreen ||
-                el.webkitRequestFullscreen ||
-                el.msRequestFullscreen;
-
-            if (rfs) {
-                rfs.call(el).then(() => {
-                    if (screen.orientation && screen.orientation.lock) {
-                        screen.orientation.lock("landscape").catch(()=>{});
-                    }
-                }).catch(()=>{});
-            }
-        }
-
         function startMusic() {
             if (!musicStarted) {
                 console.log("▶️ Tentativo di avvio audio...");
@@ -556,9 +572,17 @@
 
         // Click sul pulsantone gigante INIZIA!
         document.getElementById("start-app").onclick = () => {
-            
+
+            enterFullscreen();
+            hideAddressBar();
+
             if (isMobile) {
-                enterFullscreen();
+                const el = document.documentElement;
+                const rfs = el.requestFullscreen || el.webkitRequestFullscreen || el.msRequestFullscreen;
+
+                if (rfs) {
+                    rfs.call(el).catch(()=>{});
+                }
             }
 
             // Azioni Sincrone cruciali per mantenere il "user gesture"
@@ -604,6 +628,20 @@
             .then(r => r.json())
             .then(pages => {
 
+                /* ==== PRELOAD IMMAGINI ==== */
+                const preloadImages = pages.map(p => {
+                    return new Promise(resolve => {
+                        const img = new Image();
+                        img.src = `../albums/${format}/${p.image}`;
+                        img.onload = () => resolve();
+                        img.onerror = () => resolve();
+                    });
+                });
+
+                Promise.all(preloadImages).then(() => {
+                    console.log("✅ Tutte le immagini precaricate");
+                });
+
                 const bookDiv = document.getElementById("book");
 
                 pages.forEach(p => {
@@ -612,6 +650,9 @@
 
                     const img = document.createElement("img");
                     img.src = `../albums/${format}/${p.image}`;
+                    img.loading = "eager";
+                    img.decoding = "async";
+                    img.style.willChange = "transform";
 
                     div.appendChild(img);
                     bookDiv.appendChild(div);
@@ -665,7 +706,9 @@
                 updateTransform();
             });
         window.addEventListener("resize", () => {
-            checkLandscapeFullscreen();
+            if (isMobile) {
+                window.scrollTo(0, 1);
+            }
             
             // Non ricalcolare la scala automaticamente se l'utente ha zoomato manualimente
             // ma ricalcola se siamo alla scala iniziale (auto-fit)
@@ -675,27 +718,6 @@
             }
             updateTransform();
         });
-
-        /* ==== AUTO FULLSCREEN QUANDO RUOTA IN LANDSCAPE ==== */
-        function checkLandscapeFullscreen() {
-            const isLandscape = window.matchMedia("(orientation: landscape)").matches;
-            const isFs = document.fullscreenElement || document.webkitFullscreenElement;
-            if (isLandscape && !isFs) {
-                const el = document.documentElement;
-                const rfs = el.requestFullscreen || el.webkitRequestFullscreen || el.msRequestFullscreen;
-                if (rfs) {
-                    try {
-                        const promise = rfs.call(el);
-                        if (promise && promise.catch) {
-                            promise.catch(() => {});
-                        }
-                    } catch (e) {}
-                }
-            }
-        }
-
-        window.addEventListener("orientationchange", () => {
-            setTimeout(checkLandscapeFullscreen, 300);
         });
     </script>
 
