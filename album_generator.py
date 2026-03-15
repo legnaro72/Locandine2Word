@@ -206,9 +206,11 @@ class AlbumGenerator:
                 import urllib.request
                 try:
                     url = "https://github.com/google/fonts/raw/main/ofl/roboto/Roboto-Bold.ttf" if bold else "https://github.com/google/fonts/raw/main/ofl/roboto/Roboto-Regular.ttf"
-                    urllib.request.urlretrieve(url, fallback_path)
-                except Exception:
-                    pass
+                    req = urllib.request.Request(url, headers={'User-Agent': 'Mozilla/5.0'})
+                    with urllib.request.urlopen(req) as response, open(fallback_path, 'wb') as out_file:
+                        out_file.write(response.read())
+                except Exception as e:
+                    print(f"Errore download font di emergenza: {e}")
             
             try:
                 loaded_font = ImageFont.truetype(fallback_path, size)
@@ -908,10 +910,10 @@ class AlbumGenerator:
         self._draw_page_frame(draw)
 
         # === Testo di ringraziamento in alto ===
-        font_testo = self._get_font(32)
+        font_testo = self._get_font(38)
         colore_oro = (218, 165, 32)
         colore_ombra = (20, 20, 20, 180)
-        max_width_px = 900
+        max_width_px = 940
 
         body_lines = [
             "Quest'album raccoglie tutti gli eventi organizzati",
@@ -1023,8 +1025,8 @@ class AlbumGenerator:
                 "Massimiliano Ferrando"
             ]
             
-            font_testo = self._get_font(32)
-            font_firma = self._get_font(42, bold=True)
+            font_testo = self._get_font(38)
+            font_firma = self._get_font(48, bold=True)
             colore_oro = (218, 165, 32)
             colore_ombra = (20, 20, 20, 180)
             
@@ -1047,9 +1049,9 @@ class AlbumGenerator:
                     th = bbox[3] - bbox[1]
                     
                     if is_firma:
-                        x = self.PAGE_W - tw - 150
+                        x = self.PAGE_W - tw - 120
                     else:
-                        x = (self.PAGE_W - tw) // 2
+                        x = 120  # Allineamento a sinistra della seconda pagina
                     
                     # Ombra del testo per spiccare
                     draw.text((x + 2, current_y + 2), riga, fill=colore_ombra, font=font_da_usare)
