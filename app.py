@@ -445,10 +445,9 @@ def refresh_event_metadata():
         
         if needs_refresh:
             for ev in st.session_state.events:
-                if '_dt' not in ev:
-                    ev['_dt'] = WordGenerator.get_sort_date(ev)
-                if '_prov' not in ev:
-                    ev['_prov'] = WordGenerator.get_province(ev)
+                # Sovrascrive sempre per applicare la nuova logica oraria
+                ev['_dt'] = WordGenerator.get_sort_date(ev)
+                ev['_prov'] = WordGenerator.get_province(ev)
             st.session_state['metadata_dirty'] = False
 
 # --- CONFIGURAZIONE GITHUB ---
