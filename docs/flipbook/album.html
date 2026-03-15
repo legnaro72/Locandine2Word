@@ -524,35 +524,43 @@
 
         // Click sul pulsantone gigante INIZIA!
         document.getElementById("start-app").onclick = () => {
-            startMusic();
 
             if (isMobile) {
-                // Funzione helper per entrare in fullscreen (con prefissi webkit per Android)
-                const el = document.documentElement;
-                const fsPromise = el.requestFullscreen ? el.requestFullscreen() :
-                                  el.webkitRequestFullscreen ? el.webkitRequestFullscreen() :
-                                  el.msRequestFullscreen ? el.msRequestFullscreen() :
-                                  Promise.reject("Fullscreen non supportato");
+                // IMPORTANTE: fullscreen DEVE essere la PRIMA azione del click
+                // perché audio.play() consuma il "user gesture" su Android Chrome
+                const el = document.body;
+                const rfs = el.requestFullscreen || el.webkitRequestFullscreen || el.msRequestFullscreen;
 
-                fsPromise.then(() => {
-                    startOverlay.style.display = "none";
-                    document.getElementById("fullscreen-toggle").innerText = "❌";
-                    if (screen.orientation && screen.orientation.lock) {
-                        screen.orientation.lock('landscape').catch(() => {});
-                    }
-                    // Auto-fit dopo che il viewport si è aggiornato
-                    setTimeout(() => {
+                if (rfs) {
+                    rfs.call(el).then(() => {
+                        document.getElementById("fullscreen-toggle").innerText = "❌";
+                        if (screen.orientation && screen.orientation.lock) {
+                            screen.orientation.lock('landscape').catch(() => {});
+                        }
+                        // Avvia musica DOPO il fullscreen
+                        startMusic();
+                        startOverlay.style.display = "none";
+                        // Auto-fit dopo che il viewport si è aggiornato
+                        setTimeout(() => {
+                            calculateInitialScale();
+                            updateTransform();
+                        }, 500);
+                    }).catch(err => {
+                        console.warn("Fullscreen fallback:", err);
+                        startMusic();
+                        startOverlay.style.display = "none";
                         calculateInitialScale();
                         updateTransform();
-                    }, 500);
-                }).catch(err => {
-                    console.warn("Fullscreen fallback:", err);
+                    });
+                } else {
+                    // Browser senza supporto fullscreen
+                    startMusic();
                     startOverlay.style.display = "none";
-                    // Comunque facciamo auto-fit
                     calculateInitialScale();
                     updateTransform();
-                });
+                }
             } else {
+                startMusic();
                 startOverlay.style.display = "none";
                 calculateInitialScale();
                 updateTransform();
