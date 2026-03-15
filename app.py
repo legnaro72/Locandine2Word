@@ -1379,10 +1379,8 @@ with tab2:
                 st.divider()
 
                 # ===== INIZIALIZZAZIONE WIDGET STATE SICURA =====
-                def init_widget(key, default):
-                    if key not in st.session_state:
-                        st.session_state[key] = default
-
+                # SEMPRE sovrascrivere per evitare che, dopo un riordinamento,
+                # un indice punti a un evento diverso da quello visualizzato
                 k_tit = f"e_tit_{real_idx}"
                 k_dat = f"e_dat_{real_idx}"
                 k_tim = f"e_tim_{real_idx}"
@@ -1391,13 +1389,19 @@ with tab2:
                 k_add = f"e_add_{real_idx}"
                 k_des = f"e_des_{real_idx}"
 
-                init_widget(k_tit, event.get('title', ''))
-                init_widget(k_dat, event.get('date', ''))
-                init_widget(k_tim, event.get('time', ''))
-                init_widget(k_loc, event.get('location', ''))
-                init_widget(k_ven, event.get('venue', ''))
-                init_widget(k_add, event.get('address', ''))
-                init_widget(k_des, event.get('description', ''))
+                # Chiave di controllo: se l'evento associato a real_idx è cambiato, forza refresh
+                ev_identity_key = f"_ev_identity_{real_idx}"
+                current_identity = event.get('image_path', '') + '|' + event.get('title', '')
+                if st.session_state.get(ev_identity_key) != current_identity:
+                    # L'evento a questo indice è diverso da prima: aggiorna tutti i campi
+                    st.session_state[k_tit] = event.get('title', '')
+                    st.session_state[k_dat] = event.get('date', '')
+                    st.session_state[k_tim] = event.get('time', '')
+                    st.session_state[k_loc] = event.get('location', '')
+                    st.session_state[k_ven] = event.get('venue', '')
+                    st.session_state[k_add] = event.get('address', '')
+                    st.session_state[k_des] = event.get('description', '')
+                    st.session_state[ev_identity_key] = current_identity
 
 
                 # ===== DETTATURA =====
