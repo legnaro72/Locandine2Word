@@ -266,7 +266,7 @@
                 el.msRequestFullscreen;
 
             if (rfs) {
-                rfs.call(el).catch(() => {});
+                rfs.call(el).catch(() => { });
             }
         }
 
@@ -371,18 +371,18 @@
                             promise.then(() => {
                                 btn.innerText = "❌";
                                 if (screen.orientation && screen.orientation.lock) {
-                                    screen.orientation.lock('landscape').catch(() => {});
+                                    screen.orientation.lock('landscape').catch(() => { });
                                 }
                             }).catch(err => console.warn("Fullscreen error:", err));
                         } else {
                             // Esecuzione sincrona (vecchi browser Webkit)
                             btn.innerText = "❌";
                             if (screen.orientation && screen.orientation.lock) {
-                                screen.orientation.lock('landscape').catch(() => {});
+                                screen.orientation.lock('landscape').catch(() => { });
                             }
                         }
-                    } catch(e) {
-                         console.warn("Fullscreen API non supportata", e);
+                    } catch (e) {
+                        console.warn("Fullscreen API non supportata", e);
                     }
                 }
             } else {
@@ -391,11 +391,11 @@
                     try {
                         const promise = efs.call(document);
                         if (promise && promise.then) {
-                            promise.then(() => btn.innerText = "⛶").catch(() => {});
+                            promise.then(() => btn.innerText = "⛶").catch(() => { });
                         } else {
                             btn.innerText = "⛶";
                         }
-                    } catch(e) {}
+                    } catch (e) { }
                 }
             }
         }
@@ -581,14 +581,14 @@
                 const rfs = el.requestFullscreen || el.webkitRequestFullscreen || el.msRequestFullscreen;
 
                 if (rfs) {
-                    rfs.call(el).catch(()=>{});
+                    rfs.call(el).catch(() => { });
                 }
             }
 
             // Azioni Sincrone cruciali per mantenere il "user gesture"
             startMusic();
             startOverlay.style.display = "none";
-            
+
             // Timeout di sicurezza, ma la maggior parte del re-layout 
             // verrà gestita ora dal listener onFullscreenChange
             setTimeout(() => {
@@ -615,10 +615,7 @@
                 }, 300);
             }
         }
-        document.addEventListener("fullscreenchange", onFullscreenChange);
         document.addEventListener("webkitfullscreenchange", onFullscreenChange);
-        document.getElementById("next").onclick = () => pageFlip.flipNext();
-        document.getElementById("prev").onclick = () => pageFlip.flipPrev();
 
         /* ==== LOAD BOOK ==== */
         const urlParams = new URLSearchParams(window.location.search);
@@ -669,6 +666,9 @@
 
                 pageFlip.loadFromHTML(document.querySelectorAll('.page'));
 
+                document.getElementById("next").onclick = () => pageFlip.flipNext();
+                document.getElementById("prev").onclick = () => pageFlip.flipPrev();
+
                 /* ==== SUONO FLIP, APERTURA E CHIUSURA ==== */
                 const flipAudio = document.getElementById("flipSound");
                 const openAudio = document.getElementById("openSound");
@@ -709,7 +709,7 @@
             if (isMobile) {
                 window.scrollTo(0, 1);
             }
-            
+
             // Non ricalcolare la scala automaticamente se l'utente ha zoomato manualimente
             // ma ricalcola se siamo alla scala iniziale (auto-fit)
             const oldInitialScale = Math.min(wrapper.clientWidth / BASE_WIDTH, wrapper.clientHeight / BASE_HEIGHT);
