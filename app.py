@@ -2342,7 +2342,7 @@ with tab5:
                 sorted_album_events = list(valid_album_events)
                 
                 if album_sort == "Cronologico (Data)":
-                    sorted_album_events.sort(key=lambda e: e.get('_dt', datetime.max))
+                    sorted_album_events.sort(key=lambda e: WordGenerator.get_sort_date(e))
                 elif album_sort == "Alfabetico (Località)":
                     sorted_album_events.sort(key=lambda e: e.get('location', '').strip().upper())
                 
