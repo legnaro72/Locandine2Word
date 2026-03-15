@@ -196,21 +196,32 @@ class AlbumGenerator:
                     break
                 except Exception:
                     continue
-        # Fallback aggressivo: Scarica Roboto da Google Fonts se siamo in ambiente Cloud senza font TTF
+        # Fallback aggressivo: Scarica Roboto se siamo in ambiente Cloud senza font TTF
         if loaded_font is None:
-            fallback_dir = os.path.join(os.getcwd(), "fonts_cache")
+            import tempfile
+            fallback_dir = os.path.join(tempfile.gettempdir(), "fonts_cache")
             os.makedirs(fallback_dir, exist_ok=True)
             fallback_path = os.path.join(fallback_dir, "Roboto-Bold.ttf" if bold else "Roboto-Regular.ttf")
             
             if not os.path.exists(fallback_path):
-                import urllib.request
+                # Usiamo jsdelivr come CDN affidabile (Github blocca spesso con 403)
+                url = "https://cdn.jsdelivr.net/gh/google/fonts@main/ofl/roboto/Roboto-Bold.ttf" if bold else "https://cdn.jsdelivr.net/gh/google/fonts@main/ofl/roboto/Roboto-Regular.ttf"
                 try:
-                    url = "https://github.com/google/fonts/raw/main/ofl/roboto/Roboto-Bold.ttf" if bold else "https://github.com/google/fonts/raw/main/ofl/roboto/Roboto-Regular.ttf"
+                    import urllib.request
                     req = urllib.request.Request(url, headers={'User-Agent': 'Mozilla/5.0'})
-                    with urllib.request.urlopen(req) as response, open(fallback_path, 'wb') as out_file:
+                    with urllib.request.urlopen(req, timeout=10) as response, open(fallback_path, 'wb') as out_file:
                         out_file.write(response.read())
                 except Exception as e:
-                    print(f"Errore download font di emergenza: {e}")
+                    print(f"Errore urllib: {e} - Provo con requests...")
+                    try:
+                        import requests
+                        r = requests.get(url, headers={'User-Agent': 'Mozilla/5.0'}, timeout=10, stream=True)
+                        if r.status_code == 200:
+                            with open(fallback_path, 'wb') as f:
+                                for chunk in r.iter_content(chunk_size=8192):
+                                    f.write(chunk)
+                    except Exception as e2:
+                        print(f"Errore download font definitivo: {e2}")
             
             try:
                 loaded_font = ImageFont.truetype(fallback_path, size)
