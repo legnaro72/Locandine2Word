@@ -436,12 +436,17 @@ def refresh_event_metadata():
     if 'events' in st.session_state:
         # Ricalcola solo se serve (nuovi eventi senza _dt o flag dirty)
         needs_refresh = st.session_state.get('metadata_dirty', False)
+        
         if not needs_refresh:
-            # Controlla se c'è almeno un evento senza metadati
-            for ev in st.session_state.events:
-                if '_dt' not in ev or '_prov' not in ev:
-                    needs_refresh = True
-                    break
+            # Forza ricalcolo se non abbiamo ancora applicato la precisione oraria in questa sessione
+            if not st.session_state.get('time_precision_applied'):
+                needs_refresh = True
+            else:
+                # Controlla se c'è almeno un nuovo evento senza metadati
+                for ev in st.session_state.events:
+                    if '_dt' not in ev or '_prov' not in ev:
+                        needs_refresh = True
+                        break
         
         if needs_refresh:
             for ev in st.session_state.events:
@@ -449,6 +454,7 @@ def refresh_event_metadata():
                 ev['_dt'] = WordGenerator.get_sort_date(ev)
                 ev['_prov'] = WordGenerator.get_province(ev)
             st.session_state['metadata_dirty'] = False
+            st.session_state['time_precision_applied'] = True
 
 # --- CONFIGURAZIONE GITHUB ---
 GITHUB_TOKEN = st.secrets.get("GITHUB_TOKEN", None)

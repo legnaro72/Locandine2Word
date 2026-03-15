@@ -16,6 +16,7 @@ import io
 import math
 import textwrap
 from PIL import Image, ImageDraw, ImageFont, ImageFilter, ImageEnhance
+from word_generator import WordGenerator
 
 
 # Semplice cache globale per velocizzare l'anteprima interattiva (evita Image.open ripetuti)
@@ -1127,13 +1128,7 @@ class AlbumGenerator:
         import dateparser
 
         for i, ev in enumerate(events):
-            dt = ev.get('_dt')
-            if not dt:
-                d_str = ev.get('date', '').strip()
-                try:
-                    dt = dateparser.parse(d_str, languages=['it', 'en']) or datetime.max
-                except:
-                    dt = datetime.max
+            dt = WordGenerator.get_sort_date(ev)
             indexed_events.append((ev, dt, i + 1))
 
         # 2. Ordina per data cronologica
