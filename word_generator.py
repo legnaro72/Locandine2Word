@@ -171,12 +171,26 @@ class WordGenerator:
     
     @staticmethod
     def get_sort_date(event: Dict) -> datetime:
-        """Helper statico per ottenere la data datetime da un evento con cache Streamlit."""
+        """Helper statico per ottenere la data datetime (con orario) da un evento."""
         d_str = event.get('date', '').strip()
         if not d_str:
             return datetime.max
             
-        return WordGenerator._cached_date_parsing(d_str)
+        dt = WordGenerator._cached_date_parsing(d_str)
+        if dt != datetime.max:
+            t_str = event.get('time', '').strip()
+            if t_str:
+                try:
+                    import re
+                    # Cerca pattern orario come "18:00", "18.30", "18 e 30"
+                    match = re.search(r'([0-1]?[0-9]|2[0-3])[:.]([0-5][0-9])', t_str)
+                    if match:
+                        h = int(match.group(1))
+                        m = int(match.group(2))
+                        dt = dt.replace(hour=h, minute=m)
+                except Exception:
+                    pass
+        return dt
 
     @staticmethod
     @st.cache_data(show_spinner=False)
