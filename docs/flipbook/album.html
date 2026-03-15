@@ -540,9 +540,14 @@
 
         // Click sul pulsantone gigante INIZIA!
         document.getElementById("start-app").onclick = () => {
+            
+            // Miglioria SUPER: tenta il fullscreen auto-magico subito se già in orizzontale
+            if (typeof checkLandscapeFullscreen === "function") {
+                checkLandscapeFullscreen();
+            }
 
             if (isMobile) {
-                // Tenta il fullscreen in modo sincrono
+                // Tenta il fullscreen standard come fallback in modo sincrono
                 const el = document.documentElement;
                 const rfs = el.requestFullscreen || el.webkitRequestFullscreen || el.msRequestFullscreen;
                 
@@ -659,6 +664,8 @@
                 updateTransform();
             });
         window.addEventListener("resize", () => {
+            checkLandscapeFullscreen();
+            
             // Non ricalcolare la scala automaticamente se l'utente ha zoomato manualimente
             // ma ricalcola se siamo alla scala iniziale (auto-fit)
             const oldInitialScale = Math.min(wrapper.clientWidth / BASE_WIDTH, wrapper.clientHeight / BASE_HEIGHT);
@@ -666,6 +673,28 @@
                 calculateInitialScale();
             }
             updateTransform();
+        });
+
+        /* ==== AUTO FULLSCREEN QUANDO RUOTA IN LANDSCAPE ==== */
+        function checkLandscapeFullscreen() {
+            const isLandscape = window.matchMedia("(orientation: landscape)").matches;
+            const isFs = document.fullscreenElement || document.webkitFullscreenElement;
+            if (isLandscape && !isFs) {
+                const el = document.documentElement;
+                const rfs = el.requestFullscreen || el.webkitRequestFullscreen || el.msRequestFullscreen;
+                if (rfs) {
+                    try {
+                        const promise = rfs.call(el);
+                        if (promise && promise.catch) {
+                            promise.catch(() => {});
+                        }
+                    } catch (e) {}
+                }
+            }
+        }
+
+        window.addEventListener("orientationchange", () => {
+            setTimeout(checkLandscapeFullscreen, 300);
         });
     </script>
 
