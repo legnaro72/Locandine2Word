@@ -333,21 +333,37 @@
                 const el = document.documentElement;
                 const rfs = el.requestFullscreen || el.webkitRequestFullscreen || el.msRequestFullscreen;
                 if (rfs) {
-                    rfs.call(el).then(() => {
-                        btn.innerText = "❌";
-                        if (screen.orientation && screen.orientation.lock) {
-                            screen.orientation.lock('landscape').catch(() => {});
+                    try {
+                        const promise = rfs.call(el);
+                        if (promise && promise.then) {
+                            promise.then(() => {
+                                btn.innerText = "❌";
+                                if (screen.orientation && screen.orientation.lock) {
+                                    screen.orientation.lock('landscape').catch(() => {});
+                                }
+                            }).catch(err => console.warn("Fullscreen error:", err));
+                        } else {
+                            // Esecuzione sincrona (vecchi browser Webkit)
+                            btn.innerText = "❌";
+                            if (screen.orientation && screen.orientation.lock) {
+                                screen.orientation.lock('landscape').catch(() => {});
+                            }
                         }
-                    }).catch(err => {
-                        console.warn("Fullscreen error:", err);
-                    });
+                    } catch(e) {
+                         console.warn("Fullscreen API non supportata", e);
+                    }
                 }
             } else {
                 const efs = document.exitFullscreen || document.webkitExitFullscreen || document.msExitFullscreen;
                 if (efs) {
-                    efs.call(document).then(() => {
-                        btn.innerText = "⛶";
-                    }).catch(() => {});
+                    try {
+                        const promise = efs.call(document);
+                        if (promise && promise.then) {
+                            promise.then(() => btn.innerText = "⛶").catch(() => {});
+                        } else {
+                            btn.innerText = "⛶";
+                        }
+                    } catch(e) {}
                 }
             }
         }
