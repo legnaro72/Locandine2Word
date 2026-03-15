@@ -196,19 +196,24 @@ class AlbumGenerator:
                     break
                 except Exception:
                     continue
-                    
-        # Fallback aggressivo per Streamlit Cloud (cerca qualsiasi TTF disponibile)
-        if loaded_font is None and os.path.exists("/usr/share/fonts"):
-            import glob
-            for fn in glob.glob("/usr/share/fonts/**/*.ttf", recursive=True):
-                try:
-                    loaded_font = ImageFont.truetype(fn, size)
-                    break
-                except Exception:
-                    continue
-
+        # Fallback aggressivo: Scarica Roboto da Google Fonts se siamo in ambiente Cloud senza font TTF
         if loaded_font is None:
-            loaded_font = ImageFont.load_default()
+            fallback_dir = os.path.join(os.getcwd(), "fonts_cache")
+            os.makedirs(fallback_dir, exist_ok=True)
+            fallback_path = os.path.join(fallback_dir, "Roboto-Bold.ttf" if bold else "Roboto-Regular.ttf")
+            
+            if not os.path.exists(fallback_path):
+                import urllib.request
+                try:
+                    url = "https://github.com/google/fonts/raw/main/ofl/roboto/Roboto-Bold.ttf" if bold else "https://github.com/google/fonts/raw/main/ofl/roboto/Roboto-Regular.ttf"
+                    urllib.request.urlretrieve(url, fallback_path)
+                except Exception:
+                    pass
+            
+            try:
+                loaded_font = ImageFont.truetype(fallback_path, size)
+            except Exception:
+                loaded_font = ImageFont.load_default()
             
         self._font_cache[cache_key] = loaded_font
         return loaded_font
@@ -902,10 +907,10 @@ class AlbumGenerator:
         draw = ImageDraw.Draw(back)
         self._draw_page_frame(draw)
 
-        # === Testo di ringraziamento in alto (font leggibile per stampa) ===
-        font_testo = self._get_font(36)
-        colore_oro = (218, 165, 32) # Dorato scuro / Gold lucido
-        colore_ombra = (20, 20, 20, 200) # Ombra scura per risaltare chiaramente in primo piano
+        # === Testo di ringraziamento in alto ===
+        font_testo = self._get_font(32)
+        colore_oro = (218, 165, 32)
+        colore_ombra = (20, 20, 20, 180)
         max_width_px = 900
 
         body_lines = [
@@ -923,7 +928,7 @@ class AlbumGenerator:
             "che hanno partecipato!",
         ]
 
-        body_y = 120
+        body_y = 150
         for paragrafo in body_lines:
             if not paragrafo:
                 body_y += 35
@@ -1001,7 +1006,7 @@ class AlbumGenerator:
             page.paste(logo, (lx, ly), logo)
             
         if is_front:
-            current_y = 130
+            current_y = 200
             testo_raw = [
                 "Il 22 e 23 marzo non sono soltanto due date sul calendario. Sono un passaggio di coscienza civile.",
                 "",
@@ -1018,16 +1023,16 @@ class AlbumGenerator:
                 "Massimiliano Ferrando"
             ]
             
-            font_testo = self._get_font(35)
-            font_firma = self._get_font(45, bold=True)
+            font_testo = self._get_font(32)
+            font_firma = self._get_font(42, bold=True)
             colore_oro = (218, 165, 32)
-            colore_ombra = (20, 20, 20, 200)
+            colore_ombra = (20, 20, 20, 180)
             
-            max_width_px = 960 # Margini ampi ai lati (1240 - 960)/2 = 140px
+            max_width_px = 950 # Circa 145px di margine ai lati
             
             for i, paragrafo in enumerate(testo_raw):
                 if not paragrafo:
-                    current_y += 25
+                    current_y += 28
                     continue
                 
                 is_firma = (i == len(testo_raw) - 1)
@@ -1049,7 +1054,7 @@ class AlbumGenerator:
                     # Ombra del testo per spiccare
                     draw.text((x + 2, current_y + 2), riga, fill=colore_ombra, font=font_da_usare)
                     draw.text((x, current_y), riga, fill=colore_oro, font=font_da_usare)
-                    current_y += th + 10
+                    current_y += th + 12
         else:
             # Aggiungi un titolo decorativo per non farla sembrare vuota
             draw.text((self.PAGE_W // 2 - 100, self.PAGE_H - 150), 
