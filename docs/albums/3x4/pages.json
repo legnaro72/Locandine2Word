@@ -134,12 +134,24 @@
     {
         "page_number": 23,
         "image": "page_23.jpg",
-        "type": "cartone",
+        "type": "carta",
         "dpi": 300
     },
     {
         "page_number": 24,
         "image": "page_24.jpg",
+        "type": "carta",
+        "dpi": 300
+    },
+    {
+        "page_number": 25,
+        "image": "page_25.jpg",
+        "type": "cartone",
+        "dpi": 300
+    },
+    {
+        "page_number": 26,
+        "image": "page_26.jpg",
         "type": "cartone",
         "dpi": 300
     }
