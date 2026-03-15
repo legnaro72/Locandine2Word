@@ -526,45 +526,29 @@
         document.getElementById("start-app").onclick = () => {
 
             if (isMobile) {
-                // IMPORTANTE: fullscreen DEVE essere la PRIMA azione del click
-                // perché audio.play() consuma il "user gesture" su Android Chrome
-                const el = document.body;
+                // Tenta il fullscreen in modo sincrono
+                const el = document.documentElement;
                 const rfs = el.requestFullscreen || el.webkitRequestFullscreen || el.msRequestFullscreen;
-
+                
                 if (rfs) {
                     rfs.call(el).then(() => {
-                        document.getElementById("fullscreen-toggle").innerText = "❌";
                         if (screen.orientation && screen.orientation.lock) {
                             screen.orientation.lock('landscape').catch(() => {});
                         }
-                        // Avvia musica DOPO il fullscreen
-                        startMusic();
-                        startOverlay.style.display = "none";
-                        // Auto-fit dopo che il viewport si è aggiornato
-                        setTimeout(() => {
-                            calculateInitialScale();
-                            updateTransform();
-                        }, 500);
-                    }).catch(err => {
-                        console.warn("Fullscreen fallback:", err);
-                        startMusic();
-                        startOverlay.style.display = "none";
-                        calculateInitialScale();
-                        updateTransform();
-                    });
-                } else {
-                    // Browser senza supporto fullscreen
-                    startMusic();
-                    startOverlay.style.display = "none";
-                    calculateInitialScale();
-                    updateTransform();
+                    }).catch(err => console.warn("Fullscreen fallback:", err));
                 }
-            } else {
-                startMusic();
-                startOverlay.style.display = "none";
+            }
+
+            // Azioni Sincrone cruciali per mantenere il "user gesture"
+            startMusic();
+            startOverlay.style.display = "none";
+            
+            // Timeout di sicurezza, ma la maggior parte del re-layout 
+            // verrà gestita ora dal listener onFullscreenChange
+            setTimeout(() => {
                 calculateInitialScale();
                 updateTransform();
-            }
+            }, 600);
         };
 
         // Quando il fullscreen cambia (anche con ESC/gesto sistema), aggiorna zoom
