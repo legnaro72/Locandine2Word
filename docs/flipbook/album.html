@@ -328,20 +328,26 @@
 
         function toggleFullScreen() {
             const btn = document.getElementById("fullscreen-toggle");
-            if (!document.fullscreenElement) {
-                document.documentElement.requestFullscreen().then(() => {
-                    btn.innerText = "❌";
-                    if (screen.orientation && screen.orientation.lock) {
-                        screen.orientation.lock('landscape').catch(e => console.log("Orientation lock not supported", e));
-                    }
-                }).catch(err => {
-                    console.error(`Error: ${err.message}`);
-                });
-            } else {
-                if (document.exitFullscreen) {
-                    document.exitFullscreen().then(() => {
-                        btn.innerText = "⛶";
+            const fsEl = document.fullscreenElement || document.webkitFullscreenElement;
+            if (!fsEl) {
+                const el = document.documentElement;
+                const rfs = el.requestFullscreen || el.webkitRequestFullscreen || el.msRequestFullscreen;
+                if (rfs) {
+                    rfs.call(el).then(() => {
+                        btn.innerText = "❌";
+                        if (screen.orientation && screen.orientation.lock) {
+                            screen.orientation.lock('landscape').catch(() => {});
+                        }
+                    }).catch(err => {
+                        console.warn("Fullscreen error:", err);
                     });
+                }
+            } else {
+                const efs = document.exitFullscreen || document.webkitExitFullscreen || document.msExitFullscreen;
+                if (efs) {
+                    efs.call(document).then(() => {
+                        btn.innerText = "⛶";
+                    }).catch(() => {});
                 }
             }
         }
@@ -351,15 +357,8 @@
             toggleFullScreen();
         };
 
-        // Aggiorna pulsante se si esce con ESC o tasti sistema
-        document.addEventListener("fullscreenchange", () => {
-            const btn = document.getElementById("fullscreen-toggle");
-            if (!document.fullscreenElement) {
-                btn.innerText = "⛶";
-            } else {
-                btn.innerText = "❌";
-            }
-        });
+
+
 
         /* ==== DOUBLE CLICK / TAP CON ZOOM CENTRATO ==== */
         let lastTap = 0;
@@ -525,14 +524,61 @@
 
         // Click sul pulsantone gigante INIZIA!
         document.getElementById("start-app").onclick = () => {
-            if (isMobile) {
-                toggleFullScreen();
-            }
             startMusic();
-            startOverlay.style.display = "none";
+
+            if (isMobile) {
+                // Funzione helper per entrare in fullscreen (con prefissi webkit per Android)
+                const el = document.documentElement;
+                const fsPromise = el.requestFullscreen ? el.requestFullscreen() :
+                                  el.webkitRequestFullscreen ? el.webkitRequestFullscreen() :
+                                  el.msRequestFullscreen ? el.msRequestFullscreen() :
+                                  Promise.reject("Fullscreen non supportato");
+
+                fsPromise.then(() => {
+                    startOverlay.style.display = "none";
+                    document.getElementById("fullscreen-toggle").innerText = "❌";
+                    if (screen.orientation && screen.orientation.lock) {
+                        screen.orientation.lock('landscape').catch(() => {});
+                    }
+                    // Auto-fit dopo che il viewport si è aggiornato
+                    setTimeout(() => {
+                        calculateInitialScale();
+                        updateTransform();
+                    }, 500);
+                }).catch(err => {
+                    console.warn("Fullscreen fallback:", err);
+                    startOverlay.style.display = "none";
+                    // Comunque facciamo auto-fit
+                    calculateInitialScale();
+                    updateTransform();
+                });
+            } else {
+                startOverlay.style.display = "none";
+                calculateInitialScale();
+                updateTransform();
+            }
         };
 
-        /* ==== FRECCE ==== */
+        // Quando il fullscreen cambia (anche con ESC/gesto sistema), aggiorna zoom
+        function onFullscreenChange() {
+            const btn = document.getElementById("fullscreen-toggle");
+            const isFs = document.fullscreenElement || document.webkitFullscreenElement;
+            if (isFs) {
+                btn.innerText = "❌";
+                setTimeout(() => {
+                    calculateInitialScale();
+                    updateTransform();
+                }, 300);
+            } else {
+                btn.innerText = "⛶";
+                setTimeout(() => {
+                    calculateInitialScale();
+                    updateTransform();
+                }, 300);
+            }
+        }
+        document.addEventListener("fullscreenchange", onFullscreenChange);
+        document.addEventListener("webkitfullscreenchange", onFullscreenChange);
         document.getElementById("next").onclick = () => pageFlip.flipNext();
         document.getElementById("prev").onclick = () => pageFlip.flipPrev();
 
