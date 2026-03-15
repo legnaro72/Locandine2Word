@@ -543,9 +543,9 @@ if 'events' not in st.session_state:
                             ev['date'] = normalize_date_to_italian(ev['date'])
                             
                     # Pre-calcolo dati pesanti (Booster performance)
+                    # Calcola SEMPRE con la logica data+ora unificata
                     for ev in content:
-                        if '_dt' not in ev:
-                            ev['_dt'] = WordGenerator.get_sort_date(ev)
+                        ev['_dt'] = WordGenerator.get_sort_date(ev)
                         if '_prov' not in ev:
                             ev['_prov'] = WordGenerator.get_province(ev)
                             
@@ -1706,9 +1706,8 @@ def compute_statistics(events_list_stats):
     events_with_dates = []
 
     for ev in events_list_stats:
-        # Usa dati pre-calcolati (o calcola se mancano)
-        ev_date = ev.get('_dt')
-        if not ev_date: ev_date = WordGenerator.get_sort_date(ev)
+        # Usa sempre la logica unificata data+ora
+        ev_date = WordGenerator.get_sort_date(ev)
         
         events_with_dates.append((ev, ev_date))
         
