@@ -510,6 +510,22 @@
 
         const isMobile = /iPhone|iPad|iPod|Android/i.test(navigator.userAgent);
 
+        function enterFullscreen() {
+            const el = document.documentElement;
+            const rfs =
+                el.requestFullscreen ||
+                el.webkitRequestFullscreen ||
+                el.msRequestFullscreen;
+
+            if (rfs) {
+                rfs.call(el).then(() => {
+                    if (screen.orientation && screen.orientation.lock) {
+                        screen.orientation.lock("landscape").catch(()=>{});
+                    }
+                }).catch(()=>{});
+            }
+        }
+
         function startMusic() {
             if (!musicStarted) {
                 console.log("▶️ Tentativo di avvio audio...");
@@ -541,23 +557,8 @@
         // Click sul pulsantone gigante INIZIA!
         document.getElementById("start-app").onclick = () => {
             
-            // Miglioria SUPER: tenta il fullscreen auto-magico subito se già in orizzontale
-            if (typeof checkLandscapeFullscreen === "function") {
-                checkLandscapeFullscreen();
-            }
-
             if (isMobile) {
-                // Tenta il fullscreen standard come fallback in modo sincrono
-                const el = document.documentElement;
-                const rfs = el.requestFullscreen || el.webkitRequestFullscreen || el.msRequestFullscreen;
-                
-                if (rfs) {
-                    rfs.call(el).then(() => {
-                        if (screen.orientation && screen.orientation.lock) {
-                            screen.orientation.lock('landscape').catch(() => {});
-                        }
-                    }).catch(err => console.warn("Fullscreen fallback:", err));
-                }
+                enterFullscreen();
             }
 
             // Azioni Sincrone cruciali per mantenere il "user gesture"
