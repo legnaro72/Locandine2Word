@@ -682,6 +682,13 @@
                 if (openAudio) openAudio.load();
                 if (closeAudio) closeAudio.load();
 
+                // Offset ideali per compensare i silenzi inziali dei file mp3 tagliare una frazione prima dell'inizio effettivo
+                const AUDIO_START = {
+                    flip: 0.03,
+                    open: 0.40,
+                    close: 0.85
+                };
+
                 let currentPage = 0;
 
                 pageFlip.on('flip', (e) => {
@@ -709,7 +716,10 @@
                             try {
                                 // Forza il reset audio prima del play (indispensabile per riproduzioni ravvicinate)
                                 audioToPlay.pause();
-                                audioToPlay.currentTime = (audioToPlay === closeAudio) ? 0.15 : 0;
+                                if (audioToPlay === flipAudio) audioToPlay.currentTime = AUDIO_START.flip;
+                                else if (audioToPlay === openAudio) audioToPlay.currentTime = AUDIO_START.open;
+                                else if (audioToPlay === closeAudio) audioToPlay.currentTime = AUDIO_START.close;
+                                
                                 audioToPlay.play().catch(err => console.log("Audio play blocked by browser:", err));
                             } catch (err) {}
                         }
