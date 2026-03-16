@@ -664,12 +664,38 @@
 
                 pageFlip.loadFromHTML(document.querySelectorAll('.page'));
 
+                let flipStarted = false;
+                let flipToggle = false;
+
+                // ANTICIPO SONORO GESTURE
+                // Si aziona appena l'utente "tocca" la pagina, prima ancora che l'engine abbia il tempo
+                // di calcolare il movimento, azzerando psicologicamente ogni possibile lag.
+                wrapper.addEventListener("pointerdown", () => {
+                    if (!flipStarted) {
+                        const sound = flipToggle ? flipAudio : flipAudio2;
+                        
+                        sound.pause();
+                        sound.currentTime = AUDIO_START.flip;
+                        sound.play().catch(()=>{});
+
+                        flipToggle = !flipToggle;
+                        flipStarted = true;
+
+                        setTimeout(()=>{
+                            flipStarted = false;
+                        }, 300);
+                    }
+                });
+
                 document.getElementById("next").onclick = () => pageFlip.flipNext();
                 document.getElementById("prev").onclick = () => pageFlip.flipPrev();
 
                 /* ==== SUONO FLIP, APERTURA E CHIUSURA ==== */
                 const flipAudio = new Audio("../flip.mp3");
                 flipAudio.preload = "auto";
+                
+                const flipAudio2 = new Audio("../flip.mp3");
+                flipAudio2.preload = "auto";
 
                 const openAudio = new Audio("../open.mp3");
                 openAudio.preload = "auto";
@@ -679,14 +705,15 @@
 
                 // Forza il browser a bufferizzare completamente gli mp3
                 if (flipAudio) flipAudio.load();
+                if (flipAudio2) flipAudio2.load();
                 if (openAudio) openAudio.load();
                 if (closeAudio) closeAudio.load();
 
                 // Offset ideali per compensare i silenzi inziali dei file mp3 tagliare una frazione prima dell'inizio effettivo
                 const AUDIO_START = {
-                    flip: 0.40,
-                    open: 0.40,
-                    close: 0.95
+                    flip: 0.03,
+                    open: 0.15,
+                    close: 0.85
                 };
 
                 let currentPage = 0;
@@ -695,7 +722,7 @@
                     requestAnimationFrame(() => {
                         const targetPage = e.data;
                         const totalPages = pages.length;
-                        let audioToPlay = flipAudio;
+                        let audioToPlay = null;
 
                         // Se eravamo alla pagina 0 (copertina chiusa frontale) e andiamo avanti -> Apriamo l'album
                         if (currentPage === 0 && targetPage > 0 && openAudio) {
@@ -708,6 +735,14 @@
                         // Se ritorniamo alla pagina 0 (chiusura frontale) o andiamo all'ultima (chiusura posteriore) -> Chiudiamo
                         else if ((targetPage === 0 || targetPage >= totalPages - 1) && closeAudio) {
                             audioToPlay = closeAudio;
+                        } else {
+                            // SFOGLIO NORMALE
+                            // L'audio è gestito nativamente dal wrapper per gestures (mouse scorrevole),
+                            // si usa questo SOLO se `flipStarted` è falso (cioè l'input è derivato dai pulsanti next/prev)
+                            if (!flipStarted) {
+                                audioToPlay = flipToggle ? flipAudio : flipAudio2;
+                                flipToggle = !flipToggle;
+                            }
                         }
 
                         currentPage = targetPage;
@@ -716,7 +751,7 @@
                             try {
                                 // Forza il reset audio prima del play (indispensabile per riproduzioni ravvicinate)
                                 audioToPlay.pause();
-                                if (audioToPlay === flipAudio) audioToPlay.currentTime = AUDIO_START.flip;
+                                if (audioToPlay === flipAudio || audioToPlay === flipAudio2) audioToPlay.currentTime = AUDIO_START.flip;
                                 else if (audioToPlay === openAudio) audioToPlay.currentTime = AUDIO_START.open;
                                 else if (audioToPlay === closeAudio) audioToPlay.currentTime = AUDIO_START.close;
 
