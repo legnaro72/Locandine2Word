@@ -659,10 +659,37 @@
                     size: "fixed",
                     showCover: true,
                     mobileScrollSupport: false,
-                    useMouseEvents: false
+                    useMouseEvents: false,
+                    flippingTime: 650
                 });
 
                 pageFlip.loadFromHTML(document.querySelectorAll('.page'));
+
+                /* ==== SUONI ==== */
+                const flipAudio = new Audio("../flip.mp3");
+                flipAudio.preload = "auto";
+                
+                const flipAudio2 = new Audio("../flip.mp3");
+                flipAudio2.preload = "auto";
+
+                const openAudio = new Audio("../open.mp3");
+                openAudio.preload = "auto";
+
+                const closeAudio = new Audio("../close.mp3");
+                closeAudio.preload = "auto";
+
+                // Forza il browser a bufferizzare completamente gli mp3
+                if (flipAudio) flipAudio.load();
+                if (flipAudio2) flipAudio2.load();
+                if (openAudio) openAudio.load();
+                if (closeAudio) closeAudio.load();
+
+                // Offset ideali per compensare i silenzi inziali dei file mp3 tagliare una frazione prima dell'inizio effettivo
+                const AUDIO_START = {
+                    flip: 0.03,
+                    open: 0.15,
+                    close: 0.85
+                };
 
                 let flipStarted = false;
                 let flipToggle = false;
@@ -690,32 +717,6 @@
                 document.getElementById("next").onclick = () => pageFlip.flipNext();
                 document.getElementById("prev").onclick = () => pageFlip.flipPrev();
 
-                /* ==== SUONO FLIP, APERTURA E CHIUSURA ==== */
-                const flipAudio = new Audio("../flip.mp3");
-                flipAudio.preload = "auto";
-                
-                const flipAudio2 = new Audio("../flip.mp3");
-                flipAudio2.preload = "auto";
-
-                const openAudio = new Audio("../open.mp3");
-                openAudio.preload = "auto";
-
-                const closeAudio = new Audio("../close.mp3");
-                closeAudio.preload = "auto";
-
-                // Forza il browser a bufferizzare completamente gli mp3
-                if (flipAudio) flipAudio.load();
-                if (flipAudio2) flipAudio2.load();
-                if (openAudio) openAudio.load();
-                if (closeAudio) closeAudio.load();
-
-                // Offset ideali per compensare i silenzi inziali dei file mp3 tagliare una frazione prima dell'inizio effettivo
-                const AUDIO_START = {
-                    flip: 0.03,
-                    open: 0.15,
-                    close: 0.85
-                };
-
                 let currentPage = 0;
 
                 pageFlip.on('flip', (e) => {
@@ -737,7 +738,7 @@
                             audioToPlay = closeAudio;
                         } else {
                             // SFOGLIO NORMALE
-                            // L'audio è gestito nativamente dal wrapper per gestures (mouse scorrevole),
+                            // L'audio è gestito nativamente dal wrapper all'inizio del gesture (pointerdown),
                             // si usa questo SOLO se `flipStarted` è falso (cioè l'input è derivato dai pulsanti next/prev)
                             if (!flipStarted) {
                                 audioToPlay = flipToggle ? flipAudio : flipAudio2;
