@@ -670,10 +670,10 @@
                 /* ==== SUONO FLIP, APERTURA E CHIUSURA ==== */
                 const flipAudio = new Audio("../flip.mp3");
                 flipAudio.preload = "auto";
-                
+
                 const openAudio = new Audio("../open.mp3");
                 openAudio.preload = "auto";
-                
+
                 const closeAudio = new Audio("../close.mp3");
                 closeAudio.preload = "auto";
 
@@ -684,9 +684,9 @@
 
                 // Offset ideali per compensare i silenzi inziali dei file mp3 tagliare una frazione prima dell'inizio effettivo
                 const AUDIO_START = {
-                    flip: 0.03,
+                    flip: 0.40,
                     open: 0.40,
-                    close: 0.85
+                    close: 0.95
                 };
 
                 let currentPage = 0;
@@ -719,9 +719,9 @@
                                 if (audioToPlay === flipAudio) audioToPlay.currentTime = AUDIO_START.flip;
                                 else if (audioToPlay === openAudio) audioToPlay.currentTime = AUDIO_START.open;
                                 else if (audioToPlay === closeAudio) audioToPlay.currentTime = AUDIO_START.close;
-                                
+
                                 audioToPlay.play().catch(err => console.log("Audio play blocked by browser:", err));
-                            } catch (err) {}
+                            } catch (err) { }
                         }
                     });
                 });
