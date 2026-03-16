@@ -674,6 +674,11 @@
                 const openAudio = document.getElementById("openSound");
                 const closeAudio = document.getElementById("closeSound");
 
+                // Forza il browser a bufferizzare completamente gli mp3
+                if (flipAudio) flipAudio.load();
+                if (openAudio) openAudio.load();
+                if (closeAudio) closeAudio.load();
+
                 let currentPage = 0;
 
                 pageFlip.on('flip', (e) => {
@@ -698,13 +703,9 @@
 
                     if (audioToPlay) {
                         try {
-                            if (audioToPlay === closeAudio) {
-                                // Salta i primi 0.15s per evitare il silenzio iniziale del file mp3 
-                                // (regola questo valore se taglia troppo o troppo poco l'audio!)
-                                audioToPlay.currentTime = 0.15; 
-                            } else {
-                                audioToPlay.currentTime = 0;
-                            }
+                            // Forza il reset audio prima del play (indispensabile per riproduzioni ravvicinate)
+                            audioToPlay.pause();
+                            audioToPlay.currentTime = (audioToPlay === closeAudio) ? 0.15 : 0;
                             audioToPlay.play().catch(err => console.log("Audio play blocked by browser:", err));
                         } catch (err) {}
                     }
