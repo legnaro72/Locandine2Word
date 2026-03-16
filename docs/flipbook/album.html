@@ -231,9 +231,9 @@
         </div>
     </div>
 
-    <audio id="flipSound" src="../flip.mp3"></audio>
-    <audio id="openSound" src="../open.mp3"></audio>
-    <audio id="closeSound" src="../close.mp3"></audio>
+    <audio id="flipSound" src="../flip.mp3" preload="auto"></audio>
+    <audio id="openSound" src="../open.mp3" preload="auto"></audio>
+    <audio id="closeSound" src="../close.mp3" preload="auto"></audio>
     <audio id="bgMusic" src="../GiustoDireNo.mp3" loop
         onerror="console.error('⚠️ ALARM FILE MANCANTE! Il file non è stato trovato dal server a questo indirizzo: ' + this.src); alert('Errore: impossibile caricare GiustoDireNo.mp3 on line. Controlla maiuscole/minuscole su GitHub!');"></audio>
 
@@ -697,8 +697,16 @@
                     currentPage = targetPage;
 
                     if (audioToPlay) {
-                        audioToPlay.currentTime = 0;
-                        audioToPlay.play().catch(err => console.log("Audio play blocked by browser:", err));
+                        try {
+                            if (audioToPlay === closeAudio) {
+                                // Salta i primi 0.15s per evitare il silenzio iniziale del file mp3 
+                                // (regola questo valore se taglia troppo o troppo poco l'audio!)
+                                audioToPlay.currentTime = 0.15; 
+                            } else {
+                                audioToPlay.currentTime = 0;
+                            }
+                            audioToPlay.play().catch(err => console.log("Audio play blocked by browser:", err));
+                        } catch (err) {}
                     }
                 });
 
