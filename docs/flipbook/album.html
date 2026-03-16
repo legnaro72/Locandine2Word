@@ -665,24 +665,41 @@
 
                 pageFlip.loadFromHTML(document.querySelectorAll('.page'));
 
-                /* ==== SUONI ==== */
-                const flipAudio = new Audio("../flip.mp3");
-                flipAudio.preload = "auto";
-                
-                const flipAudio2 = new Audio("../flip.mp3");
-                flipAudio2.preload = "auto";
+                /* ==== SUONI (WEB AUDIO API) ==== */
+                const audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+                let flipBuffer, openBuffer, closeBuffer;
 
-                const openAudio = new Audio("../open.mp3");
-                openAudio.preload = "auto";
+                async function loadSound(url) {
+                    try {
+                        const res = await fetch(url);
+                        const arrayBuffer = await res.arrayBuffer();
+                        return await audioCtx.decodeAudioData(arrayBuffer);
+                    } catch (e) {
+                        console.error("Audio load blocked/failed:", e);
+                        return null;
+                    }
+                }
 
-                const closeAudio = new Audio("../close.mp3");
-                closeAudio.preload = "auto";
+                Promise.all([
+                    loadSound("../flip.mp3"),
+                    loadSound("../open.mp3"),
+                    loadSound("../close.mp3")
+                ]).then(buffers => {
+                    flipBuffer = buffers[0];
+                    openBuffer = buffers[1];
+                    closeBuffer = buffers[2];
+                });
 
-                // Forza il browser a bufferizzare completamente gli mp3
-                if (flipAudio) flipAudio.load();
-                if (flipAudio2) flipAudio2.load();
-                if (openAudio) openAudio.load();
-                if (closeAudio) closeAudio.load();
+                function playSound(buffer, offset = 0) {
+                    if (!buffer) return;
+                    if (audioCtx.state === 'suspended') {
+                        audioCtx.resume();
+                    }
+                    const source = audioCtx.createBufferSource();
+                    source.buffer = buffer;
+                    source.connect(audioCtx.destination);
+                    source.start(0, offset);
+                }
 
                 // Offset ideali per compensare i silenzi inziali dei file mp3 tagliare una frazione prima dell'inizio effettivo
                 const AUDIO_START = {
@@ -692,20 +709,14 @@
                 };
 
                 let flipStarted = false;
-                let flipToggle = false;
 
                 // ANTICIPO SONORO GESTURE
                 // Si aziona appena l'utente "tocca" la pagina, prima ancora che l'engine abbia il tempo
                 // di calcolare il movimento, azzerando psicologicamente ogni possibile lag.
                 wrapper.addEventListener("pointerdown", () => {
                     if (!flipStarted) {
-                        const sound = flipToggle ? flipAudio : flipAudio2;
-                        
-                        sound.pause();
-                        sound.currentTime = AUDIO_START.flip;
-                        sound.play().catch(()=>{});
+                        playSound(flipBuffer, AUDIO_START.flip);
 
-                        flipToggle = !flipToggle;
                         flipStarted = true;
 
                         setTimeout(()=>{
@@ -723,41 +734,37 @@
                     requestAnimationFrame(() => {
                         const targetPage = e.data;
                         const totalPages = pages.length;
-                        let audioToPlay = null;
+                        let bufferToPlay = null;
+                        let offsetToPlay = 0;
 
                         // Se eravamo alla pagina 0 (copertina chiusa frontale) e andiamo avanti -> Apriamo l'album
-                        if (currentPage === 0 && targetPage > 0 && openAudio) {
-                            audioToPlay = openAudio;
+                        if (currentPage === 0 && targetPage > 0 && openBuffer) {
+                            bufferToPlay = openBuffer;
+                            offsetToPlay = AUDIO_START.open;
                         }
                         // Se eravamo all'ultima pagina (copertina chiusa posteriore) e torniamo indietro -> Apriamo l'album dal retro
-                        else if (currentPage >= totalPages - 1 && targetPage < currentPage && openAudio) {
-                            audioToPlay = openAudio;
+                        else if (currentPage >= totalPages - 1 && targetPage < currentPage && openBuffer) {
+                            bufferToPlay = openBuffer;
+                            offsetToPlay = AUDIO_START.open;
                         }
                         // Se ritorniamo alla pagina 0 (chiusura frontale) o andiamo all'ultima (chiusura posteriore) -> Chiudiamo
-                        else if ((targetPage === 0 || targetPage >= totalPages - 1) && closeAudio) {
-                            audioToPlay = closeAudio;
+                        else if ((targetPage === 0 || targetPage >= totalPages - 1) && closeBuffer) {
+                            bufferToPlay = closeBuffer;
+                            offsetToPlay = AUDIO_START.close;
                         } else {
                             // SFOGLIO NORMALE
                             // L'audio è gestito nativamente dal wrapper all'inizio del gesture (pointerdown),
                             // si usa questo SOLO se `flipStarted` è falso (cioè l'input è derivato dai pulsanti next/prev)
                             if (!flipStarted) {
-                                audioToPlay = flipToggle ? flipAudio : flipAudio2;
-                                flipToggle = !flipToggle;
+                                bufferToPlay = flipBuffer;
+                                offsetToPlay = AUDIO_START.flip;
                             }
                         }
 
                         currentPage = targetPage;
 
-                        if (audioToPlay) {
-                            try {
-                                // Forza il reset audio prima del play (indispensabile per riproduzioni ravvicinate)
-                                audioToPlay.pause();
-                                if (audioToPlay === flipAudio || audioToPlay === flipAudio2) audioToPlay.currentTime = AUDIO_START.flip;
-                                else if (audioToPlay === openAudio) audioToPlay.currentTime = AUDIO_START.open;
-                                else if (audioToPlay === closeAudio) audioToPlay.currentTime = AUDIO_START.close;
-
-                                audioToPlay.play().catch(err => console.log("Audio play blocked by browser:", err));
-                            } catch (err) { }
+                        if (bufferToPlay) {
+                            playSound(bufferToPlay, offsetToPlay);
                         }
                     });
                 });
