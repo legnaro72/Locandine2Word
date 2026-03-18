@@ -36,7 +36,8 @@
         }
 
         #book {
-            /* Dimensioni impostate via JS */
+            /* Dimensioni effettive impostate via JS (BASE_WIDTH x BASE_HEIGHT) */
+            position: relative;
         }
 
         .page {
@@ -292,10 +293,7 @@
         document.getElementById("book").style.width = BASE_WIDTH + "px";
         document.getElementById("book").style.height = BASE_HEIGHT + "px";
 
-        // === DEBUG OVERLAY (rimuovere dopo fix) ===
-        const dbg = document.createElement('div');
-        dbg.style.cssText = 'position:fixed;top:0;left:0;z-index:99999;background:rgba(255,0,0,0.9);color:#fff;font:bold 11px monospace;padding:4px 8px;pointer-events:none;white-space:nowrap;';
-        document.body.appendChild(dbg);
+
 
         /* ===== MODALITÀ IMMERSIVA MOBILE ===== */
 
@@ -397,8 +395,6 @@
             zoomLayer.style.transform =
                 `translate3d(${posX}px, ${posY}px, 0) scale(${scale})`;
             zoomIndicator.innerText = Math.round(scale * 100) + "%";
-            // Debug: mostra valori reali sullo schermo
-            if (dbg) dbg.textContent = `CW:${wrapper.clientWidth} CH:${wrapper.clientHeight} S:${scale.toFixed(3)} X:${posX.toFixed(0)} Y:${posY.toFixed(0)}`;
         }
 
         /* ==== ZOOM CONTROLS E ROTTELLA (WHEEL) ==== */
