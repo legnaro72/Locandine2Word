@@ -158,8 +158,8 @@
             position: fixed;
             top: 0;
             left: 0;
-            width: 100vw;
-            height: 100vh;
+            width: 100%;
+            height: 100%;
             background: #1a1a1a;
             color: white;
             display: none;
@@ -886,6 +886,12 @@
                 updateTransform();
             });
         window.addEventListener("resize", () => {
+            if (!appStarted) return;
+            settleLayout();
+        });
+
+        // iOS Safari edge case: non triggera sempre 'resize' ma triggera visualViewport
+        window.visualViewport?.addEventListener('resize', () => {
             if (!appStarted) return;
             settleLayout();
         });
