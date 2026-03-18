@@ -271,6 +271,10 @@
         const wrapper = document.getElementById("book-wrapper");
         const zoomIndicator = document.getElementById("zoom-indicator");
 
+        // Adatta zoom-layer alla risoluzione effettiva
+        zoomLayer.style.width = BASE_WIDTH + "px";
+        zoomLayer.style.height = BASE_HEIGHT + "px";
+
         /* ===== MODALITÀ IMMERSIVA MOBILE ===== */
 
         function enterFullscreen() {
@@ -471,18 +475,17 @@
         });
 
         wrapper.addEventListener("pointermove", e => {
-            if (isDragging) {
-                const newX = e.clientX - startX;
-                const newY = e.clientY - startY;
+            if (!isDragging) return;
+            const newX = e.clientX - startX;
+            const newY = e.clientY - startY;
 
-                if (Math.abs(newX - posX) > 5 || Math.abs(newY - posY) > 5) {
-                    dragOccurred = true;
-                }
-
-                posX = newX;
-                posY = newY;
-                updateTransform();
+            if (Math.abs(newX - posX) > 5 || Math.abs(newY - posY) > 5) {
+                dragOccurred = true;
             }
+
+            posX = newX;
+            posY = newY;
+            updateTransform();
         });
 
         wrapper.addEventListener("pointerup", () => {
@@ -591,17 +594,9 @@
             enterFullscreen();
             hideAddressBar();
 
-            if (isMobile) {
-                const el = document.documentElement;
-                const rfs = el.requestFullscreen || el.webkitRequestFullscreen || el.msRequestFullscreen;
-
-                if (rfs) {
-                    rfs.call(el).catch(() => { });
-                }
-            }
-
             // Azioni Sincrone cruciali per mantenere il "user gesture"
             startMusic();
+            ensureAudioContext(); // Inizializza AudioContext al gesto utente
             startOverlay.style.display = "none";
 
             // Timeout di sicurezza, ma la maggior parte del re-layout 
@@ -674,21 +669,50 @@
                 });
 
                 pageFlip.loadFromHTML(document.querySelectorAll('.page'));
+                loadNearbyPages(0);
 
-                /* ==== LAZY LOAD PAGINE VICINE ==== */
+                /* ==== LAZY LOAD PAGINE VICINE + SCARICA LONTANE ==== */
                 function loadNearbyPages(current) {
                     const imgs = document.querySelectorAll(".page img");
-                    for (let i = current - 2; i <= current + 2; i++) {
-                        if (i >= 0 && i < imgs.length && imgs[i].dataset.src) {
-                            imgs[i].src = imgs[i].dataset.src;
-                            delete imgs[i].dataset.src;
+
+                    imgs.forEach((img, i) => {
+                        // se è vicino → carica
+                        if (i >= current - 2 && i <= current + 2) {
+                            if (img.dataset.src) {
+                                img.src = img.dataset.src;
+                                delete img.dataset.src;
+                            }
                         }
-                    }
+                        // se è lontano → scarica (libera RAM)
+                        else {
+                            if (img.src && !img.dataset.src) {
+                                img.dataset.src = img.src;
+                                img.removeAttribute("src");
+                            }
+                        }
+                    });
                 }
 
                 /* ==== SUONI (WEB AUDIO API) ==== */
-                const audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+                let audioCtx;
                 let flipBuffer, openBuffer, closeBuffer;
+
+                // AudioContext creato al primo gesto utente (INIZIA) per evitare sospensione mobile
+                function ensureAudioContext() {
+                    if (!audioCtx) {
+                        audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+                        // Carica i suoni appena il contesto è pronto
+                        Promise.all([
+                            loadSound("../flip.mp3"),
+                            loadSound("../open.mp3"),
+                            loadSound("../close.mp3")
+                        ]).then(buffers => {
+                            flipBuffer = buffers[0];
+                            openBuffer = buffers[1];
+                            closeBuffer = buffers[2];
+                        });
+                    }
+                }
 
                 async function loadSound(url) {
                     try {
@@ -701,15 +725,6 @@
                     }
                 }
 
-                Promise.all([
-                    loadSound("../flip.mp3"),
-                    loadSound("../open.mp3"),
-                    loadSound("../close.mp3")
-                ]).then(buffers => {
-                    flipBuffer = buffers[0];
-                    openBuffer = buffers[1];
-                    closeBuffer = buffers[2];
-                });
 
                 let lastSoundTime = 0;
 
