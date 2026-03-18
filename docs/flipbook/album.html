@@ -17,7 +17,7 @@
 
         #book-wrapper {
             width: 100vw;
-            height: 100vh;
+            height: calc(var(--vh, 1vh) * 100);
             background: #1a1a1a;
             position: relative;
             overflow: hidden;
@@ -259,6 +259,13 @@
         const BASE_WIDTH = isMobileDevice ? 1400 : 2480;
         const BASE_HEIGHT = isMobileDevice ? 990 : 1754;
 
+        function setRealViewportHeight() {
+            const vh = window.innerHeight * 0.01;
+            document.documentElement.style.setProperty('--vh', `${vh}px`);
+        }
+        setRealViewportHeight();
+        window.addEventListener('resize', setRealViewportHeight);
+
         let scale = 1;
         let maxScale = 8;
 
@@ -291,15 +298,16 @@
 
         /* Nasconde la barra indirizzi mobile */
         function hideAddressBar() {
-            setTimeout(() => {
-                window.scrollTo(0, 1);
-            }, 50);
+            // setTimeout(() => {
+            //     window.scrollTo(0, 1);
+            // }, 50);
         }
 
         /* quando ruoti il telefono aggiorna layout */
         window.addEventListener("orientationchange", () => {
             setTimeout(() => {
-                hideAddressBar();
+                // hideAddressBar();
+                setRealViewportHeight();
                 calculateInitialScale();
                 updateTransform();
             }, 300);
@@ -642,7 +650,7 @@
                 await enterFullscreen();
             } catch (e) { }
 
-            hideAddressBar();
+            // hideAddressBar();
 
             // Azioni Sincrone cruciali per mantenere il "user gesture"
             startMusic();
@@ -650,6 +658,7 @@
             startOverlay.style.display = "none";
 
             setTimeout(() => {
+                setRealViewportHeight();   // 🔥 QUESTO È CRUCIALE
                 calculateInitialScale();
                 updateTransform();
             }, 300);
@@ -843,7 +852,7 @@
             });
         window.addEventListener("resize", () => {
             if (isMobile) {
-                window.scrollTo(0, 1);
+                // window.scrollTo(0, 1);
             }
 
             // Non ricalcolare la scala automaticamente se l'utente ha zoomato manualimente
