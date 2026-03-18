@@ -560,6 +560,53 @@
 
         const isMobile = /iPhone|iPad|iPod|Android/i.test(navigator.userAgent);
 
+        /* ==== SUONI (WEB AUDIO API) — scope globale ==== */
+        let audioCtx;
+        let flipBuffer, openBuffer, closeBuffer;
+
+        function ensureAudioContext() {
+            if (!audioCtx) {
+                audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+                Promise.all([
+                    loadSound("../flip.mp3"),
+                    loadSound("../open.mp3"),
+                    loadSound("../close.mp3")
+                ]).then(buffers => {
+                    flipBuffer = buffers[0];
+                    openBuffer = buffers[1];
+                    closeBuffer = buffers[2];
+                });
+            }
+        }
+
+        async function loadSound(url) {
+            try {
+                const res = await fetch(url);
+                const arrayBuffer = await res.arrayBuffer();
+                return await audioCtx.decodeAudioData(arrayBuffer);
+            } catch (e) {
+                console.error("Audio load failed:", e);
+                return null;
+            }
+        }
+
+        let lastSoundTime = 0;
+
+        function playSound(buffer, offset = 0) {
+            const now = Date.now();
+            if (now - lastSoundTime < 150) return;
+            lastSoundTime = now;
+
+            if (!buffer) return;
+            if (audioCtx && audioCtx.state === 'suspended') {
+                audioCtx.resume();
+            }
+            const source = audioCtx.createBufferSource();
+            source.buffer = buffer;
+            source.connect(audioCtx.destination);
+            source.start(0, offset);
+        }
+
         function startMusic() {
             if (!musicStarted) {
                 console.log("▶️ Tentativo di avvio audio...");
@@ -589,22 +636,23 @@
         };
 
         // Click sul pulsantone gigante INIZIA!
-        document.getElementById("start-app").onclick = () => {
+        document.getElementById("start-app").onclick = async () => {
 
-            enterFullscreen();
+            try {
+                await enterFullscreen();
+            } catch (e) { }
+
             hideAddressBar();
 
             // Azioni Sincrone cruciali per mantenere il "user gesture"
             startMusic();
-            ensureAudioContext(); // Inizializza AudioContext al gesto utente
+            ensureAudioContext();
             startOverlay.style.display = "none";
 
-            // Timeout di sicurezza, ma la maggior parte del re-layout 
-            // verrà gestita ora dal listener onFullscreenChange
             setTimeout(() => {
                 calculateInitialScale();
                 updateTransform();
-            }, 600);
+            }, 300);
         };
 
         // Quando il fullscreen cambia (anche con ESC/gesto sistema), aggiorna zoom
@@ -625,6 +673,7 @@
                 }, 300);
             }
         }
+        document.addEventListener("fullscreenchange", onFullscreenChange);
         document.addEventListener("webkitfullscreenchange", onFullscreenChange);
 
         /* ==== LOAD BOOK ==== */
@@ -644,8 +693,8 @@
 
                     const img = document.createElement("img");
 
-                    // SOLO prime 4 pagine subito, il resto lazy
-                    if (index < 6) {
+                    // SOLO prime pagine subito (copertina + primo spread), il resto lazy
+                    if (index < 4) {
                         img.src = `../albums/${format}/${p.image}`;
                     } else {
                         img.dataset.src = `../albums/${format}/${p.image}`;
@@ -679,7 +728,7 @@
                     const total = imgs.length;
 
                     // Quanti spread (coppie) mantenere attivi
-                    const SPREAD_PRELOAD = 2; // 2 spread prima e dopo
+                    const SPREAD_PRELOAD = isMobileDevice ? 1 : 2;
 
                     // Boost direzionale: più preload nella direzione di sfoglio
                     const forwardBoost = lastDirection === 1 ? 2 : 0;
@@ -721,55 +770,7 @@
                     });
                 }
 
-                /* ==== SUONI (WEB AUDIO API) ==== */
-                let audioCtx;
-                let flipBuffer, openBuffer, closeBuffer;
-
-                // AudioContext creato al primo gesto utente (INIZIA) per evitare sospensione mobile
-                function ensureAudioContext() {
-                    if (!audioCtx) {
-                        audioCtx = new (window.AudioContext || window.webkitAudioContext)();
-                        // Carica i suoni appena il contesto è pronto
-                        Promise.all([
-                            loadSound("../flip.mp3"),
-                            loadSound("../open.mp3"),
-                            loadSound("../close.mp3")
-                        ]).then(buffers => {
-                            flipBuffer = buffers[0];
-                            openBuffer = buffers[1];
-                            closeBuffer = buffers[2];
-                        });
-                    }
-                }
-
-                async function loadSound(url) {
-                    try {
-                        const res = await fetch(url);
-                        const arrayBuffer = await res.arrayBuffer();
-                        return await audioCtx.decodeAudioData(arrayBuffer);
-                    } catch (e) {
-                        console.error("Audio load blocked/failed:", e);
-                        return null;
-                    }
-                }
-
-
-                let lastSoundTime = 0;
-
-                function playSound(buffer, offset = 0) {
-                    const now = Date.now();
-                    if (now - lastSoundTime < 150) return; // anti spam
-                    lastSoundTime = now;
-
-                    if (!buffer) return;
-                    if (audioCtx.state === 'suspended') {
-                        audioCtx.resume();
-                    }
-                    const source = audioCtx.createBufferSource();
-                    source.buffer = buffer;
-                    source.connect(audioCtx.destination);
-                    source.start(0, offset);
-                }
+                /* ==== AUDIO: offset e bottoni ==== */
 
                 // Offset ideali per compensare i silenzi inziali dei file mp3 tagliare una frazione prima dell'inizio effettivo
                 const AUDIO_START = {
