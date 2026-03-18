@@ -129,7 +129,7 @@
             top: 0;
             left: 0;
             width: 100vw;
-            height: 100vh;
+            height: calc(var(--vh, 1vh) * 100);
             background: rgba(0, 0, 0, 0.8);
             display: flex;
             /* VERO DISPLAY DI DEFAULT */
@@ -657,11 +657,13 @@
             ensureAudioContext();
             startOverlay.style.display = "none";
 
+            setRealViewportHeight(); // 🔥 subito
+
             setTimeout(() => {
-                setRealViewportHeight();   // 🔥 QUESTO È CRUCIALE
+                setRealViewportHeight();
                 calculateInitialScale();
                 updateTransform();
-            }, 300);
+            }, 50);
         };
 
         // Quando il fullscreen cambia (anche con ESC/gesto sistema), aggiorna zoom
@@ -861,6 +863,12 @@
             if (Math.abs(scale - oldInitialScale) < 0.01) {
                 calculateInitialScale();
             }
+            updateTransform();
+        });
+
+        window.visualViewport?.addEventListener('resize', () => {
+            setRealViewportHeight();
+            calculateInitialScale();
             updateTransform();
         });
     </script>
