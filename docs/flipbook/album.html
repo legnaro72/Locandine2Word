@@ -693,8 +693,8 @@
 
                     const img = document.createElement("img");
 
-                    // SOLO prime pagine subito (copertina + primo spread), il resto lazy
-                    if (index < 4) {
+                    // SOLO prime 6 pagine subito per avere la copertina e i primi due spread
+                    if (index < 6) {
                         img.src = `../albums/${format}/${p.image}`;
                         img.loading = "eager";
                     } else {
@@ -719,10 +719,23 @@
                 });
 
                 pageFlip.loadFromHTML(document.querySelectorAll('.page'));
-                loadNearbyPages(0);
+                
+                pageFlip.on('init', () => {
+                    loadNearbyPages(0);
+                });
 
                 /* ==== LAZY LOAD SPREAD-AWARE ==== */
                 let lastDirection = 1; // 1 = avanti, -1 = indietro
+
+                const preloadCache = [];
+
+                function preloadImage(src) {
+                    const img = new Image();
+                    img.decoding = "async";
+                    img.loading = "eager";
+                    img.src = src;
+                    preloadCache.push(img);
+                }
 
                 function loadNearbyPages(current) {
                     const imgs = document.querySelectorAll(".page img");
@@ -747,11 +760,8 @@
                             if (img.dataset.src) {
                                 const src = img.dataset.src;
 
-                                // preload invisibile (cache)
-                                const pre = new Image();
-                                pre.decoding = "async";
-                                pre.loading = "eager";
-                                pre.src = src;
+                                // preload invisibile (cache memory-safe)
+                                preloadImage(src);
 
                                 img.src = src;
                                 delete img.dataset.src;
@@ -761,10 +771,7 @@
                         // 🧠 preload leggero extra (anticipa prossime pagine)
                         else if (i >= start - 2 && i <= end + 2) {
                             if (img.dataset.src) {
-                                const pre = new Image();
-                                pre.decoding = "async";
-                                pre.loading = "eager";
-                                pre.src = img.dataset.src;
+                                preloadImage(img.dataset.src);
                             }
                         }
 
