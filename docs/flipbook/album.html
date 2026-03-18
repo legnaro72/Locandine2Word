@@ -261,9 +261,8 @@
 
         function forceReflow() {
             // trucco per forzare il browser a ricalcolare layout
-            document.body.style.display = "none";
+            document.documentElement.style.setProperty('--reflow', '0');
             document.body.offsetHeight;
-            document.body.style.display = "";
         }
 
         function setRealViewportHeight() {
@@ -366,7 +365,7 @@
         function updateTransform() {
             clampPosition();
             zoomLayer.style.transform =
-                `translate(${posX}px, ${posY}px) scale(${scale})`;
+                `translate3d(${posX}px, ${posY}px, 0) scale(${scale})`;
             zoomIndicator.innerText = Math.round(scale * 100) + "%";
         }
 
@@ -396,6 +395,7 @@
         document.getElementById("zoom-reset").onclick = (e) => {
             e.stopPropagation();
             calculateInitialScale();
+            scale = Math.max(scale, 0.01);
             updateTransform();
         };
 
@@ -453,7 +453,10 @@
         let lastTap = 0;
 
         wrapper.addEventListener("pointerup", e => {
-            if (dragOccurred) return;
+            if (dragOccurred) {
+                dragOccurred = false;
+                return;
+            }
 
             const now = Date.now();
             if (now - lastTap < 300) {
@@ -539,6 +542,8 @@
         });
 
         wrapper.addEventListener('touchmove', (e) => {
+            if (e.cancelable) e.preventDefault();
+
             if (e.touches.length === 2) {
                 // e.preventDefault() here might be needed if passive: false is set, but pointer events handle most
                 const currentDistance = Math.hypot(
