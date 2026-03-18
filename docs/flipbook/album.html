@@ -43,6 +43,9 @@
         .page {
             background: #14284b;
             overflow: hidden;
+            will-change: transform;
+            transform: translateZ(0);
+            backface-visibility: hidden;
         }
 
         .page img {
@@ -50,6 +53,8 @@
             height: 100%;
             object-fit: contain;
             pointer-events: none;
+            will-change: transform;
+            transform: translateZ(0);
         }
 
         /* Pulsanti zoom e controlli */
@@ -237,7 +242,7 @@
 
     <div id="mobile-start-overlay">
         <h2>Album Giusto dire NO</h2>
-        <p>Clicca per avviare l'album e la musica!</p>
+        <p>Clicca per avviare l'album!</p>
         <button id="start-app">INIZIA</button>
     </div>
 
@@ -731,22 +736,24 @@
                 /* ==== CARICAMENTO PROGRESSIVO IMMAGINI ==== */
                 const bookDiv = document.getElementById("book");
 
+                // Prime 10 pagine caricate subito (copertina + 4 spread)
+                const EAGER_COUNT = 10;
+
                 pages.forEach((p, index) => {
                     const div = document.createElement("div");
                     div.className = "page " + p.type;
 
                     const img = document.createElement("img");
 
-                    // SOLO prime 6 pagine subito per avere la copertina e i primi due spread
-                    if (index < 6) {
+                    if (index < EAGER_COUNT) {
                         img.src = `../albums/${format}/${p.image}`;
                         img.loading = "eager";
+                        img.decoding = "sync"; // prime pagine: decode sincrono per evitare flash
                     } else {
                         img.dataset.src = `../albums/${format}/${p.image}`;
                         img.loading = "lazy";
+                        img.decoding = "async";
                     }
-
-                    img.decoding = "async";
 
                     div.appendChild(img);
                     bookDiv.appendChild(div);
@@ -759,7 +766,7 @@
                     showCover: true,
                     mobileScrollSupport: false,
                     useMouseEvents: false,
-                    flippingTime: 500
+                    flippingTime: 600
                 });
 
                 pageFlip.loadFromHTML(document.querySelectorAll('.page'));
@@ -768,60 +775,114 @@
                     loadNearbyPages(0);
                 });
 
-                /* ==== LAZY LOAD SPREAD-AWARE ==== */
+                /* ==== LAZY LOAD SPREAD-AWARE (OTTIMIZZATO) ==== */
                 let lastDirection = 1; // 1 = avanti, -1 = indietro
 
-                const preloadCache = [];
+                // Cache globale per immagini pre-decodificate
+                const decodedCache = new Map();
 
-                function preloadImage(src) {
-                    const img = new Image();
-                    img.decoding = "async";
-                    img.loading = "eager";
+                /**
+                 * Pre-carica E pre-decodifica un'immagine in memoria.
+                 * Restituisce una Promise che si risolve quando l'immagine
+                 * è completamente pronta per il rendering (zero flash).
+                 */
+                function preloadAndDecode(src) {
+                    if (decodedCache.has(src)) return decodedCache.get(src);
+
+                    const promise = new Promise((resolve) => {
+                        const tmp = new Image();
+                        tmp.src = src;
+                        if (tmp.decode) {
+                            tmp.decode().then(() => resolve(tmp)).catch(() => resolve(tmp));
+                        } else {
+                            tmp.onload = () => resolve(tmp);
+                            tmp.onerror = () => resolve(tmp);
+                        }
+                    });
+                    decodedCache.set(src, promise);
+                    return promise;
+                }
+
+                /**
+                 * Attiva un'immagine nella pagina: se è già decodificata
+                 * in cache la swap è istantanea, altrimenti attende decode.
+                 */
+                async function activateImage(img) {
+                    if (!img.dataset.src) return;
+                    const src = img.dataset.src;
+                    await preloadAndDecode(src);
                     img.src = src;
-                    preloadCache.push(img);
+                    img.decoding = "sync"; // ora è già in cache, decode sincrono
+                    delete img.dataset.src;
                 }
 
                 function loadNearbyPages(current) {
                     const imgs = document.querySelectorAll(".page img");
                     const total = imgs.length;
 
-                    // Quanti spread (coppie) mantenere attivi
-                    const SPREAD_PRELOAD = isMobileDevice ? 1 : 2;
+                    // Ampio buffer: 4 spread su desktop, 3 su mobile
+                    const SPREAD_PRELOAD = isMobileDevice ? 3 : 4;
 
-                    // Boost direzionale: adattivo mobile/desktop
-                    const boost = isMobileDevice ? 1 : 2;
+                    // Boost direzionale generoso
+                    const boost = isMobileDevice ? 2 : 4;
                     const forwardBoost = lastDirection === 1 ? boost : 0;
                     const backwardBoost = lastDirection === -1 ? boost : 0;
 
-                    // Calcola range in termini di pagine (spread = 2 pagine)
                     const start = Math.max(0, current - (SPREAD_PRELOAD * 2) - backwardBoost);
                     const end = Math.min(total - 1, current + (SPREAD_PRELOAD * 2) + forwardBoost);
 
-                    imgs.forEach((img, i) => {
+                    // Fascia prioritaria: attiva subito (src + decode)
+                    for (let i = start; i <= end; i++) {
+                        activateImage(imgs[i]);
+                    }
 
-                        // ✅ dentro il buffer spread → carica subito
-                        if (i >= start && i <= end) {
-                            if (img.dataset.src) {
-                                const src = img.dataset.src;
-
-                                // preload invisibile (cache memory-safe)
-                                preloadImage(src);
-
-                                img.src = src;
-                                delete img.dataset.src;
-                            }
-                        }
-
-                        // 🧠 preload leggero extra (anticipa prossime pagine)
-                        else if (i >= start - 2 && i <= end + 2) {
-                            if (img.dataset.src) {
-                                preloadImage(img.dataset.src);
-                            }
-                        }
-
-                        // ❌ NON scaricare (evita lag e refetch)
-                    });
+                    // Fascia secondaria: pre-decode in background (senza attivare src)
+                    const extraBefore = Math.max(0, start - 4);
+                    const extraAfter = Math.min(total - 1, end + 4);
+                    for (let i = extraBefore; i < start; i++) {
+                        if (imgs[i].dataset.src) preloadAndDecode(`../albums/${format}/${pages[i].image}`);
+                    }
+                    for (let i = end + 1; i <= extraAfter; i++) {
+                        if (imgs[i].dataset.src) preloadAndDecode(`../albums/${format}/${pages[i].image}`);
+                    }
                 }
+
+                /* ==== IDLE BACKGROUND PRELOADER ==== */
+                // Carica progressivamente TUTTE le pagine rimanenti durante i tempi morti
+                let idlePreloadIndex = EAGER_COUNT; // parti da dove finisce l'eager load
+
+                function idlePreloadStep(deadline) {
+                    const imgs = document.querySelectorAll(".page img");
+                    while (idlePreloadIndex < imgs.length) {
+                        // Se rimane poco tempo nel frame idle, cedi al browser
+                        if (deadline && deadline.timeRemaining() < 5) break;
+
+                        const img = imgs[idlePreloadIndex];
+                        if (img.dataset.src) {
+                            // Pre-decode in background (non attiva src per non forzare repaint)
+                            preloadAndDecode(img.dataset.src);
+                        }
+                        idlePreloadIndex++;
+                    }
+
+                    // Continua nel prossimo idle se ci sono ancora pagine
+                    if (idlePreloadIndex < imgs.length) {
+                        if (window.requestIdleCallback) {
+                            requestIdleCallback(idlePreloadStep, { timeout: 3000 });
+                        } else {
+                            setTimeout(() => idlePreloadStep(null), 200);
+                        }
+                    }
+                }
+
+                // Avvia il preloader idle dopo un breve ritardo per non competere col rendering iniziale
+                setTimeout(() => {
+                    if (window.requestIdleCallback) {
+                        requestIdleCallback(idlePreloadStep, { timeout: 3000 });
+                    } else {
+                        idlePreloadStep(null);
+                    }
+                }, 2000);
 
                 /* ==== AUDIO: offset e bottoni ==== */
 
