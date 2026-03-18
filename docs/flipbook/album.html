@@ -10,16 +10,25 @@
     <style>
         body {
             margin: 0;
+            padding: 0;
             background: #2c2c2c;
             font-family: sans-serif;
             overflow: hidden;
+            /* Prevent any scrolling / bounce on iOS */
+            position: fixed;
+            inset: 0;
         }
 
         #book-wrapper {
             width: 100vw;
-            height: calc(var(--vh, 1vh) * 100);
+            /* Fallback chain: dvh > svh > vh */
+            height: 100vh;
+            height: 100svh;
+            height: 100dvh;
             background: #1a1a1a;
-            position: relative;
+            position: fixed;
+            top: 0;
+            left: 0;
             overflow: hidden;
             touch-action: none;
         }
@@ -129,16 +138,21 @@
             top: 0;
             left: 0;
             width: 100vw;
-            height: calc(var(--vh, 1vh) * 100);
+            height: 100vh;
+            height: 100svh;
+            height: 100dvh;
             background: rgba(0, 0, 0, 0.8);
             display: flex;
-            /* VERO DISPLAY DI DEFAULT */
             flex-direction: column;
             align-items: center;
             justify-content: center;
             z-index: 10000;
             color: white;
             text-align: center;
+        }
+
+        #mobile-start-overlay.hidden {
+            display: none;
         }
 
         #mobile-start-overlay button {
@@ -259,21 +273,22 @@
         const BASE_WIDTH = isMobileDevice ? 1400 : 2480;
         const BASE_HEIGHT = isMobileDevice ? 990 : 1754;
 
-        function forceReflow() {
-            // trucco per forzare il browser a ricalcolare layout
-            document.documentElement.style.setProperty('--reflow', '0');
-            document.body.offsetHeight;
+        /**
+         * Restituisce dimensioni viewport reali.
+         * Usa visualViewport (sempre affidabile su mobile) con fallback a innerWidth/innerHeight.
+         */
+        function getViewportSize() {
+            if (window.visualViewport) {
+                return {
+                    width: window.visualViewport.width,
+                    height: window.visualViewport.height
+                };
+            }
+            return {
+                width: window.innerWidth,
+                height: window.innerHeight
+            };
         }
-
-        function setRealViewportHeight() {
-            const vh = window.innerHeight * 0.01;
-            document.documentElement.style.setProperty('--vh', `${vh}px`);
-
-            // 🔥 forza update reale (fix iOS)
-            forceReflow();
-        }
-        setRealViewportHeight();
-        window.addEventListener('resize', setRealViewportHeight);
 
         let scale = 1;
         let maxScale = 8;
@@ -314,20 +329,15 @@
 
         /* quando ruoti il telefono aggiorna layout */
         window.addEventListener("orientationchange", () => {
-            requestAnimationFrame(() => {
-                requestAnimationFrame(() => {
-                    setRealViewportHeight();
-                    calculateInitialScale();
-                    updateTransform();
-                });
-            });
+            // Dopo orientation change, il browser ha bisogno di tempo per aggiornare le dimensioni
+            settleLayout();
         });
 
         /* ==== AUTO FIT INIZIALE ==== */
         function calculateInitialScale() {
-            const rect = wrapper.getBoundingClientRect();
-            const scaleX = rect.width / BASE_WIDTH;
-            const scaleY = rect.height / BASE_HEIGHT;
+            const vp = getViewportSize();
+            const scaleX = vp.width / BASE_WIDTH;
+            const scaleY = vp.height / BASE_HEIGHT;
             scale = Math.min(scaleX, scaleY);
             centerContent();
         }
@@ -335,30 +345,48 @@
         function centerContent() {
             const scaledWidth = BASE_WIDTH * scale;
             const scaledHeight = BASE_HEIGHT * scale;
-            const rect = wrapper.getBoundingClientRect();
+            const vp = getViewportSize();
 
-            posX = (rect.width - scaledWidth) / 2;
-            posY = (rect.height - scaledHeight) / 2;
+            posX = (vp.width - scaledWidth) / 2;
+            posY = (vp.height - scaledHeight) / 2;
+        }
+
+        /**
+         * Ricalcola layout in modo robusto: ripete su più frame
+         * per assicurarsi che il browser abbia aggiornato le dimensioni.
+         */
+        function settleLayout() {
+            let count = 0;
+            function step() {
+                calculateInitialScale();
+                updateTransform();
+                count++;
+                if (count < 5) {
+                    requestAnimationFrame(step);
+                }
+            }
+            // Primo tentativo dopo un breve delay
+            setTimeout(() => requestAnimationFrame(step), 150);
         }
 
         function clampPosition() {
             const scaledWidth = BASE_WIDTH * scale;
             const scaledHeight = BASE_HEIGHT * scale;
-            const rect = wrapper.getBoundingClientRect();
+            const vp = getViewportSize();
 
-            const minX = rect.width - scaledWidth;
-            const minY = rect.height - scaledHeight;
+            const minX = vp.width - scaledWidth;
+            const minY = vp.height - scaledHeight;
 
-            if (scaledWidth > rect.width) {
+            if (scaledWidth > vp.width) {
                 posX = Math.min(0, Math.max(minX, posX));
             } else {
-                posX = (rect.width - scaledWidth) / 2;
+                posX = (vp.width - scaledWidth) / 2;
             }
 
-            if (scaledHeight > rect.height) {
+            if (scaledHeight > vp.height) {
                 posY = Math.min(0, Math.max(minY, posY));
             } else {
-                posY = (rect.height - scaledHeight) / 2;
+                posY = (vp.height - scaledHeight) / 2;
             }
         }
 
@@ -663,47 +691,28 @@
         };
 
         // Click sul pulsantone gigante INIZIA!
-        document.getElementById("start-app").onclick = async () => {
+        document.getElementById("start-app").onclick = () => {
 
-            try {
-                await enterFullscreen();
-            } catch (e) { }
-
-            // hideAddressBar();
-
-            // Azioni Sincrone cruciali per mantenere il "user gesture"
+            // Azioni sincrone (mantengono il "user gesture" per audio + fullscreen)
             startMusic();
             ensureAudioContext();
-            startOverlay.style.display = "none";
 
-            setRealViewportHeight(); // 🔥 subito
+            // Nascondi overlay via classe CSS (non inline display:none)
+            startOverlay.classList.add('hidden');
 
-            requestAnimationFrame(() => {
-                requestAnimationFrame(() => {
-                    setRealViewportHeight();
-                    calculateInitialScale();
-                    updateTransform();
-                });
-            });
+            // Fullscreen (best-effort, non blocca il flusso)
+            enterFullscreen();
+
+            // Ricalcola layout robusto dopo che il browser si è stabilizzato
+            settleLayout();
         };
 
         // Quando il fullscreen cambia (anche con ESC/gesto sistema), aggiorna zoom
         function onFullscreenChange() {
             const btn = document.getElementById("fullscreen-toggle");
             const isFs = document.fullscreenElement || document.webkitFullscreenElement;
-            if (isFs) {
-                btn.innerText = "❌";
-                setTimeout(() => {
-                    calculateInitialScale();
-                    updateTransform();
-                }, 300);
-            } else {
-                btn.innerText = "⛶";
-                setTimeout(() => {
-                    calculateInitialScale();
-                    updateTransform();
-                }, 300);
-            }
+            btn.innerText = isFs ? "❌" : "⛶";
+            settleLayout();
         }
         document.addEventListener("fullscreenchange", onFullscreenChange);
         document.addEventListener("webkitfullscreenchange", onFullscreenChange);
@@ -874,24 +883,18 @@
                 updateTransform();
             });
         window.addEventListener("resize", () => {
-            if (isMobile) {
-                // window.scrollTo(0, 1);
-            }
-
-            // Non ricalcolare la scala automaticamente se l'utente ha zoomato manualimente
+            // Non ricalcolare la scala automaticamente se l'utente ha zoomato manualmente
             // ma ricalcola se siamo alla scala iniziale (auto-fit)
-            const rect = wrapper.getBoundingClientRect();
-            const oldInitialScale = Math.min(rect.width / BASE_WIDTH, rect.height / BASE_HEIGHT);
-            if (Math.abs(scale - oldInitialScale) < 0.01) {
+            const vp = getViewportSize();
+            const naturalScale = Math.min(vp.width / BASE_WIDTH, vp.height / BASE_HEIGHT);
+            if (Math.abs(scale - naturalScale) < 0.01) {
                 calculateInitialScale();
             }
             updateTransform();
         });
 
         window.visualViewport?.addEventListener('resize', () => {
-            setRealViewportHeight();
-            calculateInitialScale();
-            updateTransform();
+            settleLayout();
         });
     </script>
 
