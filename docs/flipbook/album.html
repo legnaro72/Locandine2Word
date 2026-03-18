@@ -259,9 +259,19 @@
         const BASE_WIDTH = isMobileDevice ? 1400 : 2480;
         const BASE_HEIGHT = isMobileDevice ? 990 : 1754;
 
+        function forceReflow() {
+            // trucco per forzare il browser a ricalcolare layout
+            document.body.style.display = "none";
+            document.body.offsetHeight;
+            document.body.style.display = "";
+        }
+
         function setRealViewportHeight() {
             const vh = window.innerHeight * 0.01;
             document.documentElement.style.setProperty('--vh', `${vh}px`);
+
+            // 🔥 forza update reale (fix iOS)
+            forceReflow();
         }
         setRealViewportHeight();
         window.addEventListener('resize', setRealViewportHeight);
@@ -305,18 +315,20 @@
 
         /* quando ruoti il telefono aggiorna layout */
         window.addEventListener("orientationchange", () => {
-            setTimeout(() => {
-                // hideAddressBar();
-                setRealViewportHeight();
-                calculateInitialScale();
-                updateTransform();
-            }, 300);
+            requestAnimationFrame(() => {
+                requestAnimationFrame(() => {
+                    setRealViewportHeight();
+                    calculateInitialScale();
+                    updateTransform();
+                });
+            });
         });
 
         /* ==== AUTO FIT INIZIALE ==== */
         function calculateInitialScale() {
-            const scaleX = wrapper.clientWidth / BASE_WIDTH;
-            const scaleY = wrapper.clientHeight / BASE_HEIGHT;
+            const rect = wrapper.getBoundingClientRect();
+            const scaleX = rect.width / BASE_WIDTH;
+            const scaleY = rect.height / BASE_HEIGHT;
             scale = Math.min(scaleX, scaleY);
             centerContent();
         }
@@ -324,28 +336,30 @@
         function centerContent() {
             const scaledWidth = BASE_WIDTH * scale;
             const scaledHeight = BASE_HEIGHT * scale;
+            const rect = wrapper.getBoundingClientRect();
 
-            posX = (wrapper.clientWidth - scaledWidth) / 2;
-            posY = (wrapper.clientHeight - scaledHeight) / 2;
+            posX = (rect.width - scaledWidth) / 2;
+            posY = (rect.height - scaledHeight) / 2;
         }
 
         function clampPosition() {
             const scaledWidth = BASE_WIDTH * scale;
             const scaledHeight = BASE_HEIGHT * scale;
+            const rect = wrapper.getBoundingClientRect();
 
-            const minX = wrapper.clientWidth - scaledWidth;
-            const minY = wrapper.clientHeight - scaledHeight;
+            const minX = rect.width - scaledWidth;
+            const minY = rect.height - scaledHeight;
 
-            if (scaledWidth > wrapper.clientWidth) {
+            if (scaledWidth > rect.width) {
                 posX = Math.min(0, Math.max(minX, posX));
             } else {
-                posX = (wrapper.clientWidth - scaledWidth) / 2;
+                posX = (rect.width - scaledWidth) / 2;
             }
 
-            if (scaledHeight > wrapper.clientHeight) {
+            if (scaledHeight > rect.height) {
                 posY = Math.min(0, Math.max(minY, posY));
             } else {
-                posY = (wrapper.clientHeight - scaledHeight) / 2;
+                posY = (rect.height - scaledHeight) / 2;
             }
         }
 
@@ -659,11 +673,13 @@
 
             setRealViewportHeight(); // 🔥 subito
 
-            setTimeout(() => {
-                setRealViewportHeight();
-                calculateInitialScale();
-                updateTransform();
-            }, 50);
+            requestAnimationFrame(() => {
+                requestAnimationFrame(() => {
+                    setRealViewportHeight();
+                    calculateInitialScale();
+                    updateTransform();
+                });
+            });
         };
 
         // Quando il fullscreen cambia (anche con ESC/gesto sistema), aggiorna zoom
@@ -859,7 +875,8 @@
 
             // Non ricalcolare la scala automaticamente se l'utente ha zoomato manualimente
             // ma ricalcola se siamo alla scala iniziale (auto-fit)
-            const oldInitialScale = Math.min(wrapper.clientWidth / BASE_WIDTH, wrapper.clientHeight / BASE_HEIGHT);
+            const rect = wrapper.getBoundingClientRect();
+            const oldInitialScale = Math.min(rect.width / BASE_WIDTH, rect.height / BASE_HEIGHT);
             if (Math.abs(scale - oldInitialScale) < 0.01) {
                 calculateInitialScale();
             }
