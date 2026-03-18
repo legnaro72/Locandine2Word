@@ -8,35 +8,35 @@
 
 
     <style>
-        body {
+        html, body {
             margin: 0;
             padding: 0;
+            width: 100%;
+            height: 100%;
+            overflow: hidden;
             background: #2c2c2c;
             font-family: sans-serif;
-            overflow: hidden;
         }
 
-        /* inset:0 = il browser DEVE renderlo a schermo intero, niente viewport units */
         #book-wrapper {
             position: fixed;
-            inset: 0;
+            top: 0; left: 0; right: 0; bottom: 0;
             background: #1a1a1a;
             overflow: hidden;
             touch-action: none;
         }
 
+        /* Dimensioni impostate via JS per corrispondere a BASE_WIDTH x BASE_HEIGHT */
         #zoom-layer {
-            width: 2480px;
-            height: 1754px;
             transform-origin: 0 0;
             position: absolute;
+            top: 0;
+            left: 0;
             will-change: transform;
-            transform: translateZ(0);
         }
 
         #book {
-            width: 2480px;
-            height: 1754px;
+            /* Dimensioni impostate via JS */
         }
 
         .page {
@@ -127,7 +127,7 @@
 
         #mobile-start-overlay {
             position: fixed;
-            inset: 0;
+            top: 0; left: 0; right: 0; bottom: 0;
             background: rgba(0, 0, 0, 0.8);
             display: flex;
             flex-direction: column;
@@ -286,9 +286,16 @@
         const wrapper = document.getElementById("book-wrapper");
         const zoomIndicator = document.getElementById("zoom-indicator");
 
-        // Adatta zoom-layer alla risoluzione effettiva
+        // Adatta zoom-layer E #book alla risoluzione effettiva
         zoomLayer.style.width = BASE_WIDTH + "px";
         zoomLayer.style.height = BASE_HEIGHT + "px";
+        document.getElementById("book").style.width = BASE_WIDTH + "px";
+        document.getElementById("book").style.height = BASE_HEIGHT + "px";
+
+        // === DEBUG OVERLAY (rimuovere dopo fix) ===
+        const dbg = document.createElement('div');
+        dbg.style.cssText = 'position:fixed;top:0;left:0;z-index:99999;background:rgba(255,0,0,0.9);color:#fff;font:bold 11px monospace;padding:4px 8px;pointer-events:none;white-space:nowrap;';
+        document.body.appendChild(dbg);
 
         /* ===== MODALITÀ IMMERSIVA MOBILE ===== */
 
@@ -390,6 +397,8 @@
             zoomLayer.style.transform =
                 `translate3d(${posX}px, ${posY}px, 0) scale(${scale})`;
             zoomIndicator.innerText = Math.round(scale * 100) + "%";
+            // Debug: mostra valori reali sullo schermo
+            if (dbg) dbg.textContent = `CW:${wrapper.clientWidth} CH:${wrapper.clientHeight} S:${scale.toFixed(3)} X:${posX.toFixed(0)} Y:${posY.toFixed(0)}`;
         }
 
         /* ==== ZOOM CONTROLS E ROTTELLA (WHEEL) ==== */
