@@ -645,7 +645,7 @@
                     const img = document.createElement("img");
 
                     // SOLO prime 4 pagine subito, il resto lazy
-                    if (index < 4) {
+                    if (index < 6) {
                         img.src = `../albums/${format}/${p.image}`;
                     } else {
                         img.dataset.src = `../albums/${format}/${p.image}`;
@@ -671,25 +671,53 @@
                 pageFlip.loadFromHTML(document.querySelectorAll('.page'));
                 loadNearbyPages(0);
 
-                /* ==== LAZY LOAD PAGINE VICINE + SCARICA LONTANE ==== */
+                /* ==== LAZY LOAD SPREAD-AWARE ==== */
+                let lastDirection = 1; // 1 = avanti, -1 = indietro
+
                 function loadNearbyPages(current) {
                     const imgs = document.querySelectorAll(".page img");
+                    const total = imgs.length;
+
+                    // Quanti spread (coppie) mantenere attivi
+                    const SPREAD_PRELOAD = 2; // 2 spread prima e dopo
+
+                    // Boost direzionale: più preload nella direzione di sfoglio
+                    const forwardBoost = lastDirection === 1 ? 2 : 0;
+                    const backwardBoost = lastDirection === -1 ? 2 : 0;
+
+                    // Calcola range in termini di pagine (spread = 2 pagine)
+                    const start = Math.max(0, current - (SPREAD_PRELOAD * 2) - backwardBoost);
+                    const end = Math.min(total - 1, current + (SPREAD_PRELOAD * 2) + forwardBoost);
 
                     imgs.forEach((img, i) => {
-                        // se è vicino → carica
-                        if (i >= current - 2 && i <= current + 2) {
+
+                        // ✅ dentro il buffer spread → carica subito
+                        if (i >= start && i <= end) {
                             if (img.dataset.src) {
-                                img.src = img.dataset.src;
+                                const src = img.dataset.src;
+
+                                // preload invisibile (cache)
+                                const pre = new Image();
+                                pre.decoding = "async";
+                                pre.loading = "eager";
+                                pre.src = src;
+
+                                img.src = src;
                                 delete img.dataset.src;
                             }
                         }
-                        // se è lontano → scarica (libera RAM)
-                        else {
-                            if (img.src && !img.dataset.src) {
-                                img.dataset.src = img.src;
-                                img.removeAttribute("src");
+
+                        // 🧠 preload leggero extra (anticipa prossime pagine)
+                        else if (i >= start - 2 && i <= end + 2) {
+                            if (img.dataset.src) {
+                                const pre = new Image();
+                                pre.decoding = "async";
+                                pre.loading = "eager";
+                                pre.src = img.dataset.src;
                             }
                         }
+
+                        // ❌ NON scaricare (evita lag e refetch)
                     });
                 }
 
@@ -762,8 +790,15 @@
                 let currentPage = 0;
 
                 pageFlip.on('flip', (e) => {
+                    const targetPage = e.data;
+
+                    // Traccia direzione per boost preload
+                    lastDirection = targetPage > currentPage ? 1 : -1;
+
+                    // PRELOAD IMMEDIATO (prima del render)
+                    loadNearbyPages(targetPage);
+
                     requestAnimationFrame(() => {
-                        const targetPage = e.data;
                         const totalPages = pages.length;
                         let bufferToPlay = null;
                         let offsetToPlay = 0;
@@ -786,7 +821,6 @@
                         // SFOGLIO NORMALE: l'audio flip è gestito direttamente nei bottoni prev/next
 
                         currentPage = targetPage;
-                        loadNearbyPages(targetPage);
 
                         if (bufferToPlay) {
                             playSound(bufferToPlay, offsetToPlay);
