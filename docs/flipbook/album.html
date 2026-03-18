@@ -14,21 +14,13 @@
             background: #2c2c2c;
             font-family: sans-serif;
             overflow: hidden;
-            /* Prevent any scrolling / bounce on iOS */
-            position: fixed;
-            inset: 0;
         }
 
+        /* inset:0 = il browser DEVE renderlo a schermo intero, niente viewport units */
         #book-wrapper {
-            width: 100vw;
-            /* Fallback chain: dvh > svh > vh */
-            height: 100vh;
-            height: 100svh;
-            height: 100dvh;
-            background: #1a1a1a;
             position: fixed;
-            top: 0;
-            left: 0;
+            inset: 0;
+            background: #1a1a1a;
             overflow: hidden;
             touch-action: none;
         }
@@ -135,12 +127,7 @@
 
         #mobile-start-overlay {
             position: fixed;
-            top: 0;
-            left: 0;
-            width: 100vw;
-            height: 100vh;
-            height: 100svh;
-            height: 100dvh;
+            inset: 0;
             background: rgba(0, 0, 0, 0.8);
             display: flex;
             flex-direction: column;
@@ -274,19 +261,15 @@
         const BASE_HEIGHT = isMobileDevice ? 990 : 1754;
 
         /**
-         * Restituisce dimensioni viewport reali.
-         * Usa visualViewport (sempre affidabile su mobile) con fallback a innerWidth/innerHeight.
+         * Dimensioni REALI: legge direttamente dal wrapper che è
+         * position:fixed;inset:0 → il browser DEVE renderlo a schermo intero.
+         * wrapper.clientWidth/Height riflettono le dimensioni effettive renderizzate,
+         * NON stime viewport come innerHeight / visualViewport / 100vh.
          */
         function getViewportSize() {
-            if (window.visualViewport) {
-                return {
-                    width: window.visualViewport.width,
-                    height: window.visualViewport.height
-                };
-            }
             return {
-                width: window.innerWidth,
-                height: window.innerHeight
+                width:  wrapper.clientWidth  || window.innerWidth,
+                height: wrapper.clientHeight || window.innerHeight
             };
         }
 
@@ -297,6 +280,7 @@
         let posY = 0;
 
         let pageFlip;
+        let appStarted = false; // true dopo che l'utente preme INIZIA
 
         const zoomLayer = document.getElementById("zoom-layer");
         const wrapper = document.getElementById("book-wrapper");
@@ -320,22 +304,16 @@
             }
         }
 
-        /* Nasconde la barra indirizzi mobile */
-        function hideAddressBar() {
-            // setTimeout(() => {
-            //     window.scrollTo(0, 1);
-            // }, 50);
-        }
-
         /* quando ruoti il telefono aggiorna layout */
         window.addEventListener("orientationchange", () => {
-            // Dopo orientation change, il browser ha bisogno di tempo per aggiornare le dimensioni
             settleLayout();
         });
 
         /* ==== AUTO FIT INIZIALE ==== */
         function calculateInitialScale() {
             const vp = getViewportSize();
+            // Protezione: se le dimensioni non sono ancora valide, non calcolare
+            if (vp.width < 10 || vp.height < 10) return;
             const scaleX = vp.width / BASE_WIDTH;
             const scaleY = vp.height / BASE_HEIGHT;
             scale = Math.min(scaleX, scaleY);
@@ -352,21 +330,38 @@
         }
 
         /**
-         * Ricalcola layout in modo robusto: ripete su più frame
-         * per assicurarsi che il browser abbia aggiornato le dimensioni.
+         * Ricalcola layout in modo robusto:
+         * - un calcolo immediato
+         * - poi ritenta su 10 animation frame consecutivi
+         * - più safety net a 500ms e 1000ms
          */
         function settleLayout() {
+            // Calcolo immediato
+            calculateInitialScale();
+            updateTransform();
+
+            // Ritenta su più frame (il browser potrebbe non
+            // aver ancora aggiornato le dimensioni del wrapper)
             let count = 0;
             function step() {
                 calculateInitialScale();
                 updateTransform();
-                count++;
-                if (count < 5) {
-                    requestAnimationFrame(step);
-                }
+                if (++count < 10) requestAnimationFrame(step);
             }
-            // Primo tentativo dopo un breve delay
-            setTimeout(() => requestAnimationFrame(step), 150);
+            requestAnimationFrame(step);
+
+            // Safety net per browser lenti
+            setTimeout(() => { calculateInitialScale(); updateTransform(); }, 300);
+            setTimeout(() => { calculateInitialScale(); updateTransform(); }, 800);
+        }
+
+        /* ==== RESIZE OBSERVER: auto-corregge SEMPRE ==== */
+        if (typeof ResizeObserver !== 'undefined') {
+            new ResizeObserver(() => {
+                if (!appStarted) return; // non fare nulla prima di INIZIA
+                calculateInitialScale();
+                updateTransform();
+            }).observe(wrapper);
         }
 
         function clampPosition() {
@@ -697,13 +692,16 @@
             startMusic();
             ensureAudioContext();
 
-            // Nascondi overlay via classe CSS (non inline display:none)
+            // Nascondi overlay via classe CSS
             startOverlay.classList.add('hidden');
 
-            // Fullscreen (best-effort, non blocca il flusso)
+            // Segna che l'app è partita (abilita ResizeObserver)
+            appStarted = true;
+
+            // Fullscreen (best-effort)
             enterFullscreen();
 
-            // Ricalcola layout robusto dopo che il browser si è stabilizzato
+            // Ricalcola layout robusto
             settleLayout();
         };
 
@@ -883,17 +881,7 @@
                 updateTransform();
             });
         window.addEventListener("resize", () => {
-            // Non ricalcolare la scala automaticamente se l'utente ha zoomato manualmente
-            // ma ricalcola se siamo alla scala iniziale (auto-fit)
-            const vp = getViewportSize();
-            const naturalScale = Math.min(vp.width / BASE_WIDTH, vp.height / BASE_HEIGHT);
-            if (Math.abs(scale - naturalScale) < 0.01) {
-                calculateInitialScale();
-            }
-            updateTransform();
-        });
-
-        window.visualViewport?.addEventListener('resize', () => {
+            if (!appStarted) return;
             settleLayout();
         });
     </script>
