@@ -167,6 +167,29 @@
             z-index: 10001;
             text-align: center;
             padding: 20px;
+            font-size: 18px;
+        }
+
+        #portrait-warning .warning-content {
+            max-width: 90%;
+        }
+
+        #portrait-warning span {
+            font-size: 80px;
+        }
+
+        #portrait-warning p {
+            font-size: 7vw;
+            line-height: 1.3;
+            font-weight: bold;
+        }
+
+        #mobile-start-overlay h2 {
+            font-size: 7vw;
+        }
+
+        #mobile-start-overlay p {
+            font-size: 5vw;
         }
 
         @media screen and (orientation: portrait) and (max-width: 1024px) {
@@ -232,7 +255,7 @@
     </div>
 
 
-    <audio id="bgMusic" src="../GiustoDireNo.mp3" loop
+    <audio id="bgMusic" src="../GiustoDireNo.mp3" loop preload="auto" playsinline
         onerror="console.error('⚠️ ALARM FILE MANCANTE! Il file non è stato trovato dal server a questo indirizzo: ' + this.src); alert('Errore: impossibile caricare GiustoDireNo.mp3 on line. Controlla maiuscole/minuscole su GitHub!');"></audio>
 
     <script src="https://cdn.jsdelivr.net/npm/page-flip/dist/js/page-flip.browser.min.js"></script>
@@ -645,7 +668,7 @@
 
                     const img = document.createElement("img");
                     img.src = `../albums/${format}/${p.image}`;
-                    img.loading = "eager";
+                    img.loading = "lazy";
                     img.decoding = "async";
                     img.style.willChange = "transform";
 
@@ -690,7 +713,13 @@
                     closeBuffer = buffers[2];
                 });
 
+                let lastSoundTime = 0;
+
                 function playSound(buffer, offset = 0) {
+                    const now = Date.now();
+                    if (now - lastSoundTime < 150) return; // anti spam
+                    lastSoundTime = now;
+
                     if (!buffer) return;
                     if (audioCtx.state === 'suspended') {
                         audioCtx.resume();
@@ -708,25 +737,14 @@
                     close: 0.85
                 };
 
-                let flipStarted = false;
-
-                // ANTICIPO SONORO GESTURE
-                // Si aziona appena l'utente "tocca" la pagina, prima ancora che l'engine abbia il tempo
-                // di calcolare il movimento, azzerando psicologicamente ogni possibile lag.
-                wrapper.addEventListener("pointerdown", () => {
-                    if (!flipStarted) {
-                        playSound(flipBuffer, AUDIO_START.flip);
-
-                        flipStarted = true;
-
-                        setTimeout(()=>{
-                            flipStarted = false;
-                        }, 300);
-                    }
-                });
-
-                document.getElementById("next").onclick = () => pageFlip.flipNext();
-                document.getElementById("prev").onclick = () => pageFlip.flipPrev();
+                document.getElementById("next").onclick = (e) => {
+                    playSound(flipBuffer, AUDIO_START.flip);
+                    pageFlip.flipNext();
+                };
+                document.getElementById("prev").onclick = (e) => {
+                    playSound(flipBuffer, AUDIO_START.flip);
+                    pageFlip.flipPrev();
+                };
 
                 let currentPage = 0;
 
@@ -751,15 +769,8 @@
                         else if ((targetPage === 0 || targetPage >= totalPages - 1) && closeBuffer) {
                             bufferToPlay = closeBuffer;
                             offsetToPlay = AUDIO_START.close;
-                        } else {
-                            // SFOGLIO NORMALE
-                            // L'audio è gestito nativamente dal wrapper all'inizio del gesture (pointerdown),
-                            // si usa questo SOLO se `flipStarted` è falso (cioè l'input è derivato dai pulsanti next/prev)
-                            if (!flipStarted) {
-                                bufferToPlay = flipBuffer;
-                                offsetToPlay = AUDIO_START.flip;
-                            }
                         }
+                        // SFOGLIO NORMALE: l'audio flip è gestito direttamente nei bottoni prev/next
 
                         currentPage = targetPage;
 
