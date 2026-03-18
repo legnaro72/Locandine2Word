@@ -32,6 +32,43 @@
             font-size: 1.1rem;
         }
 
+        .guide-container {
+            background: #1e1e1e;
+            border-radius: 12px;
+            padding: 15px 25px;
+            margin-bottom: 30px;
+            border: 1px solid #333;
+            max-width: 800px;
+            width: 90%;
+            display: flex;
+            flex-direction: column;
+            gap: 12px;
+            font-size: 0.95rem;
+            color: #ccc;
+        }
+
+        .guide-section {
+            display: flex;
+            align-items: center;
+            flex-wrap: wrap;
+            justify-content: center;
+            gap: 10px;
+        }
+
+        .guide-section strong {
+            color: #fff;
+            margin-right: 5px;
+        }
+
+        .guide-tag {
+            background: #333;
+            padding: 4px 10px;
+            border-radius: 6px;
+            display: flex;
+            align-items: center;
+            gap: 5px;
+        }
+
         .grid-container {
             display: grid;
             grid-template-columns: repeat(auto-fit, minmax(250px, 1fr));
@@ -89,14 +126,28 @@
 <body>
 
     <h1>La Tua Libreria Flipbook</h1>
-    <p>Gli album vengono visualizzati solo se generati correttamente nel repository</p>
+    
+    <div class="guide-container">
+        <div class="guide-section">
+            <strong>Pulsanti:</strong>
+            <span class="guide-tag">⟨ ⟩ Frecce per sfogliare</span>
+            <span class="guide-tag">🔊 Audio ON/OFF</span>
+            <span class="guide-tag">⛶ Schermo intero</span>
+            <span class="guide-tag">🏚️ Home (Reset Zoom)</span>
+        </div>
+        <div class="guide-section">
+            <strong>Gesture:</strong>
+            <span class="guide-tag">✌️ 2 dita o 🖱️ Rotella: Zoom</span>
+            <span class="guide-tag">🖱️ Doppio click o Tasto sx: Zoom rapido</span>
+        </div>
+    </div>
 
     <div class="grid-container" id="album-grid">
         <!-- Verranno mostrati solo i formati esistenti -->
     </div>
 
     <div class="footer">
-        Generato con Locandine2Word
+        Ideato e creato da Massimiliano Ferrando
     </div>
 
     <script>
