@@ -597,8 +597,8 @@
             if (now - lastSoundTime < 150) return;
             lastSoundTime = now;
 
-            if (!buffer) return;
-            if (audioCtx && audioCtx.state === 'suspended') {
+            if (!buffer || !audioCtx) return;
+            if (audioCtx.state === 'suspended') {
                 audioCtx.resume();
             }
             const source = audioCtx.createBufferSource();
@@ -696,11 +696,12 @@
                     // SOLO prime pagine subito (copertina + primo spread), il resto lazy
                     if (index < 4) {
                         img.src = `../albums/${format}/${p.image}`;
+                        img.loading = "eager";
                     } else {
                         img.dataset.src = `../albums/${format}/${p.image}`;
+                        img.loading = "lazy";
                     }
 
-                    img.loading = "lazy";
                     img.decoding = "async";
 
                     div.appendChild(img);
@@ -730,9 +731,10 @@
                     // Quanti spread (coppie) mantenere attivi
                     const SPREAD_PRELOAD = isMobileDevice ? 1 : 2;
 
-                    // Boost direzionale: più preload nella direzione di sfoglio
-                    const forwardBoost = lastDirection === 1 ? 2 : 0;
-                    const backwardBoost = lastDirection === -1 ? 2 : 0;
+                    // Boost direzionale: adattivo mobile/desktop
+                    const boost = isMobileDevice ? 1 : 2;
+                    const forwardBoost = lastDirection === 1 ? boost : 0;
+                    const backwardBoost = lastDirection === -1 ? boost : 0;
 
                     // Calcola range in termini di pagine (spread = 2 pagine)
                     const start = Math.max(0, current - (SPREAD_PRELOAD * 2) - backwardBoost);
