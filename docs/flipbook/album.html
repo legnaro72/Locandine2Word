@@ -254,9 +254,10 @@
     <script src="https://cdn.jsdelivr.net/npm/page-flip/dist/js/page-flip.browser.min.js"></script>
 
     <script>
-        // Risoluzione aumentata (doppia rispetto a prima per maggiore nitidezza)
-        const BASE_WIDTH = 2480;
-        const BASE_HEIGHT = 1754;
+        // Risoluzione dinamica: leggera su mobile, alta su desktop
+        const isMobileDevice = /iPhone|iPad|iPod|Android/i.test(navigator.userAgent);
+        const BASE_WIDTH = isMobileDevice ? 1400 : 2480;
+        const BASE_HEIGHT = isMobileDevice ? 990 : 1754;
 
         let scale = 1;
         let maxScale = 8;
@@ -639,47 +640,51 @@
             .then(r => r.json())
             .then(pages => {
 
-                /* ==== PRELOAD IMMAGINI ==== */
-                const preloadImages = pages.map(p => {
-                    return new Promise(resolve => {
-                        const img = new Image();
-                        img.src = `../albums/${format}/${p.image}`;
-                        img.onload = () => resolve();
-                        img.onerror = () => resolve();
-                    });
-                });
-
-                Promise.all(preloadImages).then(() => {
-                    console.log("✅ Tutte le immagini precaricate");
-                });
-
+                /* ==== CARICAMENTO PROGRESSIVO IMMAGINI ==== */
                 const bookDiv = document.getElementById("book");
 
-                pages.forEach(p => {
+                pages.forEach((p, index) => {
                     const div = document.createElement("div");
                     div.className = "page " + p.type;
 
                     const img = document.createElement("img");
-                    img.src = `../albums/${format}/${p.image}`;
+
+                    // SOLO prime 4 pagine subito, il resto lazy
+                    if (index < 4) {
+                        img.src = `../albums/${format}/${p.image}`;
+                    } else {
+                        img.dataset.src = `../albums/${format}/${p.image}`;
+                    }
+
                     img.loading = "lazy";
                     img.decoding = "async";
-                    img.style.willChange = "transform";
 
                     div.appendChild(img);
                     bookDiv.appendChild(div);
                 });
 
                 pageFlip = new St.PageFlip(bookDiv, {
-                    width: 1240, // Dimensione aumentata per maggiore risoluzione (metà di BASE_WIDTH)
-                    height: 1754, // Dimensione aumentata 
+                    width: Math.round(BASE_WIDTH / 2),
+                    height: BASE_HEIGHT,
                     size: "fixed",
                     showCover: true,
                     mobileScrollSupport: false,
                     useMouseEvents: false,
-                    flippingTime: 650
+                    flippingTime: 500
                 });
 
                 pageFlip.loadFromHTML(document.querySelectorAll('.page'));
+
+                /* ==== LAZY LOAD PAGINE VICINE ==== */
+                function loadNearbyPages(current) {
+                    const imgs = document.querySelectorAll(".page img");
+                    for (let i = current - 2; i <= current + 2; i++) {
+                        if (i >= 0 && i < imgs.length && imgs[i].dataset.src) {
+                            imgs[i].src = imgs[i].dataset.src;
+                            delete imgs[i].dataset.src;
+                        }
+                    }
+                }
 
                 /* ==== SUONI (WEB AUDIO API) ==== */
                 const audioCtx = new (window.AudioContext || window.webkitAudioContext)();
@@ -766,6 +771,7 @@
                         // SFOGLIO NORMALE: l'audio flip è gestito direttamente nei bottoni prev/next
 
                         currentPage = targetPage;
+                        loadNearbyPages(targetPage);
 
                         if (bufferToPlay) {
                             playSound(bufferToPlay, offsetToPlay);
