@@ -46,13 +46,8 @@
             will-change: transform;
             transform: translateZ(0);
             backface-visibility: hidden;
-            /* Transizione fluida per lo sfoglio realistico */
-            transition: box-shadow 0.3s ease;
-        }
-
-        /* Ombra dinamica durante lo sfoglio per effetto 3D */
-        .page.--flipping {
-            box-shadow: 0 0 30px rgba(0,0,0,0.4);
+            /* Isola il rendering di ogni pagina per evitare repaint globali */
+            contain: layout style paint;
         }
 
         .page img {
@@ -62,8 +57,8 @@
             pointer-events: none;
             will-change: transform;
             transform: translateZ(0);
-            /* Transizione più morbida per l'apparizione dell'immagine */
-            transition: opacity 0.15s ease-in;
+            backface-visibility: hidden;
+            /* NESSUNA transition su opacity/src: evita flash durante lo swap */
         }
 
         /* Pulsanti zoom e controlli */
@@ -748,6 +743,10 @@
                 // Prime 10 pagine caricate subito (copertina + 4 spread)
                 const EAGER_COUNT = 10;
 
+                // Placeholder trasparente 1x1px per evitare che il background
+                // della pagina lampeggi quando l'immagine non ha ancora src
+                const BLANK_GIF = 'data:image/gif;base64,R0lGODlhAQABAIAAAAAAAP///yH5BAEAAAAALAAAAAABAAEAAAIBRAA7';
+
                 pages.forEach((p, index) => {
                     const div = document.createElement("div");
                     div.className = "page " + p.type;
@@ -759,6 +758,8 @@
                         img.loading = "eager";
                         img.decoding = "sync"; // prime pagine: decode sincrono per evitare flash
                     } else {
+                        // Placeholder trasparente: niente flash del background blu
+                        img.src = BLANK_GIF;
                         img.dataset.src = `../albums/${format}/${p.image}`;
                         img.loading = "lazy";
                         img.decoding = "async";
@@ -816,15 +817,37 @@
 
                 /**
                  * Attiva un'immagine nella pagina: se è già decodificata
-                 * in cache la swap è istantanea, altrimenti attende decode.
+                 * in cache la swap è SINCRONA (zero flash), altrimenti
+                 * attende decode e poi swappa.
                  */
-                async function activateImage(img) {
+                function activateImage(img) {
                     if (!img.dataset.src) return;
                     const src = img.dataset.src;
-                    await preloadAndDecode(src);
-                    img.src = src;
-                    img.decoding = "sync"; // ora è già in cache, decode sincrono
+
+                    // Segna subito come "in caricamento" per evitare doppie chiamate
+                    const pendingSrc = img.dataset.src;
                     delete img.dataset.src;
+
+                    // Controlla se abbiamo già l'immagine decodificata in cache
+                    const cached = decodedCache.get(src);
+                    if (cached && typeof cached.then === 'function') {
+                        // Se la promise è già risolta, il .then è quasi sincrono
+                        cached.then((decodedImg) => {
+                            // Swap atomico: src viene assegnato solo DOPO decode
+                            img.decoding = "sync";
+                            img.src = src;
+                        }).catch(() => {
+                            img.src = src; // fallback
+                        });
+                    } else {
+                        // Non ancora in cache: avvia preload+decode, poi swappa
+                        preloadAndDecode(src).then(() => {
+                            img.decoding = "sync";
+                            img.src = src;
+                        }).catch(() => {
+                            img.src = src;
+                        });
+                    }
                 }
 
                 function loadNearbyPages(current) {
