@@ -38,16 +38,20 @@
         #book {
             /* Dimensioni effettive impostate via JS (BASE_WIDTH x BASE_HEIGHT) */
             position: relative;
+            /* Prospettiva 3D per trasformazioni fluide senza z-fighting */
+            perspective: 2000px;
+            -webkit-perspective: 2000px;
         }
 
         .page {
             background: #14284b;
             overflow: hidden;
+            /* GPU layer singolo per pagina — il minimo indispensabile */
             will-change: transform;
             transform: translateZ(0);
+            -webkit-transform: translateZ(0);
             backface-visibility: hidden;
-            /* Isola il rendering di ogni pagina per evitare repaint globali */
-            contain: layout style paint;
+            -webkit-backface-visibility: hidden;
         }
 
         .page img {
@@ -55,10 +59,10 @@
             height: 100%;
             object-fit: contain;
             pointer-events: none;
-            will-change: transform;
-            transform: translateZ(0);
+            /* NO will-change qui: il layer GPU è già sul .page genitore.
+               Avere due layer sovrapposti causa flicker da compositing */
+            -webkit-backface-visibility: hidden;
             backface-visibility: hidden;
-            /* NESSUNA transition su opacity/src: evita flash durante lo swap */
         }
 
         /* Pulsanti zoom e controlli */
@@ -777,8 +781,16 @@
                     mobileScrollSupport: false,
                     useMouseEvents: false,
                     // Sfoglio lento e realistico: 1200ms dà tempo al preload
-                    // e simula un vero libro di carta
-                    flippingTime: 1200
+                    flippingTime: 1200,
+                    // === ANTI-FLICKER ===
+                    // Disabilita le ombre dinamiche: la libreria le ridisegna
+                    // ad OGNI frame dell'animazione causando repaint continui
+                    // che l'occhio percepisce come intermittenza/sfarfallio
+                    drawShadow: false,
+                    maxShadowOpacity: 0,
+                    // Z-index stabile: evita che il browser ricomponga i layer
+                    // durante lo sfoglio (causa di flash impercettibili)
+                    startZIndex: 10
                 });
 
                 pageFlip.loadFromHTML(document.querySelectorAll('.page'));
