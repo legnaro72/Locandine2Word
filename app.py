@@ -2511,13 +2511,38 @@ with tab5:
                 # SEZIONE 5b: CREA FLIPBOOK
                 # =============================================
                 st.divider()
+                st.markdown("### 📚 Libreria Flipbook (Web)")
+                
+                flipbook_quality = st.radio(
+                    "Qualità immagini Flipbook (DPI)",
+                    options=[
+                        "300 (High - Molto definite ma pesanti, ~3/5MB a pagina)", 
+                        "200 (Medium - Consigliata per Web e Mobile, ~800KB)", 
+                        "100 (Small - Leggere e ultra veloci, ~250KB)"
+                    ],
+                    index=1,
+                    horizontal=False,
+                    help="Determina la risoluzione delle immagini estratte. Una risoluzione alta permette molto zoom ma consuma banda dati."
+                )
+                
+                # Mappa selezione a valori effettivi
+                if "300" in flipbook_quality:
+                    target_dpi = 300
+                    jpeg_quality = 90
+                elif "200" in flipbook_quality:
+                    target_dpi = 200
+                    jpeg_quality = 82
+                else:
+                    target_dpi = 100
+                    jpeg_quality = 75
+                
                 if st.button("📚 Create Flipbook", type="secondary", key="btn_create_flipbook",
                              help="Estrae le pagine dal PDF come immagini JPG, crea pages.json e salva tutto localmente e su GitHub (docs/)."):
                     pdf_data = st.session_state.get('album_pdf')
                     if not pdf_data:
                         st.error("❌ Nessun PDF disponibile. Genera prima l'album.")
                     else:
-                        with st.spinner("📚 Creazione Flipbook in corso... Estrazione pagine dal PDF a 300 DPI"):
+                        with st.spinner("📚 Creazione Flipbook in corso... Estrazione pagine ottimizzate per il Web..."):
                             try:
                                 import fitz  # PyMuPDF
                                 
@@ -2552,19 +2577,18 @@ with tab5:
                                         text=f"Estraendo pagina {page_num} di {total_pdf_pages}..."
                                     )
                                     
-                                    # Renderizza la pagina a 300 DPI
+                                    # Renderizza la pagina al DPI selezionato dall'utente
                                     page = doc.load_page(page_idx)
-                                    # 300 DPI / 72 DPI default = ~4.17x zoom
-                                    zoom = 300.0 / 72.0
+                                    zoom = target_dpi / 72.0
                                     mat = fitz.Matrix(zoom, zoom)
                                     pix = page.get_pixmap(matrix=mat)
                                     
-                                    # Converti in PIL Image e salva come JPEG
+                                    # Converti in PIL Image e salva come JPEG ottimizzato
                                     img = Image.frombytes("RGB", [pix.width, pix.height], pix.samples)
                                     
                                     img_filename = f"page_{page_num}.jpg"
                                     img_local_path = os.path.join(flipbook_images_dir, img_filename)
-                                    img.save(img_local_path, "JPEG", quality=90, dpi=(300, 300))
+                                    img.save(img_local_path, "JPEG", quality=jpeg_quality, optimize=True, progressive=True, dpi=(target_dpi, target_dpi))
                                     
                                     # Determina tipo: prime due e ultime due = "cartone"
                                     if page_num in [1, 2, total_pdf_pages - 1, total_pdf_pages]:
@@ -2577,11 +2601,12 @@ with tab5:
                                         # Il JSON ora vive nella stessa cartella delle immagini, path relativo semplice
                                         "image": f"page_{page_num}.jpg",
                                         "type": page_type,
-                                        "dpi": 300
+                                        "dpi": target_dpi
                                     })
                                     
                                     # Upload immagine su GitHub
                                     if github_mgr:
+                                        import time
                                         with open(img_local_path, "rb") as f_img:
                                             img_bytes = f_img.read()
                                         repo_path = f"docs/albums/{album_format}/{img_filename}"
@@ -2591,6 +2616,9 @@ with tab5:
                                         )
                                         if not ok:
                                             upload_errors.append(msg)
+                                        else:
+                                            # Piccola pausa per non inondare l'API di GitHub (prevents 403 rule validation errors)
+                                            time.sleep(1.0)
                                 
                                 doc.close()
                                 
@@ -2616,7 +2644,7 @@ with tab5:
                                 # Report finale
                                 st.success(
                                     f"✅ Flipbook creato con successo!\n\n"
-                                    f"📄 **{total_pdf_pages}** pagine estratte a 300 DPI\n\n"
+                                    f"📄 **{total_pdf_pages}** pagine estratte in formato Web-Optimized ({target_dpi} DPI)\n\n"
                                     f"💾 Immagini salvate in `docs/images/`\n\n"
                                     f"📋 `pages.json` salvato in `docs/`\n\n"
                                     f"{'☁️ File caricati su GitHub' if github_mgr else '⚠️ GitHub non configurato, salvato solo localmente'}"
