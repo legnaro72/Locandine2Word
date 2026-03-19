@@ -46,6 +46,13 @@
             will-change: transform;
             transform: translateZ(0);
             backface-visibility: hidden;
+            /* Transizione fluida per lo sfoglio realistico */
+            transition: box-shadow 0.3s ease;
+        }
+
+        /* Ombra dinamica durante lo sfoglio per effetto 3D */
+        .page.--flipping {
+            box-shadow: 0 0 30px rgba(0,0,0,0.4);
         }
 
         .page img {
@@ -55,6 +62,8 @@
             pointer-events: none;
             will-change: transform;
             transform: translateZ(0);
+            /* Transizione più morbida per l'apparizione dell'immagine */
+            transition: opacity 0.15s ease-in;
         }
 
         /* Pulsanti zoom e controlli */
@@ -766,7 +775,9 @@
                     showCover: true,
                     mobileScrollSupport: false,
                     useMouseEvents: false,
-                    flippingTime: 600
+                    // Sfoglio lento e realistico: 1200ms dà tempo al preload
+                    // e simula un vero libro di carta
+                    flippingTime: 1200
                 });
 
                 pageFlip.loadFromHTML(document.querySelectorAll('.page'));
@@ -820,11 +831,12 @@
                     const imgs = document.querySelectorAll(".page img");
                     const total = imgs.length;
 
-                    // Ampio buffer: 4 spread su desktop, 3 su mobile
-                    const SPREAD_PRELOAD = isMobileDevice ? 3 : 4;
+                    // Buffer generoso: con 1200ms di animazione c'è tempo
+                    // per precaricare più pagine in anticipo
+                    const SPREAD_PRELOAD = isMobileDevice ? 4 : 6;
 
-                    // Boost direzionale generoso
-                    const boost = isMobileDevice ? 2 : 4;
+                    // Boost direzionale: carica più avanti nella direzione di sfoglio
+                    const boost = isMobileDevice ? 4 : 6;
                     const forwardBoost = lastDirection === 1 ? boost : 0;
                     const backwardBoost = lastDirection === -1 ? boost : 0;
 
@@ -904,14 +916,34 @@
 
                 let currentPage = 0;
 
+                /**
+                 * Precarica aggressivamente PRIMA che l'animazione di flip inizi.
+                 * Con 1200ms di animazione c'è abbastanza tempo per decodificare
+                 * le immagini delle pagine successive durante lo sfoglio.
+                 */
+                pageFlip.on('changeOrientation', () => {
+                    // Pre-carica basandosi sulla pagina corrente + direzione
+                    const nextTarget = currentPage + (lastDirection === 1 ? 2 : -2);
+                    if (nextTarget >= 0 && nextTarget < pages.length) {
+                        loadNearbyPages(nextTarget);
+                    }
+                });
+
                 pageFlip.on('flip', (e) => {
                     const targetPage = e.data;
 
                     // Traccia direzione per boost preload
                     lastDirection = targetPage > currentPage ? 1 : -1;
 
-                    // PRELOAD IMMEDIATO (prima del render)
+                    // PRELOAD IMMEDIATO (durante l'animazione di 1200ms)
                     loadNearbyPages(targetPage);
+
+                    // Precarichiamo anche un po' più avanti nella direzione di sfoglio
+                    // sfruttando i 1200ms di animazione
+                    const lookAhead = targetPage + (lastDirection * 4);
+                    if (lookAhead >= 0 && lookAhead < pages.length) {
+                        loadNearbyPages(lookAhead);
+                    }
 
                     requestAnimationFrame(() => {
                         const totalPages = pages.length;
