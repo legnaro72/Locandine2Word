@@ -46,12 +46,18 @@
         .page {
             background: #14284b;
             overflow: hidden;
-            /* GPU layer singolo per pagina — il minimo indispensabile */
+            backface-visibility: hidden;
+            -webkit-backface-visibility: hidden;
+            /* NESSUN will-change/translateZ di default!
+               Su mobile 40+ layer GPU simultanei = layer thrashing = flicker.
+               I layer GPU vengono attivati DINAMICAMENTE solo sulle pagine vicine. */
+        }
+
+        /* Classe aggiunta via JS solo alle pagine entro ±4 dalla corrente */
+        .page.gpu-active {
             will-change: transform;
             transform: translateZ(0);
             -webkit-transform: translateZ(0);
-            backface-visibility: hidden;
-            -webkit-backface-visibility: hidden;
         }
 
         .page img {
@@ -59,8 +65,6 @@
             height: 100%;
             object-fit: contain;
             pointer-events: none;
-            /* NO will-change qui: il layer GPU è già sul .page genitore.
-               Avere due layer sovrapposti causa flicker da compositing */
             -webkit-backface-visibility: hidden;
             backface-visibility: hidden;
         }
@@ -780,22 +784,50 @@
                     showCover: true,
                     mobileScrollSupport: false,
                     useMouseEvents: false,
-                    // Sfoglio lento e realistico: 1200ms dà tempo al preload
-                    flippingTime: 1200,
+                    // Mobile: 1000ms (GPU più debole, meno frame da renderizzare)
+                    // Desktop: 1200ms (GPU potente, animazione più cinematica)
+                    flippingTime: isMobileDevice ? 1000 : 1200,
                     // === ANTI-FLICKER ===
-                    // Disabilita le ombre dinamiche: la libreria le ridisegna
-                    // ad OGNI frame dell'animazione causando repaint continui
-                    // che l'occhio percepisce come intermittenza/sfarfallio
                     drawShadow: false,
                     maxShadowOpacity: 0,
-                    // Z-index stabile: evita che il browser ricomponga i layer
-                    // durante lo sfoglio (causa di flash impercettibili)
                     startZIndex: 10
                 });
 
                 pageFlip.loadFromHTML(document.querySelectorAll('.page'));
-                
+
+                /* ==== GESTIONE DINAMICA LAYER GPU (ANTI-FLICKER MOBILE) ====
+                 * Su mobile la GPU ha memoria limitata (~100-200MB).
+                 * Ogni layer GPU (will-change+translateZ) consuma ~2-5MB.
+                 * 40 pagine × 5MB = 200MB → la GPU "sfarfalla" perché
+                 * promuove/demote i layer continuamente (layer thrashing).
+                 *
+                 * Soluzione: promuovere a GPU SOLO le pagine vicine (±GPU_RANGE)
+                 * e lasciare le altre come normali elementi DOM.
+                 */
+                const GPU_RANGE = isMobileDevice ? 3 : 6;
+                let lastGPUCenter = -1;
+
+                function updateGPULayers(centerPage) {
+                    // Evita lavoro inutile se il centro non è cambiato
+                    if (centerPage === lastGPUCenter) return;
+                    lastGPUCenter = centerPage;
+
+                    const allPages = document.querySelectorAll('.page');
+                    const len = allPages.length;
+                    const rangeStart = Math.max(0, centerPage - GPU_RANGE);
+                    const rangeEnd = Math.min(len - 1, centerPage + GPU_RANGE);
+
+                    for (let i = 0; i < len; i++) {
+                        if (i >= rangeStart && i <= rangeEnd) {
+                            allPages[i].classList.add('gpu-active');
+                        } else {
+                            allPages[i].classList.remove('gpu-active');
+                        }
+                    }
+                }
+
                 pageFlip.on('init', () => {
+                    updateGPULayers(0);
                     loadNearbyPages(0);
                 });
 
@@ -970,11 +1002,13 @@
                     // Traccia direzione per boost preload
                     lastDirection = targetPage > currentPage ? 1 : -1;
 
-                    // PRELOAD IMMEDIATO (durante l'animazione di 1200ms)
+                    // Aggiorna layer GPU: promuovi solo le pagine vicine
+                    updateGPULayers(targetPage);
+
+                    // PRELOAD IMMEDIATO (durante l'animazione)
                     loadNearbyPages(targetPage);
 
-                    // Precarichiamo anche un po' più avanti nella direzione di sfoglio
-                    // sfruttando i 1200ms di animazione
+                    // Look-ahead nella direzione di sfoglio
                     const lookAhead = targetPage + (lastDirection * 4);
                     if (lookAhead >= 0 && lookAhead < pages.length) {
                         loadNearbyPages(lookAhead);
