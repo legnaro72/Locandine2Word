@@ -5,10 +5,12 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
     <title>Flipbook Album</title>
-
+    <!-- Preload audio con priorità MASSIMA: parte prima delle immagini -->
+    <link rel="preload" href="../GiustoDireNo.mp3" as="fetch" crossorigin fetchpriority="high">
 
     <style>
-        html, body {
+        html,
+        body {
             margin: 0;
             padding: 0;
             width: 100%;
@@ -20,7 +22,10 @@
 
         #book-wrapper {
             position: fixed;
-            top: 0; left: 0; right: 0; bottom: 0;
+            top: 0;
+            left: 0;
+            right: 0;
+            bottom: 0;
             background: #1a1a1a;
             overflow: hidden;
             touch-action: none;
@@ -145,7 +150,10 @@
 
         #mobile-start-overlay {
             position: fixed;
-            top: 0; left: 0; right: 0; bottom: 0;
+            top: 0;
+            left: 0;
+            right: 0;
+            bottom: 0;
             background: rgba(0, 0, 0, 0.8);
             display: flex;
             flex-direction: column;
@@ -267,8 +275,8 @@
     </div>
 
 
-    <audio id="bgMusic" src="../GiustoDireNo.mp3" loop preload="auto" playsinline
-        onerror="console.error('⚠️ ALARM FILE MANCANTE! Il file non è stato trovato dal server a questo indirizzo: ' + this.src); alert('Errore: impossibile caricare GiustoDireNo.mp3 on line. Controlla maiuscole/minuscole su GitHub!');"></audio>
+    <!-- Audio senza src: verrà impostato dal pre-fetch JavaScript con Blob URL per partenza istantanea -->
+    <audio id="bgMusic" loop playsinline></audio>
 
     <script src="https://cdn.jsdelivr.net/npm/page-flip/dist/js/page-flip.browser.min.js"></script>
 
@@ -286,7 +294,7 @@
          */
         function getViewportSize() {
             return {
-                width:  wrapper.clientWidth  || window.innerWidth,
+                width: wrapper.clientWidth || window.innerWidth,
                 height: wrapper.clientHeight || window.innerHeight
             };
         }
@@ -629,8 +637,37 @@
         const audioToggleBtn = document.getElementById("audio-toggle");
         const startOverlay = document.getElementById("mobile-start-overlay");
         let musicStarted = false;
+        let bgMusicReady = false; // true quando il Blob URL è pronto
 
         const isMobile = /iPhone|iPad|iPod|Android/i.test(navigator.userAgent);
+
+        /**
+         * PRE-FETCH AUDIO CON PRIORITÀ MASSIMA
+         * Scarica l'MP3 come Blob in memoria SUBITO, prima che le immagini
+         * saturino la banda. Quando l'utente clicca INIZIA, l'audio
+         * è già interamente in RAM → play() parte in <50ms.
+         */
+        (function prefetchBgMusic() {
+            console.log("🎵 Pre-fetch audio di sottofondo...");
+            fetch("../GiustoDireNo.mp3", { priority: "high" })
+                .then(res => {
+                    if (!res.ok) throw new Error("HTTP " + res.status);
+                    return res.blob();
+                })
+                .then(blob => {
+                    const blobUrl = URL.createObjectURL(blob);
+                    bgMusic.src = blobUrl;
+                    bgMusic.load(); // forza il browser a bufferizzare dal Blob (istantaneo)
+                    bgMusicReady = true;
+                    console.log("✅ Audio pre-caricato in memoria (" + (blob.size / 1024 / 1024).toFixed(1) + " MB)");
+                })
+                .catch(err => {
+                    // Fallback: usa il src classico
+                    console.warn("⚠️ Pre-fetch audio fallito, fallback a src diretto.", err);
+                    bgMusic.src = "../GiustoDireNo.mp3";
+                    bgMusic.preload = "auto";
+                });
+        })();
 
         /* ==== SUONI (WEB AUDIO API) — scope globale ==== */
         let audioCtx;
@@ -681,7 +718,7 @@
 
         function startMusic() {
             if (!musicStarted) {
-                console.log("▶️ Tentativo di avvio audio...");
+                console.log("▶️ Tentativo di avvio audio... (ready=" + bgMusicReady + ")");
                 bgMusic.play().then(() => {
                     console.log("✅ Audio avviato con successo!");
                     musicStarted = true;
