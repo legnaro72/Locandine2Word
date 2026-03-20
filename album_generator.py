@@ -1034,7 +1034,7 @@ class AlbumGenerator:
                 "",
                 "Una primavera antifascista, nel senso più autentico della nostra Repubblica: quello di un Paese che non ha paura della giustizia, ma la protegge.",
                 "",
-                "Massimiliano Ferrando"
+                ""
             ]
             
             font_testo = self._get_font(38)
