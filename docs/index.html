@@ -160,13 +160,16 @@
             { id: "2x4", title: "Formato 2x4", desc: "Otto locandine per pagina", icon: "📓" },
             { id: "3x3", title: "Formato 3x3", desc: "Nove locandine per pagina", icon: "📗" },
             { id: "3x4", title: "Formato 3x4", desc: "Dodici locandine per pagina", icon: "📙" },
-            { id: "4x4", title: "Formato 4x4", desc: "Sedici locandine miniaturizzate", icon: "📚" }
+            { id: "4x4", title: "Formato 4x4", desc: "Sedici locandine miniaturizzate", icon: "📚" },
+            { id: "4x5", title: "Formato 4x5", desc: "Venti locandine per pagina", icon: "📖" }
         ];
 
         const grid = document.getElementById('album-grid');
 
         async function checkAndLoadAlbums() {
             let found = 0;
+            let singleFormatUrl = null;
+
             for (const f of formats) {
                 try {
                     // Controlliamo se esiste il file pages.json nella sottocartella albums/ID/
@@ -174,8 +177,11 @@
 
                     if (response.ok) {
                         found++;
+                        const url = `flipbook/album.html?format=${f.id}`;
+                        singleFormatUrl = url;
+
                         const card = document.createElement('a');
-                        card.href = `flipbook/album.html?format=${f.id}`;
+                        card.href = url;
                         card.className = 'album-card';
                         card.innerHTML = `
                             <div class="icon">${f.icon}</div>
@@ -191,6 +197,26 @@
 
             if (found === 0) {
                 grid.innerHTML = "<p style='grid-column: 1/-1;'>Nessun album generato trovato. <br>Usa l'app per esportare il tuo primo Flipbook o attendi il deploy su GitHub Pages!</p>";
+            } else if (found === 1 && singleFormatUrl) {
+                // Un solo formato disponibile: auto-redirect dopo 3 secondi
+                const countdown = document.createElement('div');
+                countdown.style.cssText = 'text-align:center; margin-top:20px; color:#aaa; font-size:1.1rem;';
+                countdown.innerHTML = 'Unico album disponibile — apertura automatica in <strong style="color:#fff; font-size:1.3rem;">3</strong> secondi...';
+                grid.after(countdown);
+
+                let seconds = 3;
+                const timer = setInterval(() => {
+                    seconds--;
+                    if (seconds <= 0) {
+                        clearInterval(timer);
+                        window.location.href = singleFormatUrl;
+                    } else {
+                        countdown.innerHTML = `Unico album disponibile — apertura automatica in <strong style="color:#fff; font-size:1.3rem;">${seconds}</strong> second${seconds === 1 ? 'o' : 'i'}...`;
+                    }
+                }, 1000);
+
+                // Se l'utente clicca la card, annulla il timer
+                grid.querySelector('.album-card')?.addEventListener('click', () => clearInterval(timer));
             }
         }
 
