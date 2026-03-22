@@ -821,14 +821,16 @@
         function startMusic() {
             if (musicStarted === true) return; // già in riproduzione
 
+            // Assicura che AudioContext esista (safety net)
+            ensureAudioContext();
+
             // Se l'audio non è ancora scaricato/decodificato,
-            // segna come 'pending' e sarà avviato automaticamente quando ready
+            // segna come 'pending' e avvia decodifica se possibile
             if (bgMusicReady !== true) {
                 console.log("⏳ Audio non ancora pronto (stato: " + bgMusicReady + "), avvio differito...");
                 musicStarted = 'pending';
                 
-                // Se abbiamo l'ArrayBuffer ma non ancora l'AudioContext, non possiamo decodificare
-                // Se abbiamo entrambi, la decodifica è già in corso
+                // Se abbiamo l'ArrayBuffer E l'AudioContext, decodifica subito
                 if (bgMusicReady === 'downloaded' && bgAudioCtx && window._bgMusicArrayBuffer) {
                     decodeBgMusic(window._bgMusicArrayBuffer);
                 }
@@ -869,9 +871,12 @@
         // Click sul pulsantone gigante INIZIA!
         document.getElementById("start-app").onclick = () => {
 
-            // Azioni sincrone (mantengono il "user gesture" per audio + fullscreen)
-            startMusic();
+            // ORDINE CRITICO: AudioContext PRIMA, poi startMusic
+            // L'AudioContext DEVE esistere perché startMusic() ne ha bisogno
+            // per decodificare l'ArrayBuffer in AudioBuffer.
+            // Entrambi devono essere nel click handler per il "user gesture".
             ensureAudioContext();
+            startMusic();
 
             // Nascondi overlay via classe CSS
             startOverlay.classList.add('hidden');
@@ -1169,19 +1174,19 @@
                     }
                 }
 
-                /* ==== IDLE BACKGROUND PRELOADER (THROTTLED) ==== */
+                /* ==== IDLE BACKGROUND PRELOADER ==== */
                 // Carica progressivamente TUTTE le pagine rimanenti durante i tempi morti.
-                // THROTTLED: max 1 immagine ogni 100ms per non saturare la rete
-                // e permettere all'audio di bufferizzare senza interruzioni.
+                // Con Web Audio API l'audio è su thread separato, quindi possiamo
+                // essere più aggressivi con il preload senza causare stuttering.
                 let idlePreloadIndex = EAGER_COUNT;
-                const IDLE_BATCH_SIZE = 1; // 1 immagine alla volta = meno pressione
-                const IDLE_PAUSE_MS = 150; // pausa tra batch per dare respiro alla rete
+                const IDLE_BATCH_SIZE = 3; // 3 immagini per batch — buon compromesso
+                const IDLE_PAUSE_MS = 50;  // 50ms pausa tra batch — veloce ma gentile
 
                 function idlePreloadStep(deadline) {
                     const imgs = document.querySelectorAll(".page img");
                     let loaded = 0;
                     while (idlePreloadIndex < imgs.length && loaded < IDLE_BATCH_SIZE) {
-                        if (deadline && deadline.timeRemaining() < 5) break;
+                        if (deadline && deadline.timeRemaining() < 2) break;
 
                         const img = imgs[idlePreloadIndex];
                         if (img.dataset.src) {
@@ -1192,10 +1197,10 @@
                     }
 
                     if (idlePreloadIndex < imgs.length) {
-                        // Pausa tra batch per non saturare la rete
+                        // Micro-pausa tra batch — non blocca ma non rallenta
                         setTimeout(() => {
                             if (window.requestIdleCallback) {
-                                requestIdleCallback(idlePreloadStep, { timeout: 5000 });
+                                requestIdleCallback(idlePreloadStep, { timeout: 3000 });
                             } else {
                                 idlePreloadStep(null);
                             }
@@ -1205,14 +1210,14 @@
                     }
                 }
 
-                // Avvia il preloader idle dopo che l'audio ha avuto tempo di stabilizzarsi
+                // Avvia il preloader idle dopo breve ritardo per non competere col rendering iniziale
                 setTimeout(() => {
                     if (window.requestIdleCallback) {
-                        requestIdleCallback(idlePreloadStep, { timeout: 5000 });
+                        requestIdleCallback(idlePreloadStep, { timeout: 3000 });
                     } else {
                         idlePreloadStep(null);
                     }
-                }, 4000);
+                }, 2000);
 
                 /* ==== AUDIO: offset e bottoni ==== */
 
