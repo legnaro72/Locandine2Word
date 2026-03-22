@@ -1024,7 +1024,7 @@ class AlbumGenerator:
             testo_raw = [
                 "Il 22 e 23 marzo non sono soltanto due date sul calendario. Sono un passaggio di coscienza civile.",
                 "",
-                "In queste settimane ho visto magistrati, pubblici ministeri, avvocati ed ex magistrati metterci la faccia, la voce, la dignità delle loro toghe per difendere qualcosa che appartiene a tutti: la giustizia come pilastro della nostra democrazia e della nostra Costituzione.",
+                "In queste settimane ho visto Magistrati (Pubblici Ministeri e Giudici), ex Magistrati, Avvocati metterci la faccia, la voce, la dignità delle loro toghe per difendere qualcosa che appartiene a tutti: la giustizia come pilastro della nostra democrazia e della nostra Costituzione.",
                 "",
                 "A loro va un pensiero pieno di rispetto. Non per una battaglia di parte, ma per aver ricordato che la giustizia non è un terreno da smontare pezzo dopo pezzo, bensì una casa comune da custodire.",
                 "",
@@ -1034,7 +1034,7 @@ class AlbumGenerator:
                 "",
                 "Una primavera antifascista, nel senso più autentico della nostra Repubblica: quello di un Paese che non ha paura della giustizia, ma la protegge.",
                 "",
-                ""
+                "Massi"
             ]
             
             font_testo = self._get_font(38)
