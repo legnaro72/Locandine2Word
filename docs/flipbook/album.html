@@ -254,7 +254,7 @@
 
 
     <!-- Audio di sottofondo semplice e diretto -->
-    <audio id="bgMusic" src="../GiustoDireNo.mp3" loop playsinline preload="auto"></audio>
+    <audio id="bgMusic" loop playsinline></audio>
 
     <script src="https://cdn.jsdelivr.net/npm/page-flip/dist/js/page-flip.browser.min.js"></script>
 
@@ -634,9 +634,46 @@
         const audioToggleBtn = document.getElementById("audio-toggle");
         const startOverlay = document.getElementById("mobile-start-overlay");
         let musicStarted = false;
+        let bgMusicReady = false;
 
         const isMobile = /iPhone|iPad|iPod|Android/i.test(navigator.userAgent);
         const isIOS = /iPhone|iPad|iPod/i.test(navigator.userAgent);
+
+        /**
+         * PRE-FETCH AUDIO VIA BLOB
+         * Android Chrome ignora preload="auto" per risparmiare dati.
+         * Se non peschiamo il file via fetch(), il download parte 
+         * solo al click su "INIZIA", strangolando la rete e bloccando le immagini.
+         */
+        (function prefetchBgMusic() {
+            console.log("🎵 Pre-fetch audio MP3...");
+            fetch("../GiustoDireNo.mp3")
+                .then(res => {
+                    if (!res.ok) throw new Error("HTTP " + res.status);
+                    return res.blob();
+                })
+                .then(blob => {
+                    if (blob.size < 1000) throw new Error("File troppo piccolo");
+                    const blobUrl = URL.createObjectURL(blob);
+                    bgMusic.src = blobUrl;
+                    bgMusic.load();
+                    
+                    bgMusic.addEventListener('canplaythrough', () => {
+                        bgMusicReady = true;
+                        console.log("✅ Audio scaricato e pronto");
+                        if (musicStarted === 'pending') {
+                            musicStarted = false;
+                            startMusic();
+                        }
+                    }, { once: true });
+                })
+                .catch(err => {
+                    console.warn("⚠️ Pre-fetch audio fallito:", err.message);
+                    bgMusic.src = "../GiustoDireNo.mp3";
+                    bgMusic.load();
+                    bgMusicReady = true;
+                });
+        })();
 
         /* ==== SUONI (WEB AUDIO API) — solo per effetti SFX ==== */
         let audioCtx;
@@ -688,6 +725,12 @@
         function startMusic() {
             if (musicStarted === true) return; // già in riproduzione
             
+            if (!bgMusicReady) {
+                console.log("⏳ Audio non ancora pronto, avvio differito...");
+                musicStarted = 'pending';
+                return;
+            }
+
             console.log("▶️ Avvio audio (HTML5 Audio)...");
             bgMusic.play().then(() => {
                 console.log("✅ Audio avviato con successo!");
