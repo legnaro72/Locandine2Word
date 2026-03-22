@@ -865,9 +865,11 @@
                 /* ==== CARICAMENTO PROGRESSIVO IMMAGINI ==== */
                 const bookDiv = document.getElementById("book");
 
-                // iPHONE FIX: Se imposti 10 imgs (spesso file in alta ris) Safari s'intasa e
-                // la pagina non finisce mai di avviarsi/blocca i download audio concomitanti.
-                const EAGER_COUNT = isMobileDevice ? 2 : 4;
+                // iOS: 4 pagine eager (copertina + dedica + primo spread) perché il
+                // meccanismo preloadAndDecode non funziona bene su Safari (cache miss).
+                // Android: 2 pagine (il preload+decode funziona perfettamente).
+                // PC: 4 pagine (banda e CPU abbondanti).
+                const EAGER_COUNT = isIOS ? 4 : (isMobileDevice ? 2 : 4);
 
                 // Le prime 2 pagine (copertina + retro copertina/dedica) hanno
                 // priorità MASSIMA: devono arrivare PRIMA delle pagine 2-3.
@@ -1044,31 +1046,36 @@
                 }
 
                 /**
-                 * Attiva un'immagine nella pagina: se è già decodificata
-                 * in cache la swap è SINCRONA (zero flash), altrimenti
-                 * attende decode e poi swappa.
+                 * Attiva un'immagine nella pagina.
+                 * - iOS Safari: assegna src DIRETTAMENTE. Il pattern preloadAndDecode
+                 *   causa un doppio download perché Safari non condivide la cache
+                 *   tra new Image() in JS e <img> nel DOM.
+                 * - Android/PC: usa preloadAndDecode per swap atomico (zero flash).
                  */
                 function activateImage(img) {
                     if (!img.dataset.src) return;
                     const src = img.dataset.src;
 
                     // Segna subito come "in caricamento" per evitare doppie chiamate
-                    const pendingSrc = img.dataset.src;
                     delete img.dataset.src;
 
-                    // Controlla se abbiamo già l'immagine decodificata in cache
+                    // === iOS: assegnamento diretto, niente new Image() ===
+                    if (isIOS) {
+                        img.decoding = "async";
+                        img.src = src;
+                        return;
+                    }
+
+                    // === Android/PC: preload+decode per zero-flash swap ===
                     const cached = decodedCache.get(src);
                     if (cached && typeof cached.then === 'function') {
-                        // Se la promise è già risolta, il .then è quasi sincrono
                         cached.then((decodedImg) => {
-                            // Swap atomico: src viene assegnato solo DOPO decode
                             img.decoding = "sync";
                             img.src = src;
                         }).catch(() => {
-                            img.src = src; // fallback
+                            img.src = src;
                         });
                     } else {
-                        // Non ancora in cache: avvia preload+decode, poi swappa
                         preloadAndDecode(src).then(() => {
                             img.decoding = "sync";
                             img.src = src;
