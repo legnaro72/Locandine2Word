@@ -902,27 +902,10 @@
         document.addEventListener("webkitfullscreenchange", onFullscreenChange);
 
         /* ==== LOAD BOOK ==== */
-        /**
-         * ANTI-CACHE MIGLIORATO:
-         * Il semplice cacheBuster (?v=timestamp) non basta su Chrome mobile
-         * perché il Service Worker o la disk-cache possono comunque servire
-         * la versione vecchia. Usiamo:
-         * 1. cache: "no-store" nella fetch (bypassa disk cache)
-         * 2. Cache-Control + Pragma headers (segnale al browser)
-         * 3. cacheBuster nel URL (bypasssa CDN/proxy intermedi)
-         */
-        const cacheBuster = "?v=" + new Date().getTime();
         const urlParams = new URLSearchParams(window.location.search);
         const format = urlParams.get('format') || '2x3';
 
-        fetch(`../albums/${format}/pages.json${cacheBuster}`, {
-            cache: "no-store",
-            headers: {
-                "Cache-Control": "no-cache, no-store, must-revalidate",
-                "Pragma": "no-cache",
-                "Expires": "0"
-            }
-        })
+        fetch(`../albums/${format}/pages.json`)
             .then(r => r.json())
             .then(pages => {
 
@@ -946,7 +929,7 @@
                     const preloadLink = document.createElement("link");
                     preloadLink.rel = "preload";
                     preloadLink.as = "image";
-                    preloadLink.href = `../albums/${format}/${pages[i].image}${cacheBuster}`;
+                    preloadLink.href = `../albums/${format}/${pages[i].image}`;
                     preloadLink.setAttribute("fetchpriority", "high");
                     document.head.appendChild(preloadLink);
                 }
@@ -963,8 +946,8 @@
 
                     const img = document.createElement("img");
 
-                    // URL con cache-buster
-                    const imageUrl = `../albums/${format}/${p.image}${cacheBuster}`;
+                    // URL immagine (senza cacheBuster — il browser usa la cache naturale)
+                    const imageUrl = `../albums/${format}/${p.image}`;
 
                     if (index < EAGER_COUNT) {
                         img.src = imageUrl;
