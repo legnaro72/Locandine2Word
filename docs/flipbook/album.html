@@ -847,6 +847,24 @@
                 // la pagina non finisce mai di avviarsi/blocca i download audio concomitanti.
                 const EAGER_COUNT = isMobileDevice ? 2 : 4;
 
+                // Le prime 2 pagine (copertina + retro copertina/dedica) hanno
+                // priorità MASSIMA: devono arrivare PRIMA delle pagine 2-3.
+                // Senza fetchpriority, il browser le scarica tutte in parallelo
+                // e renderizza quella che arriva prima → la dedica (spesso più
+                // pesante) compare DOPO la pagina 3.
+                const HIGH_PRIORITY_COUNT = 2;
+
+                // Inietta <link rel="preload"> nel <head> per le prime 2 pagine:
+                // questo fa partire il download PRIMA ancora che gli <img> esistano nel DOM
+                for (let i = 0; i < Math.min(HIGH_PRIORITY_COUNT, pages.length); i++) {
+                    const preloadLink = document.createElement("link");
+                    preloadLink.rel = "preload";
+                    preloadLink.as = "image";
+                    preloadLink.href = `../albums/${format}/${pages[i].image}${cacheBuster}`;
+                    preloadLink.setAttribute("fetchpriority", "high");
+                    document.head.appendChild(preloadLink);
+                }
+
                 // Placeholder alla STESSA dimensione del background della pagina.
                 // CRITICO per iOS: un 1x1 GIF trasparente su Safari causa un flash
                 // bianco/nero durante il ridimensionamento. Un SVG col colore di fondo
@@ -866,6 +884,11 @@
                         img.src = imageUrl;
                         img.loading = "eager";
                         img.decoding = "sync"; // prime pagine: decode sincrono per evitare flash
+                        // Pagine 0-1 (copertina + dedica): priorità ALTA
+                        // Pagine 2-3: priorità normale (scaricate dopo)
+                        if (index < HIGH_PRIORITY_COUNT) {
+                            img.fetchPriority = "high";
+                        }
                     } else {
                         // Placeholder con colore della pagina: ZERO flash visibile
                         img.src = BLANK_PLACEHOLDER;
