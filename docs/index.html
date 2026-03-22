@@ -214,43 +214,30 @@
                 instruction.innerHTML = `⏳ Unico album disponibile (<strong>${singleFormatTitle}</strong>) — apertura automatica in <strong style="color:#fff; font-size:1.3rem;">3</strong> secondi...`;
 
                 // === PRE-CARICAMENTO DURANTE IL COUNTDOWN ===
-                // Sfruttiamo i 3 secondi di attesa per pre-caricare audio e immagini.
-                // Quando album.html si apre, queste risorse sono già nella cache del browser.
+                // Sfruttiamo i 3 secondi di attesa per pre-caricare audio e immagini nella Cache HTTP
+                // Usiamo fetch() reale invece di <link rel="prefetch"> perché Chrome su mobile
+                // tratta i link con la priorità più bassa ed è inutilizzabile per un MP3 di 5MB.
                 const singleFormatId = singleFormatUrl.split('format=')[1];
                 
-                // 1. Pre-carica audio di sottofondo (priorità massima)
-                const audioPreload = document.createElement('link');
-                audioPreload.rel = 'prefetch';
-                audioPreload.href = 'GiustoDireNo.mp3';
-                audioPreload.as = 'fetch';
-                audioPreload.crossOrigin = 'anonymous';
-                document.head.appendChild(audioPreload);
+                // 1. Pre-fetch attivo dell'audio di sottofondo (FORZATO)
+                fetch('GiustoDireNo.mp3', { priority: 'high' }).catch(() => {});
                 
-                // 2. Pre-carica le prime pagine dell'album
+                // 2. Pre-fetch delle prime 2 pagine dell'album
                 try {
-                    const pagesResp = await fetch(`albums/${singleFormatId}/pages.json`);
-                    if (pagesResp.ok) {
-                        const pagesData = await pagesResp.json();
-                        const preloadCount = Math.min(4, pagesData.length);
-                        for (let i = 0; i < preloadCount; i++) {
-                            const imgPreload = document.createElement('link');
-                            imgPreload.rel = 'prefetch';
-                            imgPreload.href = `albums/${singleFormatId}/${pagesData[i].image}`;
-                            imgPreload.as = 'image';
-                            document.head.appendChild(imgPreload);
+                    fetch(`albums/${singleFormatId}/pages.json`).then(async resp => {
+                        if (resp.ok) {
+                            const pagesData = await resp.json();
+                            const preloadCount = Math.min(2, pagesData.length);
+                            for (let i = 0; i < preloadCount; i++) {
+                                fetch(`albums/${singleFormatId}/${pagesData[i].image}`, { priority: 'low' }).catch(() => {});
+                            }
                         }
-                        console.log(`📦 Pre-caricamento: audio + ${preloadCount} pagine durante countdown`);
-                    }
-                } catch(e) { /* ignora errori di prefetch */ }
+                    });
+                } catch(e) { /* ignora */ }
 
-                // 3. Pre-carica anche i suoni effetti
+                // 3. Pre-fetch dei suoni
                 ['flip.mp3', 'open.mp3', 'close.mp3'].forEach(sound => {
-                    const sfx = document.createElement('link');
-                    sfx.rel = 'prefetch';
-                    sfx.href = sound;
-                    sfx.as = 'fetch';
-                    sfx.crossOrigin = 'anonymous';
-                    document.head.appendChild(sfx);
+                    fetch(sound, { priority: 'low' }).catch(() => {});
                 });
 
                 let seconds = 3;
