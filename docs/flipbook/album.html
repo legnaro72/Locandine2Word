@@ -3,10 +3,12 @@
 
 <head>
     <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
+    <meta name="apple-mobile-web-app-capable" content="yes">
+    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
     <title>Flipbook Album</title>
     <!-- Preload audio con priorità alta: parte prima delle immagini -->
-    <link rel="preload" href="../GiustoDireNo.mp3" as="audio">
+    <link rel="preload" href="../GiustoDireNo.mp3" as="audio" crossorigin>
 
     <style>
         html,
@@ -15,9 +17,14 @@
             padding: 0;
             width: 100%;
             height: 100%;
+            /* iOS Safari: -webkit-fill-available è più affidabile di 100vh */
+            height: -webkit-fill-available;
             overflow: hidden;
-            background: #2c2c2c;
+            background: #1a1a1a;
             font-family: sans-serif;
+            /* Previene pull-to-refresh e bounce su iOS */
+            overscroll-behavior: none;
+            -webkit-overflow-scrolling: touch;
         }
 
         #book-wrapper {
@@ -53,16 +60,27 @@
             overflow: hidden;
             backface-visibility: hidden;
             -webkit-backface-visibility: hidden;
-            /* NESSUN will-change/translateZ di default!
-               Su mobile 40+ layer GPU simultanei = layer thrashing = flicker.
-               I layer GPU vengono attivati DINAMICAMENTE solo sulle pagine vicine. */
+            /* Contiene layout/paint: il browser non deve rifare il layout
+               di TUTTA la pagina quando una singola .page cambia */
+            contain: strict;
+            /* Transizione morbida per evitare flash quando i layer GPU
+               vengono attivati/disattivati (il problema Android) */
+            transition: opacity 0.05s linear;
+            opacity: 1;
         }
 
-        /* Classe aggiunta via JS solo alle pagine entro ±4 dalla corrente */
+        /* Classe aggiunta via JS solo alle pagine entro ±N dalla corrente.
+           ANTI-FLICKER: usiamo un approccio più gentile: niente will-change
+           globale, solo translateZ(0) per la promozione a layer composito.
+           will-change viene usato SOLO durante l'animazione attiva. */
         .page.gpu-active {
-            will-change: transform;
             transform: translateZ(0);
             -webkit-transform: translateZ(0);
+        }
+
+        /* Classe aggiunta SOLO durante il flip attivo (poche pagine, pochi ms) */
+        .page.gpu-flipping {
+            will-change: transform;
         }
 
         .page img {
@@ -72,6 +90,13 @@
             pointer-events: none;
             -webkit-backface-visibility: hidden;
             backface-visibility: hidden;
+            /* iOS Safari rendering fix: forza rasterizzazione hardware
+               senza creare layer separati per ogni immagine */
+            -webkit-transform: translate3d(0,0,0);
+            transform: translate3d(0,0,0);
+            /* Previene il flash bianco durante il decode su iOS */
+            image-rendering: auto;
+            content-visibility: auto;
         }
 
         /* Pulsanti zoom e controlli */
@@ -610,18 +635,49 @@
         const audioToggleBtn = document.getElementById("audio-toggle");
         const startOverlay = document.getElementById("mobile-start-overlay");
         let musicStarted = false;
-        let bgMusicReady = false; // true quando il Blob URL è pronto
+        let bgMusicReady = false; // true quando il browser può riprodurre SENZA buffering
 
         const isMobile = /iPhone|iPad|iPod|Android/i.test(navigator.userAgent);
+        const isIOS = /iPhone|iPad|iPod/i.test(navigator.userAgent);
 
         /**
-         * PRE-FETCH AUDIO CON PRIORITÀ
-         * Scarica l'MP3 come Blob in memoria SUBITO, prima che le immagini
-         * saturino la banda. Quando l'utente clicca INIZIA, l'audio
-         * è già interamente in RAM → play() parte in <50ms.
+         * PRE-FETCH AUDIO CON PRIORITÀ — FIX RITARDO
+         * 
+         * Il problema del ritardo era duplice:
+         * 1. bgMusicReady veniva settato a true PRIMA che il browser
+         *    avesse effettivamente decodificato il Blob → play() partiva
+         *    ma doveva ancora bufferizzare internamente.
+         * 2. Su iOS, bgMusic.load() da Blob URL è asincrono e può
+         *    richiedere 500ms+ prima che canplaythrough si triggeri.
+         *
+         * Soluzione: NON marcare bgMusicReady finché il browser non
+         * emette 'canplaythrough' (= audio pronto per play senza buffering).
          */
         (function prefetchBgMusic() {
             console.log("🎵 Pre-fetch audio di sottofondo...");
+
+            // Listener unificato: l'audio è DAVVERO pronto solo dopo canplaythrough
+            function onAudioReady() {
+                if (bgMusicReady) return; // evita doppia segnalazione
+                bgMusicReady = true;
+                console.log("✅ Audio pronto per la riproduzione istantanea");
+                // Se l'utente ha già premuto INIZIA mentre l'audio caricava, parti subito
+                if (musicStarted === 'pending') {
+                    musicStarted = false;
+                    startMusic();
+                }
+            }
+
+            bgMusic.addEventListener('canplaythrough', onAudioReady, { once: true });
+
+            // Safety timeout: se canplaythrough non arriva entro 8s, forza ready
+            const safetyTimer = setTimeout(() => {
+                if (!bgMusicReady) {
+                    console.warn("⏱️ Timeout canplaythrough — forzo ready");
+                    onAudioReady();
+                }
+            }, 8000);
+
             fetch("../GiustoDireNo.mp3")
                 .then(res => {
                     if (!res.ok) throw new Error("HTTP " + res.status);
@@ -632,16 +688,14 @@
                     const blobUrl = URL.createObjectURL(blob);
                     bgMusic.src = blobUrl;
                     bgMusic.load();
-                    bgMusicReady = true;
-                    console.log("✅ Audio pre-caricato in memoria (" + (blob.size / 1024 / 1024).toFixed(1) + " MB)");
+                    console.log("📦 Blob audio caricato (" + (blob.size / 1024 / 1024).toFixed(1) + " MB), attesa canplaythrough...");
                 })
                 .catch(err => {
-                    // Fallback: usa il src classico (funziona sempre)
                     console.warn("⚠️ Pre-fetch audio fallito, fallback a src diretto:", err.message);
                     bgMusic.src = "../GiustoDireNo.mp3";
                     bgMusic.preload = "auto";
                     bgMusic.load();
-                    bgMusicReady = true;
+                    // Il listener canplaythrough gestirà comunque il ready
                 });
         })();
 
@@ -693,16 +747,27 @@
         }
 
         function startMusic() {
-            if (!musicStarted) {
-                console.log("▶️ Tentativo di avvio audio... (ready=" + bgMusicReady + ")");
-                bgMusic.play().then(() => {
-                    console.log("✅ Audio avviato con successo!");
-                    musicStarted = true;
-                    audioToggleBtn.innerText = "🔊";
-                }).catch(err => {
-                    console.log("⚠️ Audio autoplay bloccato dal browser (richiede interazione utente).", err);
-                });
+            if (musicStarted === true) return; // già in riproduzione
+
+            // Se l'audio non è ancora pronto (canplaythrough non arrivato),
+            // segna come 'pending' e sarà avviato automaticamente quando ready
+            if (!bgMusicReady) {
+                console.log("⏳ Audio non ancora pronto, avvio differito...");
+                musicStarted = 'pending';
+                return;
             }
+
+            console.log("▶️ Avvio audio...");
+            // Reset posizione a 0 per partenza pulita
+            bgMusic.currentTime = 0;
+            bgMusic.play().then(() => {
+                console.log("✅ Audio avviato con successo!");
+                musicStarted = true;
+                audioToggleBtn.innerText = "🔊";
+            }).catch(err => {
+                console.log("⚠️ Audio autoplay bloccato dal browser.", err);
+                musicStarted = false;
+            });
         }
 
         audioToggleBtn.onclick = (e) => {
@@ -751,22 +816,42 @@
         document.addEventListener("webkitfullscreenchange", onFullscreenChange);
 
         /* ==== LOAD BOOK ==== */
+        /**
+         * ANTI-CACHE MIGLIORATO:
+         * Il semplice cacheBuster (?v=timestamp) non basta su Chrome mobile
+         * perché il Service Worker o la disk-cache possono comunque servire
+         * la versione vecchia. Usiamo:
+         * 1. cache: "no-store" nella fetch (bypassa disk cache)
+         * 2. Cache-Control + Pragma headers (segnale al browser)
+         * 3. cacheBuster nel URL (bypasssa CDN/proxy intermedi)
+         */
+        const cacheBuster = "?v=" + new Date().getTime();
         const urlParams = new URLSearchParams(window.location.search);
         const format = urlParams.get('format') || '2x3';
 
-        fetch(`../albums/${format}/pages.json`)
+        fetch(`../albums/${format}/pages.json${cacheBuster}`, {
+            cache: "no-store",
+            headers: {
+                "Cache-Control": "no-cache, no-store, must-revalidate",
+                "Pragma": "no-cache",
+                "Expires": "0"
+            }
+        })
             .then(r => r.json())
             .then(pages => {
 
                 /* ==== CARICAMENTO PROGRESSIVO IMMAGINI ==== */
                 const bookDiv = document.getElementById("book");
 
-                // Prime 10 pagine caricate subito (copertina + 4 spread)
-                const EAGER_COUNT = 10;
+                // iPHONE FIX: Se imposti 10 imgs (spesso file in alta ris) Safari s'intasa e
+                // la pagina non finisce mai di avviarsi/blocca i download audio concomitanti.
+                const EAGER_COUNT = isMobileDevice ? 2 : 4;
 
-                // Placeholder trasparente 1x1px per evitare che il background
-                // della pagina lampeggi quando l'immagine non ha ancora src
-                const BLANK_GIF = 'data:image/gif;base64,R0lGODlhAQABAIAAAAAAAP///yH5BAEAAAAALAAAAAABAAEAAAIBRAA7';
+                // Placeholder alla STESSA dimensione del background della pagina.
+                // CRITICO per iOS: un 1x1 GIF trasparente su Safari causa un flash
+                // bianco/nero durante il ridimensionamento. Un SVG col colore di fondo
+                // della pagina (#14284b) è invisibile e non flasha.
+                const BLANK_PLACEHOLDER = "data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='1' height='1'%3E%3Crect fill='%2314284b' width='1' height='1'/%3E%3C/svg%3E";
 
                 pages.forEach((p, index) => {
                     const div = document.createElement("div");
@@ -774,14 +859,17 @@
 
                     const img = document.createElement("img");
 
+                    // URL con cache-buster
+                    const imageUrl = `../albums/${format}/${p.image}${cacheBuster}`;
+
                     if (index < EAGER_COUNT) {
-                        img.src = `../albums/${format}/${p.image}`;
+                        img.src = imageUrl;
                         img.loading = "eager";
                         img.decoding = "sync"; // prime pagine: decode sincrono per evitare flash
                     } else {
-                        // Placeholder trasparente: niente flash del background blu
-                        img.src = BLANK_GIF;
-                        img.dataset.src = `../albums/${format}/${p.image}`;
+                        // Placeholder con colore della pagina: ZERO flash visibile
+                        img.src = BLANK_PLACEHOLDER;
+                        img.dataset.src = imageUrl;
                         img.loading = "lazy";
                         img.decoding = "async";
                     }
@@ -803,40 +891,78 @@
                     // === ANTI-FLICKER ===
                     drawShadow: false,
                     maxShadowOpacity: 0,
-                    startZIndex: 10
+                    startZIndex: 10,
+                    // Abilita la render queue interna di page-flip per
+                    // ridurre i repaint simultanei (anti-flicker Android)
+                    autoSize: false
                 });
 
                 pageFlip.loadFromHTML(document.querySelectorAll('.page'));
 
-                /* ==== GESTIONE DINAMICA LAYER GPU (ANTI-FLICKER MOBILE) ====
+                /* ==== GESTIONE DINAMICA LAYER GPU (ANTI-FLICKER MOBILE V2) ====
+                 * PROBLEMA ORIGINALE:
                  * Su mobile la GPU ha memoria limitata (~100-200MB).
                  * Ogni layer GPU (will-change+translateZ) consuma ~2-5MB.
                  * 40 pagine × 5MB = 200MB → la GPU "sfarfalla" perché
                  * promuove/demote i layer continuamente (layer thrashing).
                  *
-                 * Soluzione: promuovere a GPU SOLO le pagine vicine (±GPU_RANGE)
-                 * e lasciare le altre come normali elementi DOM.
+                 * PROBLEMA V1 (flash Android):
+                 * Togglare brutalmente gpu-active con classList.add/remove
+                 * causava un micro-flash nel frame in cui Chrome decomponeva
+                 * il layer composito e lo ri-rasterizzava.
+                 *
+                 * SOLUZIONE V2:
+                 * 1. gpu-active ora applica SOLO translateZ(0), senza will-change
+                 * 2. will-change viene aggiunto via classe "gpu-flipping" SOLO alle
+                 *    2-3 pagine coinvolte nell'animazione corrente, e rimosso dopo.
+                 * 3. Le transizioni CSS (opacity 0.05s) ammortizzano il flash.
+                 * 4. Usiamo requestAnimationFrame per raggruppare le modifiche DOM.
                  */
                 const GPU_RANGE = isMobileDevice ? 3 : 6;
                 let lastGPUCenter = -1;
+                let flipCleanupTimer = null;
 
                 function updateGPULayers(centerPage) {
                     // Evita lavoro inutile se il centro non è cambiato
                     if (centerPage === lastGPUCenter) return;
                     lastGPUCenter = centerPage;
 
-                    const allPages = document.querySelectorAll('.page');
-                    const len = allPages.length;
-                    const rangeStart = Math.max(0, centerPage - GPU_RANGE);
-                    const rangeEnd = Math.min(len - 1, centerPage + GPU_RANGE);
+                    // Raggruppa tutte le modifiche DOM in un singolo rAF
+                    // per evitare reflow/repaint intermedi che causano flash
+                    requestAnimationFrame(() => {
+                        const allPages = document.querySelectorAll('.page');
+                        const len = allPages.length;
+                        const rangeStart = Math.max(0, centerPage - GPU_RANGE);
+                        const rangeEnd = Math.min(len - 1, centerPage + GPU_RANGE);
 
-                    for (let i = 0; i < len; i++) {
-                        if (i >= rangeStart && i <= rangeEnd) {
-                            allPages[i].classList.add('gpu-active');
-                        } else {
-                            allPages[i].classList.remove('gpu-active');
+                        for (let i = 0; i < len; i++) {
+                            const page = allPages[i];
+                            if (i >= rangeStart && i <= rangeEnd) {
+                                if (!page.classList.contains('gpu-active')) {
+                                    page.classList.add('gpu-active');
+                                }
+                            } else {
+                                if (page.classList.contains('gpu-active')) {
+                                    page.classList.remove('gpu-active');
+                                }
+                                // Pulisce anche flipping residuo
+                                page.classList.remove('gpu-flipping');
+                            }
                         }
-                    }
+
+                        // Aggiungi gpu-flipping SOLO alle 2 pagine centrali
+                        // (le uniche che stanno effettivamente animando)
+                        for (let i = Math.max(0, centerPage - 1); i <= Math.min(len - 1, centerPage + 1); i++) {
+                            allPages[i].classList.add('gpu-flipping');
+                        }
+
+                        // Rimuovi gpu-flipping dopo la fine dell'animazione
+                        clearTimeout(flipCleanupTimer);
+                        flipCleanupTimer = setTimeout(() => {
+                            const flipping = document.querySelectorAll('.gpu-flipping');
+                            flipping.forEach(p => p.classList.remove('gpu-flipping'));
+                        }, isMobileDevice ? 1100 : 1300);
+                    });
                 }
 
                 pageFlip.on('init', () => {
@@ -932,10 +1058,10 @@
                     const extraBefore = Math.max(0, start - 4);
                     const extraAfter = Math.min(total - 1, end + 4);
                     for (let i = extraBefore; i < start; i++) {
-                        if (imgs[i].dataset.src) preloadAndDecode(`../albums/${format}/${pages[i].image}`);
+                        if (imgs[i].dataset.src) preloadAndDecode(imgs[i].dataset.src);
                     }
                     for (let i = end + 1; i <= extraAfter; i++) {
-                        if (imgs[i].dataset.src) preloadAndDecode(`../albums/${format}/${pages[i].image}`);
+                        if (imgs[i].dataset.src) preloadAndDecode(imgs[i].dataset.src);
                     }
                 }
 
@@ -1060,6 +1186,7 @@
                 calculateInitialScale();
                 updateTransform();
             });
+
         window.addEventListener("resize", () => {
             if (!appStarted) return;
             settleLayout();
@@ -1070,6 +1197,40 @@
             if (!appStarted) return;
             settleLayout();
         });
+
+        /* ==== iOS SAFARI: FIX PAGINE INVISIBILI ====
+         * Bug iOS: dopo fullscreen + landscape, Safari può "dimenticare"
+         * di ri-paintare le pagine .page perché il layer composito
+         * non viene invalidato. Forziamo un repaint leggero.
+         */
+        if (isIOS) {
+            document.addEventListener('visibilitychange', () => {
+                if (document.visibilityState === 'visible' && appStarted) {
+                    // Forza repaint di tutte le pagine
+                    const allPages = document.querySelectorAll('.page');
+                    allPages.forEach(p => {
+                        p.style.display = 'none';
+                        // Forza reflow leggendo offsetHeight
+                        void p.offsetHeight;
+                        p.style.display = '';
+                    });
+                    settleLayout();
+                }
+            });
+
+            // Anche su orientationchange iOS talvolta perde le pagine
+            window.addEventListener('orientationchange', () => {
+                setTimeout(() => {
+                    const allPages = document.querySelectorAll('.page');
+                    allPages.forEach(p => {
+                        p.style.display = 'none';
+                        void p.offsetHeight;
+                        p.style.display = '';
+                    });
+                    settleLayout();
+                }, 500);
+            });
+        }
     </script>
 
 </body>
