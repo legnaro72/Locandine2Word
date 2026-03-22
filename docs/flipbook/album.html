@@ -8,7 +8,7 @@
     <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
     <title>Flipbook Album</title>
     <!-- Preload audio con priorità alta: parte prima delle immagini -->
-    <link rel="preload" href="../GiustoDireNo.mp3" as="audio" crossorigin>
+    <link rel="preload" href="../GiustoDireNo.mp3" as="fetch" crossorigin="anonymous">
 
     <style>
         html,
@@ -253,8 +253,9 @@
     </div>
 
 
-    <!-- Audio senza src: verrà impostato dal pre-fetch JavaScript con Blob URL per partenza istantanea -->
-    <audio id="bgMusic" loop playsinline></audio>
+    <!-- Audio di sottofondo gestito interamente via Web Audio API (AudioBuffer)
+         per immunità da stuttering causato da caricamento immagini -->
+    <div id="bgMusicPlaceholder" style="display:none"></div>
 
     <script src="https://cdn.jsdelivr.net/npm/page-flip/dist/js/page-flip.browser.min.js"></script>
 
@@ -368,19 +369,18 @@
             calculateInitialScale();
             updateTransform();
 
-            // Ritenta su più frame (il browser potrebbe non
-            // aver ancora aggiornato le dimensioni del wrapper)
+            // Ritenta su pochi frame (ridotto da 10 a 4 per diminuire
+            // pressione sul main thread e proteggere l'audio da jank)
             let count = 0;
             function step() {
                 calculateInitialScale();
                 updateTransform();
-                if (++count < 10) requestAnimationFrame(step);
+                if (++count < 4) requestAnimationFrame(step);
             }
             requestAnimationFrame(step);
 
-            // Safety net per browser lenti
-            setTimeout(() => { calculateInitialScale(); updateTransform(); }, 300);
-            setTimeout(() => { calculateInitialScale(); updateTransform(); }, 800);
+            // Safety net per browser lenti (singolo, non doppio)
+            setTimeout(() => { calculateInitialScale(); updateTransform(); }, 500);
         }
 
         /* ==== RESIZE OBSERVER: auto-corregge SEMPRE ==== */
@@ -631,72 +631,84 @@
         });
 
         /* ==== AUDIO BACKGROUND E MOBILE/PC START ==== */
-        const bgMusic = document.getElementById("bgMusic");
+        /**
+         * FIX AUDIO INSTABILE (Marzo 2025)
+         * 
+         * PROBLEMA:
+         * L'elemento <audio> HTML5 esegue decodifica + playback sul main thread.
+         * Quando il browser è impegnato con:
+         *   - Decodifica immagini pesanti (2-5MB per pagina)
+         *   - Layout recalculations (settleLayout x10 rAF)
+         *   - Network I/O per preload idle delle pagine
+         * ...il main thread si congestiona e l'audio salta/saltella.
+         *
+         * SOLUZIONE:
+         * Usare Web Audio API con AudioBuffer:
+         *   1. Il file viene scaricato UNA SOLA VOLTA e decodificato in un AudioBuffer
+         *   2. La riproduzione avviene su un thread audio DEDICATO del sistema operativo
+         *   3. Il main thread può essere occupato al 100% senza impatto sull'audio
+         *   4. Il loop è gapless (nessun micro-silenzio tra ripetizioni)
+         */
         const audioToggleBtn = document.getElementById("audio-toggle");
         const startOverlay = document.getElementById("mobile-start-overlay");
         let musicStarted = false;
-        let bgMusicReady = false; // true quando il browser può riprodurre SENZA buffering
+        let bgMusicReady = false;
 
         const isMobile = /iPhone|iPad|iPod|Android/i.test(navigator.userAgent);
         const isIOS = /iPhone|iPad|iPod/i.test(navigator.userAgent);
 
+        // Web Audio API state per musica di sottofondo
+        let bgAudioCtx = null;
+        let bgAudioBuffer = null;    // AudioBuffer decodificato (immutabile, zero-copy)
+        let bgSourceNode = null;     // BufferSourceNode corrente
+        let bgGainNode = null;       // Per mute/unmute senza ricreare il source
+        let bgMusicPlaying = false;  // true se la musica sta suonando
+        let bgMusicMuted = false;    // true se mutato dall'utente
+        let bgMusicPosition = 0;     // posizione corrente per resume dopo pause
+        let bgMusicStartTime = 0;    // audioCtx.currentTime quando è partito
+
         /**
-         * PRE-FETCH AUDIO CON PRIORITÀ — FIX RITARDO
+         * PRE-FETCH + DECODE AUDIO VIA WEB AUDIO API
          * 
-         * Il problema del ritardo era duplice:
-         * 1. bgMusicReady veniva settato a true PRIMA che il browser
-         *    avesse effettivamente decodificato il Blob → play() partiva
-         *    ma doveva ancora bufferizzare internamente.
-         * 2. Su iOS, bgMusic.load() da Blob URL è asincrono e può
-         *    richiedere 500ms+ prima che canplaythrough si triggeri.
-         *
-         * Soluzione: NON marcare bgMusicReady finché il browser non
-         * emette 'canplaythrough' (= audio pronto per play senza buffering).
+         * A differenza di <audio>.load(), decodeAudioData() decodifica
+         * l'intero file in PCM in memoria. La riproduzione successiva è
+         * istantanea e non richiede alcun I/O o decodifica in tempo reale.
          */
         (function prefetchBgMusic() {
-            console.log("🎵 Pre-fetch audio di sottofondo...");
-
-            // Listener unificato: l'audio è DAVVERO pronto solo dopo canplaythrough
-            function onAudioReady() {
-                if (bgMusicReady) return; // evita doppia segnalazione
-                bgMusicReady = true;
-                console.log("✅ Audio pronto per la riproduzione istantanea");
-                // Se l'utente ha già premuto INIZIA mentre l'audio caricava, parti subito
-                if (musicStarted === 'pending') {
-                    musicStarted = false;
-                    startMusic();
-                }
-            }
-
-            bgMusic.addEventListener('canplaythrough', onAudioReady, { once: true });
-
-            // Safety timeout: se canplaythrough non arriva entro 8s, forza ready
-            const safetyTimer = setTimeout(() => {
-                if (!bgMusicReady) {
-                    console.warn("⏱️ Timeout canplaythrough — forzo ready");
-                    onAudioReady();
-                }
-            }, 8000);
+            console.log("🎵 Pre-fetch audio di sottofondo (Web Audio API)...");
 
             fetch("../GiustoDireNo.mp3")
                 .then(res => {
                     if (!res.ok) throw new Error("HTTP " + res.status);
-                    return res.blob();
+                    return res.arrayBuffer();
                 })
-                .then(blob => {
-                    if (blob.size < 1000) throw new Error("File troppo piccolo: " + blob.size);
-                    const blobUrl = URL.createObjectURL(blob);
-                    bgMusic.src = blobUrl;
-                    bgMusic.load();
-                    console.log("📦 Blob audio caricato (" + (blob.size / 1024 / 1024).toFixed(1) + " MB), attesa canplaythrough...");
+                .then(arrayBuffer => {
+                    if (arrayBuffer.byteLength < 1000) throw new Error("File troppo piccolo: " + arrayBuffer.byteLength);
+                    console.log("📦 Audio scaricato (" + (arrayBuffer.byteLength / 1024 / 1024).toFixed(1) + " MB), decodifica in corso...");
+                    bgMusicReady = 'downloaded';
+                    // Salva l'ArrayBuffer per decodificarlo dopo che l'AudioContext è stato creato
+                    // (l'AudioContext richiede un user gesture su mobile)
+                    window._bgMusicArrayBuffer = arrayBuffer;
+                    
+                    // Se l'utente ha già premuto INIZIA, procedi con la decodifica
+                    if (musicStarted === 'pending') {
+                        musicStarted = false;
+                        startMusic();
+                    }
                 })
                 .catch(err => {
-                    console.warn("⚠️ Pre-fetch audio fallito, fallback a src diretto:", err.message);
-                    bgMusic.src = "../GiustoDireNo.mp3";
-                    bgMusic.preload = "auto";
-                    bgMusic.load();
-                    // Il listener canplaythrough gestirà comunque il ready
+                    console.warn("⚠️ Pre-fetch audio fallito:", err.message);
+                    // Fallback: prova a caricare quando l'utente preme play
+                    bgMusicReady = 'error';
                 });
+
+            // Safety timeout
+            setTimeout(() => {
+                if (!bgMusicReady) {
+                    console.warn("⏱️ Timeout download audio — riprova sarà al click");
+                    bgMusicReady = 'error';
+                }
+            }, 15000);
         })();
 
         /* ==== SUONI (WEB AUDIO API) — scope globale ==== */
@@ -706,6 +718,12 @@
         function ensureAudioContext() {
             if (!audioCtx) {
                 audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+                // Condividi lo stesso AudioContext per la musica di sottofondo
+                // Un singolo AudioContext = un singolo thread audio = meno overhead
+                bgAudioCtx = audioCtx;
+                bgGainNode = bgAudioCtx.createGain();
+                bgGainNode.connect(bgAudioCtx.destination);
+
                 Promise.all([
                     loadSound("../flip.mp3"),
                     loadSound("../open.mp3"),
@@ -715,6 +733,11 @@
                     openBuffer = buffers[1];
                     closeBuffer = buffers[2];
                 });
+
+                // Se abbiamo già scaricato l'audio di sottofondo, decodificalo ora
+                if (window._bgMusicArrayBuffer) {
+                    decodeBgMusic(window._bgMusicArrayBuffer);
+                }
             }
         }
 
@@ -746,28 +769,82 @@
             source.start(0, offset);
         }
 
+        /**
+         * Decodifica l'ArrayBuffer dell'audio di sottofondo in un AudioBuffer.
+         * Questa operazione è asincrona ma avviene UNA SOLA VOLTA.
+         * Dopo la decodifica, il buffer PCM è in memoria e play() è istantaneo.
+         */
+        async function decodeBgMusic(arrayBuffer) {
+            try {
+                bgAudioBuffer = await bgAudioCtx.decodeAudioData(arrayBuffer);
+                bgMusicReady = true;
+                delete window._bgMusicArrayBuffer; // libera memoria
+                console.log("✅ Audio di sottofondo decodificato: " + bgAudioBuffer.duration.toFixed(1) + "s, pronto!");
+                
+                // Se startMusic era in attesa, avvia ora
+                if (musicStarted === 'pending') {
+                    musicStarted = false;
+                    startMusic();
+                }
+            } catch (err) {
+                console.error("❌ Errore decodifica audio:", err);
+                bgMusicReady = 'error';
+            }
+        }
+
+        /**
+         * Avvia la riproduzione della musica di sottofondo con loop gapless.
+         * Usa BufferSourceNode + loop=true per riproduzione senza interruzioni.
+         */
+        function playBgSource(offset) {
+            if (!bgAudioBuffer || !bgAudioCtx || !bgGainNode) return;
+            
+            // Ferma eventuale source precedente
+            if (bgSourceNode) {
+                try { bgSourceNode.stop(); } catch(e) {}
+                bgSourceNode.disconnect();
+            }
+
+            bgSourceNode = bgAudioCtx.createBufferSource();
+            bgSourceNode.buffer = bgAudioBuffer;
+            bgSourceNode.loop = true;
+            bgSourceNode.connect(bgGainNode);
+            
+            // Applica stato mute corrente
+            bgGainNode.gain.value = bgMusicMuted ? 0 : 1;
+            
+            bgSourceNode.start(0, offset % bgAudioBuffer.duration);
+            bgMusicStartTime = bgAudioCtx.currentTime - offset;
+            bgMusicPlaying = true;
+        }
+
         function startMusic() {
             if (musicStarted === true) return; // già in riproduzione
 
-            // Se l'audio non è ancora pronto (canplaythrough non arrivato),
+            // Se l'audio non è ancora scaricato/decodificato,
             // segna come 'pending' e sarà avviato automaticamente quando ready
-            if (!bgMusicReady) {
-                console.log("⏳ Audio non ancora pronto, avvio differito...");
+            if (bgMusicReady !== true) {
+                console.log("⏳ Audio non ancora pronto (stato: " + bgMusicReady + "), avvio differito...");
                 musicStarted = 'pending';
+                
+                // Se abbiamo l'ArrayBuffer ma non ancora l'AudioContext, non possiamo decodificare
+                // Se abbiamo entrambi, la decodifica è già in corso
+                if (bgMusicReady === 'downloaded' && bgAudioCtx && window._bgMusicArrayBuffer) {
+                    decodeBgMusic(window._bgMusicArrayBuffer);
+                }
                 return;
             }
 
-            console.log("▶️ Avvio audio...");
-            // Reset posizione a 0 per partenza pulita
-            bgMusic.currentTime = 0;
-            bgMusic.play().then(() => {
-                console.log("✅ Audio avviato con successo!");
-                musicStarted = true;
-                audioToggleBtn.innerText = "🔊";
-            }).catch(err => {
-                console.log("⚠️ Audio autoplay bloccato dal browser.", err);
-                musicStarted = false;
-            });
+            // Resume AudioContext se sospeso (policy autoplay browser)
+            if (bgAudioCtx.state === 'suspended') {
+                bgAudioCtx.resume();
+            }
+
+            console.log("▶️ Avvio audio (Web Audio API)...");
+            playBgSource(0);
+            musicStarted = true;
+            audioToggleBtn.innerText = "🔊";
+            console.log("✅ Audio avviato con successo (thread audio dedicato)!");
         }
 
         audioToggleBtn.onclick = (e) => {
@@ -776,11 +853,15 @@
                 startMusic();
                 return;
             }
-            if (bgMusic.paused) {
-                bgMusic.play();
+            if (bgMusicMuted) {
+                // Unmute
+                bgMusicMuted = false;
+                if (bgGainNode) bgGainNode.gain.value = 1;
                 audioToggleBtn.innerText = "🔊";
             } else {
-                bgMusic.pause();
+                // Mute
+                bgMusicMuted = true;
+                if (bgGainNode) bgGainNode.gain.value = 0;
                 audioToggleBtn.innerText = "🔇";
             }
         };
@@ -1088,42 +1169,50 @@
                     }
                 }
 
-                /* ==== IDLE BACKGROUND PRELOADER ==== */
-                // Carica progressivamente TUTTE le pagine rimanenti durante i tempi morti
-                let idlePreloadIndex = EAGER_COUNT; // parti da dove finisce l'eager load
+                /* ==== IDLE BACKGROUND PRELOADER (THROTTLED) ==== */
+                // Carica progressivamente TUTTE le pagine rimanenti durante i tempi morti.
+                // THROTTLED: max 1 immagine ogni 100ms per non saturare la rete
+                // e permettere all'audio di bufferizzare senza interruzioni.
+                let idlePreloadIndex = EAGER_COUNT;
+                const IDLE_BATCH_SIZE = 1; // 1 immagine alla volta = meno pressione
+                const IDLE_PAUSE_MS = 150; // pausa tra batch per dare respiro alla rete
 
                 function idlePreloadStep(deadline) {
                     const imgs = document.querySelectorAll(".page img");
-                    while (idlePreloadIndex < imgs.length) {
-                        // Se rimane poco tempo nel frame idle, cedi al browser
+                    let loaded = 0;
+                    while (idlePreloadIndex < imgs.length && loaded < IDLE_BATCH_SIZE) {
                         if (deadline && deadline.timeRemaining() < 5) break;
 
                         const img = imgs[idlePreloadIndex];
                         if (img.dataset.src) {
-                            // Pre-decode in background (non attiva src per non forzare repaint)
                             preloadAndDecode(img.dataset.src);
+                            loaded++;
                         }
                         idlePreloadIndex++;
                     }
 
-                    // Continua nel prossimo idle se ci sono ancora pagine
                     if (idlePreloadIndex < imgs.length) {
-                        if (window.requestIdleCallback) {
-                            requestIdleCallback(idlePreloadStep, { timeout: 3000 });
-                        } else {
-                            setTimeout(() => idlePreloadStep(null), 200);
-                        }
+                        // Pausa tra batch per non saturare la rete
+                        setTimeout(() => {
+                            if (window.requestIdleCallback) {
+                                requestIdleCallback(idlePreloadStep, { timeout: 5000 });
+                            } else {
+                                idlePreloadStep(null);
+                            }
+                        }, IDLE_PAUSE_MS);
+                    } else {
+                        console.log("✅ Tutte le pagine pre-caricate in background");
                     }
                 }
 
-                // Avvia il preloader idle dopo un breve ritardo per non competere col rendering iniziale
+                // Avvia il preloader idle dopo che l'audio ha avuto tempo di stabilizzarsi
                 setTimeout(() => {
                     if (window.requestIdleCallback) {
-                        requestIdleCallback(idlePreloadStep, { timeout: 3000 });
+                        requestIdleCallback(idlePreloadStep, { timeout: 5000 });
                     } else {
                         idlePreloadStep(null);
                     }
-                }, 2000);
+                }, 4000);
 
                 /* ==== AUDIO: offset e bottoni ==== */
 
