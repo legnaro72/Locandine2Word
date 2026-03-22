@@ -7,8 +7,8 @@
     <meta name="apple-mobile-web-app-capable" content="yes">
     <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
     <title>Flipbook Album</title>
-    <!-- Preload audio con priorità alta: parte prima delle immagini -->
-    <link rel="preload" href="../GiustoDireNo.mp3" as="fetch" crossorigin="anonymous">
+    <!-- Preload audio con priorità alta -->
+    <link rel="preload" href="../GiustoDireNo.mp3" as="audio" crossorigin="anonymous">
 
     <style>
         html,
@@ -253,9 +253,8 @@
     </div>
 
 
-    <!-- Audio di sottofondo gestito interamente via Web Audio API (AudioBuffer)
-         per immunità da stuttering causato da caricamento immagini -->
-    <div id="bgMusicPlaceholder" style="display:none"></div>
+    <!-- Audio di sottofondo semplice e diretto -->
+    <audio id="bgMusic" src="../GiustoDireNo.mp3" loop playsinline preload="auto"></audio>
 
     <script src="https://cdn.jsdelivr.net/npm/page-flip/dist/js/page-flip.browser.min.js"></script>
 
@@ -631,99 +630,21 @@
         });
 
         /* ==== AUDIO BACKGROUND E MOBILE/PC START ==== */
-        /**
-         * FIX AUDIO INSTABILE (Marzo 2025)
-         * 
-         * PROBLEMA:
-         * L'elemento <audio> HTML5 esegue decodifica + playback sul main thread.
-         * Quando il browser è impegnato con:
-         *   - Decodifica immagini pesanti (2-5MB per pagina)
-         *   - Layout recalculations (settleLayout x10 rAF)
-         *   - Network I/O per preload idle delle pagine
-         * ...il main thread si congestiona e l'audio salta/saltella.
-         *
-         * SOLUZIONE:
-         * Usare Web Audio API con AudioBuffer:
-         *   1. Il file viene scaricato UNA SOLA VOLTA e decodificato in un AudioBuffer
-         *   2. La riproduzione avviene su un thread audio DEDICATO del sistema operativo
-         *   3. Il main thread può essere occupato al 100% senza impatto sull'audio
-         *   4. Il loop è gapless (nessun micro-silenzio tra ripetizioni)
-         */
+        const bgMusic = document.getElementById("bgMusic");
         const audioToggleBtn = document.getElementById("audio-toggle");
         const startOverlay = document.getElementById("mobile-start-overlay");
         let musicStarted = false;
-        let bgMusicReady = false;
 
         const isMobile = /iPhone|iPad|iPod|Android/i.test(navigator.userAgent);
         const isIOS = /iPhone|iPad|iPod/i.test(navigator.userAgent);
 
-        // Web Audio API state per musica di sottofondo
-        let bgAudioCtx = null;
-        let bgAudioBuffer = null;    // AudioBuffer decodificato (immutabile, zero-copy)
-        let bgSourceNode = null;     // BufferSourceNode corrente
-        let bgGainNode = null;       // Per mute/unmute senza ricreare il source
-        let bgMusicPlaying = false;  // true se la musica sta suonando
-        let bgMusicMuted = false;    // true se mutato dall'utente
-        let bgMusicPosition = 0;     // posizione corrente per resume dopo pause
-        let bgMusicStartTime = 0;    // audioCtx.currentTime quando è partito
-
-        /**
-         * PRE-FETCH + DECODE AUDIO VIA WEB AUDIO API
-         * 
-         * A differenza di <audio>.load(), decodeAudioData() decodifica
-         * l'intero file in PCM in memoria. La riproduzione successiva è
-         * istantanea e non richiede alcun I/O o decodifica in tempo reale.
-         */
-        (function prefetchBgMusic() {
-            console.log("🎵 Pre-fetch audio di sottofondo (Web Audio API)...");
-
-            fetch("../GiustoDireNo.mp3")
-                .then(res => {
-                    if (!res.ok) throw new Error("HTTP " + res.status);
-                    return res.arrayBuffer();
-                })
-                .then(arrayBuffer => {
-                    if (arrayBuffer.byteLength < 1000) throw new Error("File troppo piccolo: " + arrayBuffer.byteLength);
-                    console.log("📦 Audio scaricato (" + (arrayBuffer.byteLength / 1024 / 1024).toFixed(1) + " MB), decodifica in corso...");
-                    bgMusicReady = 'downloaded';
-                    // Salva l'ArrayBuffer per decodificarlo dopo che l'AudioContext è stato creato
-                    // (l'AudioContext richiede un user gesture su mobile)
-                    window._bgMusicArrayBuffer = arrayBuffer;
-                    
-                    // Se l'utente ha già premuto INIZIA, procedi con la decodifica
-                    if (musicStarted === 'pending') {
-                        musicStarted = false;
-                        startMusic();
-                    }
-                })
-                .catch(err => {
-                    console.warn("⚠️ Pre-fetch audio fallito:", err.message);
-                    // Fallback: prova a caricare quando l'utente preme play
-                    bgMusicReady = 'error';
-                });
-
-            // Safety timeout
-            setTimeout(() => {
-                if (!bgMusicReady) {
-                    console.warn("⏱️ Timeout download audio — riprova sarà al click");
-                    bgMusicReady = 'error';
-                }
-            }, 15000);
-        })();
-
-        /* ==== SUONI (WEB AUDIO API) — scope globale ==== */
+        /* ==== SUONI (WEB AUDIO API) — solo per effetti SFX ==== */
         let audioCtx;
         let flipBuffer, openBuffer, closeBuffer;
 
         function ensureAudioContext() {
             if (!audioCtx) {
                 audioCtx = new (window.AudioContext || window.webkitAudioContext)();
-                // Condividi lo stesso AudioContext per la musica di sottofondo
-                // Un singolo AudioContext = un singolo thread audio = meno overhead
-                bgAudioCtx = audioCtx;
-                bgGainNode = bgAudioCtx.createGain();
-                bgGainNode.connect(bgAudioCtx.destination);
-
                 Promise.all([
                     loadSound("../flip.mp3"),
                     loadSound("../open.mp3"),
@@ -733,11 +654,6 @@
                     openBuffer = buffers[1];
                     closeBuffer = buffers[2];
                 });
-
-                // Se abbiamo già scaricato l'audio di sottofondo, decodificalo ora
-                if (window._bgMusicArrayBuffer) {
-                    decodeBgMusic(window._bgMusicArrayBuffer);
-                }
             }
         }
 
@@ -769,84 +685,18 @@
             source.start(0, offset);
         }
 
-        /**
-         * Decodifica l'ArrayBuffer dell'audio di sottofondo in un AudioBuffer.
-         * Questa operazione è asincrona ma avviene UNA SOLA VOLTA.
-         * Dopo la decodifica, il buffer PCM è in memoria e play() è istantaneo.
-         */
-        async function decodeBgMusic(arrayBuffer) {
-            try {
-                bgAudioBuffer = await bgAudioCtx.decodeAudioData(arrayBuffer);
-                bgMusicReady = true;
-                delete window._bgMusicArrayBuffer; // libera memoria
-                console.log("✅ Audio di sottofondo decodificato: " + bgAudioBuffer.duration.toFixed(1) + "s, pronto!");
-                
-                // Se startMusic era in attesa, avvia ora
-                if (musicStarted === 'pending') {
-                    musicStarted = false;
-                    startMusic();
-                }
-            } catch (err) {
-                console.error("❌ Errore decodifica audio:", err);
-                bgMusicReady = 'error';
-            }
-        }
-
-        /**
-         * Avvia la riproduzione della musica di sottofondo con loop gapless.
-         * Usa BufferSourceNode + loop=true per riproduzione senza interruzioni.
-         */
-        function playBgSource(offset) {
-            if (!bgAudioBuffer || !bgAudioCtx || !bgGainNode) return;
-            
-            // Ferma eventuale source precedente
-            if (bgSourceNode) {
-                try { bgSourceNode.stop(); } catch(e) {}
-                bgSourceNode.disconnect();
-            }
-
-            bgSourceNode = bgAudioCtx.createBufferSource();
-            bgSourceNode.buffer = bgAudioBuffer;
-            bgSourceNode.loop = true;
-            bgSourceNode.connect(bgGainNode);
-            
-            // Applica stato mute corrente
-            bgGainNode.gain.value = bgMusicMuted ? 0 : 1;
-            
-            bgSourceNode.start(0, offset % bgAudioBuffer.duration);
-            bgMusicStartTime = bgAudioCtx.currentTime - offset;
-            bgMusicPlaying = true;
-        }
-
         function startMusic() {
             if (musicStarted === true) return; // già in riproduzione
-
-            // Assicura che AudioContext esista (safety net)
-            ensureAudioContext();
-
-            // Se l'audio non è ancora scaricato/decodificato,
-            // segna come 'pending' e avvia decodifica se possibile
-            if (bgMusicReady !== true) {
-                console.log("⏳ Audio non ancora pronto (stato: " + bgMusicReady + "), avvio differito...");
-                musicStarted = 'pending';
-                
-                // Se abbiamo l'ArrayBuffer E l'AudioContext, decodifica subito
-                if (bgMusicReady === 'downloaded' && bgAudioCtx && window._bgMusicArrayBuffer) {
-                    decodeBgMusic(window._bgMusicArrayBuffer);
-                }
-                return;
-            }
-
-            // Resume AudioContext se sospeso (policy autoplay browser)
-            if (bgAudioCtx.state === 'suspended') {
-                bgAudioCtx.resume();
-            }
-
-            console.log("▶️ Avvio audio (Web Audio API)...");
-            playBgSource(0);
-            musicStarted = true;
-            audioToggleBtn.innerText = "🔊";
-            console.log("✅ Audio avviato con successo (thread audio dedicato)!");
+            
+            console.log("▶️ Avvio audio (HTML5 Audio)...");
+            bgMusic.play().then(() => {
+                console.log("✅ Audio avviato con successo!");
+                musicStarted = true;
+                audioToggleBtn.innerText = "🔊";
+            }).catch(err => {
+                console.log("⚠️ Audio autoplay bloccato dal browser.", err);
+                musicStarted = false;
+            });
         }
 
         audioToggleBtn.onclick = (e) => {
@@ -855,15 +705,11 @@
                 startMusic();
                 return;
             }
-            if (bgMusicMuted) {
-                // Unmute
-                bgMusicMuted = false;
-                if (bgGainNode) bgGainNode.gain.value = 1;
+            if (bgMusic.paused) {
+                bgMusic.play();
                 audioToggleBtn.innerText = "🔊";
             } else {
-                // Mute
-                bgMusicMuted = true;
-                if (bgGainNode) bgGainNode.gain.value = 0;
+                bgMusic.pause();
                 audioToggleBtn.innerText = "🔇";
             }
         };
@@ -871,12 +717,9 @@
         // Click sul pulsantone gigante INIZIA!
         document.getElementById("start-app").onclick = () => {
 
-            // ORDINE CRITICO: AudioContext PRIMA, poi startMusic
-            // L'AudioContext DEVE esistere perché startMusic() ne ha bisogno
-            // per decodificare l'ArrayBuffer in AudioBuffer.
-            // Entrambi devono essere nel click handler per il "user gesture".
-            ensureAudioContext();
+            // Azioni sincrone (mantengono il "user gesture" per audio + fullscreen)
             startMusic();
+            ensureAudioContext();
 
             // Nascondi overlay via classe CSS
             startOverlay.classList.add('hidden');
