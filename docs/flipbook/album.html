@@ -99,12 +99,21 @@
             content-visibility: auto;
         }
 
-        /* Pulsanti zoom e controlli */
-        .controls-container {
+        /* Pulsante audio — in basso a sinistra (simmetrico alla casetta) */
+        #audio-toggle {
+            position: fixed;
+            bottom: 20px;
+            left: 20px;
+            z-index: 9999;
+        }
+
+        /* Fullscreen + Casetta — in basso a destra, impilati verticalmente */
+        .right-controls {
             position: fixed;
             bottom: 20px;
             right: 20px;
             display: flex;
+            flex-direction: column;
             gap: 10px;
             z-index: 9999;
         }
@@ -204,7 +213,7 @@
             cursor: pointer;
         }
 
-        /* Portrait warning: rimosso — il landscape viene forzato automaticamente da JS */
+        /* Desktop: bottoni piccoli e discreti */
         @media screen and (min-width: 1025px) {
             .zoom-btn {
                 padding: 4px 6px;
@@ -224,6 +233,48 @@
                 background: rgba(255, 255, 255, 0.35);
             }
         }
+
+        /* ===== PORTRAIT MOBILE (iPhone/iOS): dock centrata a pillola ===== */
+        @media screen and (orientation: portrait) and (max-width: 1024px) {
+            /* Disabilita posizionamento fisso individuale */
+            #audio-toggle {
+                position: static;
+            }
+            .right-controls {
+                position: static;
+                flex-direction: row;
+            }
+
+            /* Dock centrata in basso — sopra la home-bar iOS */
+            .portrait-dock {
+                position: fixed;
+                bottom: 30px;
+                left: 50%;
+                transform: translateX(-50%);
+                display: flex;
+                flex-direction: row;
+                gap: 12px;
+                background: rgba(0, 0, 0, 0.45);
+                padding: 8px 16px;
+                border-radius: 40px;
+                backdrop-filter: blur(10px);
+                -webkit-backdrop-filter: blur(10px);
+                z-index: 9999;
+            }
+        }
+
+        /* Landscape / Desktop: la dock è trasparente, i figli si posizionano da soli */
+        @media screen and (orientation: landscape), screen and (min-width: 1025px) {
+            .portrait-dock {
+                position: static;
+                display: contents; /* "scompare" dal layout, i figli si ancorano da soli */
+                background: none;
+                padding: 0;
+                border-radius: 0;
+                backdrop-filter: none;
+                -webkit-backdrop-filter: none;
+            }
+        }
     </style>
 </head>
 
@@ -237,10 +288,13 @@
 
     <div id="zoom-indicator">100%</div>
 
-    <div class="controls-container">
+    <!-- Dock: in portrait diventa pillola centrata, in landscape/PC scompare e i figli si posizionano da soli -->
+    <div class="portrait-dock">
         <button id="audio-toggle" class="zoom-btn" title="Mute/Unmute Musica">🔊</button>
-        <button id="fullscreen-toggle" class="zoom-btn" title="Full Screen">⛶</button>
-        <button id="zoom-reset" class="zoom-btn" title="Mostra 2 Pagine">🏚️</button>
+        <div class="right-controls">
+            <button id="fullscreen-toggle" class="zoom-btn" title="Full Screen">⛶</button>
+            <button id="zoom-reset" class="zoom-btn" title="Mostra 2 Pagine">🏚️</button>
+        </div>
     </div>
 
     <button id="prev" class="nav-btn">⟨</button>
