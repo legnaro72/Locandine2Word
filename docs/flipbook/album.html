@@ -640,13 +640,24 @@
         const isIOS = /iPhone|iPad|iPod/i.test(navigator.userAgent);
 
         /**
-         * PRE-FETCH AUDIO CON PRIORITÀ MASSIMA
-         * Scarica l'MP3 come Blob in memoria SUBITO, prima che le immagini
-         * saturino la banda. Quando l'utente clicca INIZIA, l'audio
-         * è già interamente in RAM → play() parte in <50ms.
+         * GESTIONE AUDIO DIFFERENZIATA
+         * - Android: soffre di latenza all'avvio dell'audio, usiamo il pre-fetch via Blob.
+         * - iOS: blocca o fatica nel looping dei Blob URL. Richiede un file fisico (byte-range).
+         * - PC: il Blob causa un lieve "scatto" di memoria, meglio l'approccio classico.
          */
-        (function prefetchBgMusic() {
-            console.log("🎵 Pre-fetch audio di sottofondo...");
+        (function setupBgMusic() {
+            const isAndroid = /Android/i.test(navigator.userAgent);
+            
+            if (!isAndroid) {
+                // PC e iOS usano l'approccio nativo ad alta prestazione
+                console.log("🎵 Impostazione audio classica (PC/iOS)...");
+                bgMusic.src = "../GiustoDireNo.mp3";
+                bgMusic.preload = "auto";
+                bgMusicReady = true;
+                return;
+            }
+
+            console.log("🎵 Pre-fetch audio di sottofondo (Android)...");
             fetch("../GiustoDireNo.mp3", { priority: "high" })
                 .then(res => {
                     if (!res.ok) throw new Error("HTTP " + res.status);
@@ -657,13 +668,14 @@
                     bgMusic.src = blobUrl;
                     bgMusic.load(); // forza il browser a bufferizzare dal Blob (istantaneo)
                     bgMusicReady = true;
-                    console.log("✅ Audio pre-caricato in memoria (" + (blob.size / 1024 / 1024).toFixed(1) + " MB)");
+                    console.log("✅ Audio pre-caricato in memoria Android (" + (blob.size / 1024 / 1024).toFixed(1) + " MB)");
                 })
                 .catch(err => {
-                    // Fallback: usa il src classico
+                    // Fallback in caso di errore di rete
                     console.warn("⚠️ Pre-fetch audio fallito, fallback a src diretto.", err);
                     bgMusic.src = "../GiustoDireNo.mp3";
                     bgMusic.preload = "auto";
+                    bgMusicReady = true;
                 });
         })();
 
