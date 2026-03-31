@@ -912,7 +912,7 @@ class AlbumGenerator:
     #  ULTIMA PAGINA (CHIUSURA)
     # ---------------------------------------------------------------
 
-    def generate_back_cover(self, total_events, output_dir="output"):
+    def generate_back_cover(self, total_events, output_dir="output", custom_back_text=None):
         """Genera l'ultima pagina con logo centrale e info collezione in basso."""
         os.makedirs(output_dir, exist_ok=True)
 
@@ -941,6 +941,9 @@ class AlbumGenerator:
             "Grazie a tutti i volontari e ai cittadini",
             "che hanno partecipato!",
         ]
+        # Override con testo personalizzato se fornito
+        if custom_back_text is not None:
+            body_lines = [l.strip() if l.strip() else "" for l in custom_back_text.split('\n')]
 
         body_y = 150
         for paragrafo in body_lines:
@@ -997,7 +1000,7 @@ class AlbumGenerator:
         back_rgb.save(back_path, "PNG", quality=95)
         return back_path
 
-    def generate_logo_page(self, output_dir, filename="album_page_guard.png", is_front=False):
+    def generate_logo_page(self, output_dir, filename="album_page_guard.png", is_front=False, custom_dedication_text=None):
         """Genera una pagina di 'cartone' (sfondo album) con il logo centrale (e opzionalmente un testo)."""
         import textwrap
         page = Image.new("RGBA", (self.PAGE_W, self.PAGE_H), self.COLOR_PAGE_BG)
@@ -1036,6 +1039,9 @@ class AlbumGenerator:
                 "",
                 "Massi"
             ]
+            # Override con testo personalizzato se fornito
+            if custom_dedication_text is not None:
+                testo_raw = [l.strip() if l.strip() else "" for l in custom_dedication_text.split('\n')]
             
             font_testo = self._get_font(38)
             font_firma = self._get_font(48, bold=True)
@@ -1532,10 +1538,171 @@ class AlbumGenerator:
         return generated_pages_full, generated_pages_empty
 
     # ---------------------------------------------------------------
+    #  PAGINE FOTO PERSONALIZZATE
+    # ---------------------------------------------------------------
+
+    def generate_photo_page(self, image, output_dir="output", filename="photo_page.png"):
+        """Genera una pagina con una singola foto full-page, rispettando il tema grafico dell'album."""
+        os.makedirs(output_dir, exist_ok=True)
+
+        page = self._create_page_background()
+        draw = ImageDraw.Draw(page)
+
+        # Area interna alla cornice (margine decorativo)
+        frame_margin = 50
+        inner_x = frame_margin
+        inner_y = frame_margin
+        inner_w = self.PAGE_W - frame_margin * 2
+        inner_h = self.PAGE_H - frame_margin * 2
+
+        # Carica immagine da path, PIL Image o bytes
+        if isinstance(image, str):
+            img = Image.open(image).convert("RGBA")
+        elif isinstance(image, Image.Image):
+            img = image.convert("RGBA")
+        else:
+            img = Image.open(io.BytesIO(image)).convert("RGBA")
+
+        img_w, img_h = img.size
+
+        # Scala per riempire l'area mantenendo le proporzioni (contain)
+        ratio = min(inner_w / img_w, inner_h / img_h)
+        new_w = int(img_w * ratio)
+        new_h = int(img_h * ratio)
+        img_resized = img.resize((new_w, new_h), Image.LANCZOS)
+
+        # Centra l'immagine nell'area interna
+        paste_x = inner_x + (inner_w - new_w) // 2
+        paste_y = inner_y + (inner_h - new_h) // 2
+
+        page.paste(img_resized, (paste_x, paste_y), img_resized)
+
+        # Salva a 300 DPI per stampa
+        page_rgb = self._page_to_rgb(page)
+        page_rgb = page_rgb.resize((2480, 3508), Image.LANCZOS)
+        path = os.path.join(output_dir, filename)
+        page_rgb.save(path, "PNG", quality=95)
+        return path
+
+    def generate_themed_placeholder_page(self, output_dir="output", filename="photo_placeholder.png"):
+        """
+        Genera una pagina placeholder tematica (NON bianca).
+        Usata quando il numero di foto e' dispari per completare la doppia pagina.
+        Mostra il logo come filigrana e decorazioni coerenti col tema dell'album.
+        """
+        os.makedirs(output_dir, exist_ok=True)
+
+        page = self._create_page_background()
+        draw = ImageDraw.Draw(page)
+
+        # Logo grande semi-trasparente al centro (filigrana)
+        if self.logo_image:
+            logo = self._prepare_logo(self.logo_image, target_size=700)
+            alpha = logo.split()[3]
+            alpha = alpha.point(lambda p: int(p * 0.20))
+            logo.putalpha(alpha)
+            lx = (self.PAGE_W - logo.size[0]) // 2
+            ly = (self.PAGE_H - logo.size[1]) // 2
+            page.paste(logo, (lx, ly), logo)
+
+        # Decorazione ornamentale centrata
+        font_dec = self._get_font(28, bold=True)
+        dec_text = "- - -"
+        bbox = draw.textbbox((0, 0), dec_text, font=font_dec)
+        tw = bbox[2] - bbox[0]
+        draw.text(((self.PAGE_W - tw) // 2, self.PAGE_H // 2 + 380),
+                  dec_text, fill=(200, 170, 80, 150), font=font_dec)
+
+        # Salva a 300 DPI
+        page_rgb = self._page_to_rgb(page)
+        page_rgb = page_rgb.resize((2480, 3508), Image.LANCZOS)
+        path = os.path.join(output_dir, filename)
+        page_rgb.save(path, "PNG", quality=95)
+        return path
+
+    def generate_photo_album_pdf(self, images, dedication_text=None, final_page_text=None, output_dir="output"):
+        """
+        Genera un album PDF con foto personalizzate (SOLO PDF, nessun flipbook).
+
+        Ordine pagine:
+        1. Copertina (grafica invariata)
+        2. Pagina dedica (testo personalizzabile)
+        3..N. Una foto per pagina (full-page)
+        N+1. Placeholder tematico (se numero foto dispari)
+        Ultima. Pagina finale con testo personalizzabile
+
+        Returns: (pdf_buffer, all_page_paths)
+        """
+        os.makedirs(output_dir, exist_ok=True)
+
+        all_pages = []
+
+        # 1. Copertina (invariata)
+        cover_path = self.generate_cover(len(images), output_dir)
+        all_pages.append(cover_path)
+
+        # 2. Pagina dedica
+        dedication_path = self.generate_logo_page(
+            output_dir, "photo_album_dedication.png",
+            is_front=True, custom_dedication_text=dedication_text
+        )
+        all_pages.append(dedication_path)
+
+        # 3. Pagine foto (1 immagine = 1 pagina)
+        for idx, img in enumerate(images):
+            photo_path = self.generate_photo_page(
+                img, output_dir, f"photo_page_{idx+1:03d}.png"
+            )
+            all_pages.append(photo_path)
+
+        # 4. Se numero dispari di foto, aggiungi placeholder tematico (cartaceo)
+        if len(images) > 0 and len(images) % 2 != 0:
+            placeholder_path = self.generate_themed_placeholder_page(
+                output_dir, "photo_placeholder.png"
+            )
+            all_pages.append(placeholder_path)
+
+        # 5. Penultima pagina: Guard back (cartonata vuota)
+        guard_back = self.generate_logo_page(
+            output_dir, "photo_guard_b.png"
+        )
+        all_pages.append(guard_back)
+
+        # 6. Pagina finale (copertina esterna retro)
+        back_path = self.generate_back_cover(
+            len(images), output_dir, custom_back_text=final_page_text
+        )
+        all_pages.append(back_path)
+
+
+        # 6. Genera PDF combinato
+        pdf_buffer = None
+        try:
+            def image_generator(paths):
+                for p in paths:
+                    with Image.open(p) as im:
+                        yield im.convert("RGB")
+
+            pdf_buffer = io.BytesIO()
+            first_img = Image.open(all_pages[0]).convert("RGB")
+            first_img.save(
+                pdf_buffer, "PDF", save_all=True,
+                append_images=image_generator(all_pages[1:]),
+                resolution=150.0
+            )
+            pdf_buffer.seek(0)
+            first_img.close()
+        except Exception as e:
+            print(f"Errore generazione PDF foto: {e}")
+            pdf_buffer = None
+
+        return pdf_buffer, all_pages
+
+    # ---------------------------------------------------------------
     #  GENERAZIONE COMPLETA
     # ---------------------------------------------------------------
 
-    def generate_full_album(self, events, output_dir="output"):
+    def generate_full_album(self, events, output_dir="output", dedication_text=None, back_cover_text=None):
         """
         Genera l'album completo: copertina + pagine figurine + ultima pagina.
         """
@@ -1547,7 +1714,7 @@ class AlbumGenerator:
         # Se c'è un'immagine custom sulla copertina, non creiamo più la pagina aggiuntiva con le scritte (come richiesto)
         inner_cover_path = None
 
-        guard_front = self.generate_logo_page(output_dir, "album_page_000_guard_f.png", is_front=True)
+        guard_front = self.generate_logo_page(output_dir, "album_page_000_guard_f.png", is_front=True, custom_dedication_text=dedication_text)
         pages_full, pages_empty = self.generate_album_pages(valid_events, output_dir)
         
         # Genera pagine riepilogative (Summary) — solo se attivato
@@ -1556,7 +1723,7 @@ class AlbumGenerator:
             summary_pages = self.generate_summary_pages(valid_events, output_dir)
         
         guard_back = self.generate_logo_page(output_dir, "album_page_zzz_guard_b.png")
-        back_path = self.generate_back_cover(len(valid_events), output_dir)
+        back_path = self.generate_back_cover(len(valid_events), output_dir, custom_back_text=back_cover_text)
 
         # Costruisci la sequenza completa delle pagine
         # Se c'e' inner cover: cover -> inner_cover -> guard -> pagine -> summary -> guard -> back

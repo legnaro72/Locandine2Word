@@ -114,23 +114,46 @@ def normalize_date_to_italian(raw_date):
     return raw_date
 
 
-def save_optimized_image(input_source, save_path, max_width=1200):
+def save_optimized_image(input_source, save_path, max_width=1200, keep_alpha=False):
     """
-    Ridimensiona e comprime un'immagine forzando il formato JPEG.
+    Ridimensiona e comprime un'immagine. Se keep_alpha=True e l'immagine
+    ha trasparenza, la salva come PNG preservando il canale alpha. Altrimenti
+    forza JPEG usando sfondo bianco per le aree trasparenti.
     """
     try:
         img = Image.open(input_source)
-        if img.mode in ("RGBA", "P"):
-            img = img.convert("RGB")
-            
+        has_alpha = img.mode in ("RGBA", "LA") or (img.mode == "P" and "transparency" in img.info)
+        
         w, h = img.size
         if w > max_width:
             new_h = int(h * (max_width / w))
             img = img.resize((max_width, new_h), Image.LANCZOS)
         
-        img.save(save_path, "JPEG", quality=80, optimize=True)
-        return True
-    except:
+        if keep_alpha and has_alpha:
+            img = img.convert("RGBA")
+            # Cambia estensione in png se era jpg
+            if save_path.lower().endswith(('.jpg', '.jpeg')):
+                save_path = save_path.rsplit('.', 1)[0] + '.png'
+            img.save(save_path, "PNG", optimize=True)
+            return save_path
+        else:
+            if img.mode in ("RGBA", "P", "LA"):
+                # Convertire con sfondo bianco per evitare il nero!
+                bg = Image.new("RGB", img.size, (255, 255, 255))
+                if img.mode == "RGBA":
+                    bg.paste(img, mask=img.split()[3])
+                elif img.mode == "LA":
+                    bg.paste(img.convert("RGBA"), mask=img.convert("RGBA").split()[3])
+                else:
+                    bg.paste(img)
+                img = bg
+            elif img.mode != "RGB":
+                img = img.convert("RGB")
+                
+            img.save(save_path, "JPEG", quality=80, optimize=True)
+            return save_path
+    except Exception as e:
+        print(f"Errore ottimizzazione immagine: {e}")
         return False
 
 # --- FUNZIONE DI PARSING INTELLIGENTE MIGLIORATA ---
@@ -2086,9 +2109,336 @@ with tab5:
     </div>
     """, unsafe_allow_html=True)
     
+    # =============================================
+    # SELEZIONE MODALITÀ ALBUM
+    # =============================================
+    st.markdown("### 🔄 Modalità Album")
+    album_mode_choice = st.radio(
+        "Scegli la modalità di creazione:",
+        ["📋 Locandine (Figurine Panini)", "📷 Foto Personalizzate (Solo PDF)"],
+        horizontal=True,
+        key="album_mode_toggle",
+        help="**Locandine**: album figurine con locandine eventi (Flipbook + PDF). **Foto Personalizzate**: album con foto caricate (solo PDF, 1 foto per pagina)."
+    )
+    is_photo_mode = "Foto" in album_mode_choice
+
+    st.divider()
+
+    # =============================================
+    # TESTI PERSONALIZZABILI (Entrambe le modalità)
+    # =============================================
+    DEFAULT_DEDICATION = (
+        "Il 22 e 23 marzo non sono soltanto due date sul calendario. Sono un passaggio di coscienza civile.\n\n"
+        "In queste settimane ho visto Magistrati (Pubblici Ministeri e Giudici), ex Magistrati, Avvocati "
+        "metterci la faccia, la voce, la dignità delle loro toghe per difendere qualcosa che appartiene "
+        "a tutti: la giustizia come pilastro della nostra democrazia e della nostra Costituzione.\n\n"
+        "A loro va un pensiero pieno di rispetto. Non per una battaglia di parte, ma per aver ricordato "
+        "che la giustizia non è un terreno da smontare pezzo dopo pezzo, bensì una casa comune da custodire.\n\n"
+        "C'è qualcosa di profondamente romantico — nel senso più alto del termine — nella speranza civile: "
+        "credere che le istituzioni possano ancora essere difese con la parola, con lo studio, con la "
+        "partecipazione. Credere che la Costituzione non sia un libro antico, ma una promessa viva.\n\n"
+        "Se il 22 e 23 marzo gli italiani sceglieranno di difendere questi principi, allora potrà davvero "
+        "cominciare una nuova primavera: una primavera di libertà, di legalità, di fiducia nella democrazia.\n\n"
+        "Una primavera antifascista, nel senso più autentico della nostra Repubblica: quello di un Paese "
+        "che non ha paura della giustizia, ma la protegge.\n\n"
+        "Massi"
+    )
+    DEFAULT_BACK_TEXT = (
+        "Quest'album raccoglie tutti gli eventi organizzati\n"
+        "dal Comitato \"Giusto Dire No\"\n"
+        "per il Referendum Costituzionale sulla Giustizia.\n\n"
+        "Coordinamento Liguria e Massa\n\n"
+        "Ogni figurina rappresenta un incontro,\n"
+        "un dibattito, un momento di partecipazione\n"
+        "democratica sul territorio.\n\n"
+        "Grazie a tutti i volontari e ai cittadini\n"
+        "che hanno partecipato!"
+    )
+
+    if 'album_dedication_val' not in st.session_state:
+        st.session_state['album_dedication_val'] = DEFAULT_DEDICATION
+    if 'album_back_val' not in st.session_state:
+        st.session_state['album_back_val'] = DEFAULT_BACK_TEXT
+
+    with st.expander("📝 Modifica Dedica (Pagina 2)", expanded=False):
+        album_dedication_text = st.text_area(
+            "Testo Dedica", height=280, key="album_dedication_val",
+            help="Testo della pagina di dedica. L'ultimo paragrafo viene usato come firma (allineato a destra)."
+        )
+
+    with st.expander("📝 Modifica Testo Ultima Pagina", expanded=False):
+        album_back_text = st.text_area(
+            "Testo Ultima Pagina", height=180, key="album_back_val",
+            help="Testo che apparirà nell'ultima pagina dell'album."
+        )
+
+    st.divider()
+
+    # =============================================
+    # MODALITÀ FOTO PERSONALIZZATE
+    # =============================================
+    if is_photo_mode:
+        st.markdown("### 📷 Album Foto Personalizzate")
+
+        # Copertina
+        st.markdown("#### 🖼️ Immagine Copertina")
+        _photo_cover_opts = {
+            "Nessuna (logo default)": None,
+            "Genova 46 — CopertinaAlbumGenova46OK.png": "CopertinaAlbumGenova46OK.png",
+            "Pilli — PilliCopertinaAlbum.png": "PilliCopertinaAlbum.png",
+        }
+        _photo_cover_sel = st.selectbox("📚 Copertina", options=list(_photo_cover_opts.keys()), index=0, key="photo_cover_preset_sel")
+        _photo_preset_file = _photo_cover_opts[_photo_cover_sel]
+        _photo_cover_upload = None
+        if not _photo_preset_file:
+            _photo_cover_upload = st.file_uploader("Carica immagine copertina", type=['png', 'jpg', 'jpeg'], key="photo_cover_upl")
+
+        st.divider()
+
+        # Upload foto
+        st.markdown("#### 📸 Carica le tue Foto")
+        st.info("Carica le immagini per l'album. Ogni foto = 1 pagina intera. Formati: JPG, PNG, WEBP.")
+        uploaded_photos = st.file_uploader(
+            "Trascina qui le foto", type=['jpg', 'jpeg', 'png', 'webp'],
+            accept_multiple_files=True, key="photo_album_uploads"
+        )
+
+        if uploaded_photos:
+            st.success(f"📸 **{len(uploaded_photos)}** foto caricate")
+            with st.expander(f"👁️ Anteprima Foto ({len(uploaded_photos)})", expanded=False):
+                _pcols = st.columns(min(4, max(1, len(uploaded_photos))))
+                for _pi, _pf in enumerate(uploaded_photos):
+                    with _pcols[_pi % len(_pcols)]:
+                        st.image(_pf, caption=f"#{_pi+1} {_pf.name}", width=150)
+            if len(uploaded_photos) % 2 != 0:
+                st.info(f"ℹ️ Numero dispari di foto ({len(uploaded_photos)}). Verrà aggiunta una pagina placeholder tematica.")
+
+        st.divider()
+
+        # Metriche
+        _n_photos = len(uploaded_photos) if uploaded_photos else 0
+        _n_pages_photo = _n_photos + (1 if _n_photos % 2 != 0 else 0) + 4  # +cover +dedica +guard +back
+        _cm1, _cm2 = st.columns(2)
+        _cm1.metric("📸 Foto Caricate", _n_photos)
+        _cm2.metric("📄 Pagine Totali PDF", _n_pages_photo if _n_photos > 0 else "—")
+
+        # Bottone genera
+        genera_photo_album = st.button("📷 Genera Album Fotografico (PDF)", type="primary", key="btn_gen_photo", use_container_width=True)
+
+        if genera_photo_album:
+            if not uploaded_photos:
+                st.warning("⚠️ Carica almeno una foto per generare l'album.")
+            else:
+                photo_output_dir = os.path.join(OUTPUT_DIR, "album_foto")
+                with st.spinner("📷 Creazione album fotografico in corso..."):
+                    # Prepara copertina
+                    _cov_pil = None
+                    if _photo_preset_file:
+                        _pp = _photo_preset_file if os.path.exists(_photo_preset_file) else os.path.join(os.getcwd(), _photo_preset_file)
+                        if os.path.exists(_pp):
+                            try: _cov_pil = Image.open(_pp).convert("RGBA")
+                            except: pass
+                    elif _photo_cover_upload:
+                        try: _cov_pil = Image.open(_photo_cover_upload).convert("RGBA")
+                        except: pass
+
+                    # Salva foto ottimizzate
+                    photo_paths = []
+                    os.makedirs(photo_output_dir, exist_ok=True)
+                    for _fi, _ff in enumerate(uploaded_photos):
+                        _tp = os.path.join(photo_output_dir, f"upload_{_fi+1:03d}.jpg")
+                        final_path = save_optimized_image(_ff, _tp, max_width=2400, keep_alpha=True)
+                        if final_path:
+                            photo_paths.append(final_path)
+
+                    gen = AlbumGenerator(
+                        bg_image_path="giustidireno.png",
+                        logo_path="LogoNOConfiniTrasparente.png",
+                        custom_cover_image=_cov_pil
+                    )
+                    _ded = album_dedication_text.strip() if album_dedication_text.strip() else None
+                    _bck = album_back_text.strip() if album_back_text.strip() else None
+
+                    pdf_buf, all_pg_paths = gen.generate_photo_album_pdf(
+                        photo_paths, dedication_text=_ded, final_page_text=_bck, output_dir=photo_output_dir
+                    )
+
+                    if pdf_buf:
+                        st.session_state['photo_album_pdf'] = pdf_buf
+                        st.session_state['photo_album_pages'] = all_pg_paths
+                        st.success(f"✅ Album fotografico generato! {len(uploaded_photos)} foto.")
+                        st.balloons()
+                    else:
+                        st.error("❌ Errore durante la generazione del PDF.")
+
+        # Download e preview
+        if st.session_state.get('photo_album_pdf'):
+            st.divider()
+            st.markdown("### 📥 Download AlbumFotoRicordo")
+            st.download_button(
+                label="📥 Scarica AlbumFotoRicordo (PDF)", data=st.session_state['photo_album_pdf'],
+                file_name="AlbumFotoRicordo.pdf", mime="application/pdf", type="primary", key="btn_dl_photo_pdf"
+            )
+            _photo_pgs = st.session_state.get('photo_album_pages', [])
+            if _photo_pgs:
+                st.divider()
+                st.markdown("### 📖 Anteprima AlbumFotoRicordo")
+                _psel = st.slider("Sfoglia pagine", 1, len(_photo_pgs), 1, key="photo_pg_slider") if len(_photo_pgs) > 1 else 1
+                _pgp = _photo_pgs[_psel - 1]
+                if os.path.exists(_pgp):
+                    st.image(_pgp, caption=f"Pagina {_psel} di {len(_photo_pgs)}", width="stretch")
+
+            # =============================================
+            # FLIPBOOK da AlbumFotoRicordo
+            # =============================================
+            st.divider()
+            st.markdown("### 📚 Libreria Flipbook (Web) — AlbumFotoRicordo")
+
+            photo_flipbook_quality = st.radio(
+                "Qualità immagini Flipbook (DPI)",
+                options=[
+                    "300 (High - Molto definite ma pesanti, ~3/5MB a pagina)",
+                    "200 (Medium - Consigliata per Web e Mobile, ~800KB)",
+                    "100 (Small - Leggere e ultra veloci, ~250KB)"
+                ],
+                index=1,
+                horizontal=False,
+                help="Determina la risoluzione delle immagini estratte per il flipbook.",
+                key="photo_flipbook_quality"
+            )
+
+            if "300" in photo_flipbook_quality:
+                photo_target_dpi = 300
+                photo_jpeg_quality = 90
+            elif "200" in photo_flipbook_quality:
+                photo_target_dpi = 200
+                photo_jpeg_quality = 82
+            else:
+                photo_target_dpi = 100
+                photo_jpeg_quality = 75
+
+            if st.button("📚 Crea Flipbook AlbumFotoRicordo", type="secondary", key="btn_create_photo_flipbook",
+                         help="Estrae le pagine dal PDF come immagini JPG, crea pages.json e salva tutto localmente e su GitHub."):
+                pdf_data = st.session_state.get('photo_album_pdf')
+                if not pdf_data:
+                    st.error("❌ Nessun PDF disponibile. Genera prima l'album.")
+                else:
+                    with st.spinner("📚 Creazione Flipbook AlbumFotoRicordo in corso..."):
+                        try:
+                            import fitz  # PyMuPDF
+
+                            album_format_photo = "foto_ricordo"
+
+                            # Prepara cartelle locali
+                            flipbook_images_dir = os.path.join("docs", "albums", album_format_photo)
+                            os.makedirs(flipbook_images_dir, exist_ok=True)
+
+                            # Apri il PDF dal buffer
+                            pdf_data.seek(0)
+                            pdf_bytes = pdf_data.read()
+                            pdf_data.seek(0)
+
+                            doc = fitz.open(stream=pdf_bytes, filetype="pdf")
+                            total_pdf_pages = len(doc)
+
+                            progress_bar = st.progress(0, text="Estraendo pagine...")
+
+                            pages_json = []
+                            github_mgr = st.session_state.get('github_manager')
+                            upload_errors = []
+
+                            for page_idx in range(total_pdf_pages):
+                                page_num = page_idx + 1
+                                progress_bar.progress(
+                                    page_num / (total_pdf_pages + 1),
+                                    text=f"Estraendo pagina {page_num} di {total_pdf_pages}..."
+                                )
+
+                                page = doc.load_page(page_idx)
+                                zoom = photo_target_dpi / 72.0
+                                mat = fitz.Matrix(zoom, zoom)
+                                pix = page.get_pixmap(matrix=mat)
+
+                                img = Image.frombytes("RGB", [pix.width, pix.height], pix.samples)
+
+                                img_filename = f"page_{page_num}.jpg"
+                                img_local_path = os.path.join(flipbook_images_dir, img_filename)
+                                img.save(img_local_path, "JPEG", quality=photo_jpeg_quality, optimize=True, progressive=True, dpi=(photo_target_dpi, photo_target_dpi))
+
+                                if page_num in [1, 2, total_pdf_pages - 1, total_pdf_pages]:
+                                    page_type = "cartone"
+                                else:
+                                    page_type = "carta"
+
+                                pages_json.append({
+                                    "page_number": page_num,
+                                    "image": f"page_{page_num}.jpg",
+                                    "type": page_type,
+                                    "dpi": photo_target_dpi
+                                })
+
+                                if github_mgr:
+                                    import time
+                                    with open(img_local_path, "rb") as f_img:
+                                        img_bytes = f_img.read()
+                                    repo_path = f"docs/albums/{album_format_photo}/{img_filename}"
+                                    ok, msg = github_mgr.upload_file(
+                                        repo_path, img_bytes,
+                                        commit_message=f"Flipbook FotoRicordo: upload {img_filename}"
+                                    )
+                                    if not ok:
+                                        upload_errors.append(msg)
+                                    else:
+                                        time.sleep(1.0)
+
+                            doc.close()
+
+                            # Salva pages.json
+                            pages_json_path = os.path.join(flipbook_images_dir, "pages.json")
+                            pages_json_content = json.dumps(pages_json, ensure_ascii=False, indent=4)
+                            with open(pages_json_path, "w", encoding="utf-8") as f_json:
+                                f_json.write(pages_json_content)
+
+                            # Upload pages.json su GitHub
+                            if github_mgr:
+                                json_repo_path = f"docs/albums/{album_format_photo}/pages.json"
+                                ok, msg = github_mgr.upload_file(
+                                    json_repo_path,
+                                    pages_json_content.encode("utf-8"),
+                                    commit_message=f"Flipbook FotoRicordo: upload pages.json"
+                                )
+                                if not ok:
+                                    upload_errors.append(msg)
+
+                            progress_bar.progress(1.0, text="Completato!")
+
+                            st.success(
+                                f"✅ Flipbook AlbumFotoRicordo creato con successo!\n\n"
+                                f"📄 **{total_pdf_pages}** pagine estratte ({photo_target_dpi} DPI)\n\n"
+                                f"💾 Salvato in `docs/albums/{album_format_photo}/`\n\n"
+                                f"{'☁️ File caricati su GitHub' if github_mgr else '⚠️ GitHub non configurato, salvato solo localmente'}"
+                            )
+
+                            if upload_errors:
+                                st.warning("⚠️ Alcuni upload su GitHub hanno avuto problemi:\n" + "\n".join(upload_errors))
+
+                        except ImportError:
+                            st.error(
+                                "❌ **PyMuPDF non installato!**\n\n"
+                                "Per usare il Flipbook è necessario installare PyMuPDF:\n\n"
+                                "```\npip install PyMuPDF\n```"
+                            )
+                        except Exception as e:
+                            st.error(f"❌ Errore creazione Flipbook: {e}")
+
+    # =============================================
+    # MODALITÀ LOCANDINE (codice esistente invariato)
+    # =============================================
     events_album = st.session_state.get('events', [])
-    
-    if not events_album:
+
+    if is_photo_mode:
+        pass  # Gestito completamente nel blocco sopra
+    elif not events_album:
         st.warning("⚠️ Nessun evento disponibile. Carica delle locandine per creare l'album.")
     else:
         # Conta solo eventi con immagine valida (risoluzione robusta)
@@ -2454,7 +2804,9 @@ with tab5:
                             summary_events_per_page=album_summary_epp
                         )
                         cover_path, page_paths, pdf_buffer, pdf_empty_buffer, zip_buffer = gen.generate_full_album(
-                            album_events_to_use, output_dir=album_output_dir
+                            album_events_to_use, output_dir=album_output_dir,
+                            dedication_text=album_dedication_text.strip() if album_dedication_text.strip() else None,
+                            back_cover_text=album_back_text.strip() if album_back_text.strip() else None
                         )
                         
                         st.session_state['album_cover'] = cover_path
