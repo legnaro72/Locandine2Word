@@ -1,0 +1,1319 @@
+<!DOCTYPE html>
+<html lang="it">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
+    <meta name="apple-mobile-web-app-capable" content="yes">
+    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+    <title>Flipbook Album</title>
+    <!-- Preload audio con priorità MASSIMA: parte prima delle immagini -->
+    <link rel="preload" href="../GiustoDireNo.mp3" as="fetch" crossorigin fetchpriority="high">
+
+    <style>
+        html,
+        body {
+            margin: 0;
+            padding: 0;
+            width: 100%;
+            height: 100%;
+            /* iOS Safari: -webkit-fill-available è più affidabile di 100vh */
+            height: -webkit-fill-available;
+            overflow: hidden;
+            background: #1a1a1a;
+            font-family: sans-serif;
+            /* Previene pull-to-refresh e bounce su iOS */
+            overscroll-behavior: none;
+            -webkit-overflow-scrolling: touch;
+        }
+
+        #book-wrapper {
+            position: fixed;
+            top: 0;
+            left: 0;
+            right: 0;
+            bottom: 0;
+            background: #1a1a1a;
+            overflow: hidden;
+            touch-action: none;
+        }
+
+        /* Dimensioni impostate via JS per corrispondere a BASE_WIDTH x BASE_HEIGHT */
+        #zoom-layer {
+            transform-origin: 0 0;
+            position: absolute;
+            top: 0;
+            left: 0;
+            will-change: transform;
+        }
+
+        #book {
+            /* Dimensioni effettive impostate via JS (BASE_WIDTH x BASE_HEIGHT) */
+            position: relative;
+            /* Prospettiva 3D per trasformazioni fluide senza z-fighting */
+            perspective: 2000px;
+            -webkit-perspective: 2000px;
+        }
+
+        .page {
+            background: #14284b;
+            overflow: hidden;
+            backface-visibility: hidden;
+            -webkit-backface-visibility: hidden;
+            /* Contiene layout/paint: il browser non deve rifare il layout
+               di TUTTA la pagina quando una singola .page cambia */
+            contain: strict;
+            /* Transizione morbida per evitare flash quando i layer GPU
+               vengono attivati/disattivati (il problema Android) */
+            transition: opacity 0.05s linear;
+            opacity: 1;
+        }
+
+        /* Classe aggiunta via JS solo alle pagine entro ±N dalla corrente.
+           ANTI-FLICKER: usiamo un approccio più gentile: niente will-change
+           globale, solo translateZ(0) per la promozione a layer composito.
+           will-change viene usato SOLO durante l'animazione attiva. */
+        .page.gpu-active {
+            transform: translateZ(0);
+            -webkit-transform: translateZ(0);
+        }
+
+        /* Classe aggiunta SOLO durante il flip attivo (poche pagine, pochi ms) */
+        .page.gpu-flipping {
+            will-change: transform;
+        }
+
+        .page img {
+            width: 100%;
+            height: 100%;
+            object-fit: contain;
+            pointer-events: none;
+            -webkit-backface-visibility: hidden;
+            backface-visibility: hidden;
+            /* iOS Safari rendering fix: forza rasterizzazione hardware
+               senza creare layer separati per ogni immagine */
+            -webkit-transform: translate3d(0,0,0);
+            transform: translate3d(0,0,0);
+            /* Previene il flash bianco durante il decode su iOS */
+            image-rendering: auto;
+            content-visibility: auto;
+        }
+
+        /* Pulsante audio — in basso a sinistra (simmetrico alla casetta) */
+        #audio-toggle {
+            position: fixed;
+            bottom: 20px;
+            left: 20px;
+            z-index: 9999;
+        }
+
+        /* Fullscreen + Casetta — in basso a destra, impilati verticalmente */
+        .right-controls {
+            position: fixed;
+            bottom: 20px;
+            right: 20px;
+            display: flex;
+            flex-direction: column;
+            gap: 10px;
+            z-index: 9999;
+        }
+
+        .zoom-btn {
+            padding: 14px 18px;
+            font-size: 20px;
+            background: rgba(255, 255, 255, 0.5);
+            backdrop-filter: blur(5px);
+            -webkit-backdrop-filter: blur(5px);
+            border: 1px solid rgba(255, 255, 255, 0.3);
+            border-radius: 10px;
+            cursor: pointer;
+            box-shadow: 0 4px 6px rgba(0, 0, 0, 0.3);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            transition: background 0.2s;
+        }
+
+        .zoom-btn:hover {
+            background: rgba(255, 255, 255, 0.8);
+        }
+
+        /* Frecce navigazione */
+        .nav-btn {
+            position: fixed;
+            top: 50%;
+            transform: translateY(-50%);
+            z-index: 9998;
+            font-size: 40px;
+            background: rgba(255, 255, 255, 0.5);
+            backdrop-filter: blur(5px);
+            -webkit-backdrop-filter: blur(5px);
+            border: 1px solid rgba(255, 255, 255, 0.3);
+            border-radius: 50%;
+            width: 60px;
+            height: 60px;
+            cursor: pointer;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            transition: background 0.2s;
+        }
+
+        .nav-btn:hover {
+            background: rgba(255, 255, 255, 0.8);
+        }
+
+        #prev {
+            left: 15px;
+        }
+
+        #next {
+            right: 15px;
+        }
+
+        #zoom-indicator {
+            position: fixed;
+            top: 15px;
+            right: 20px;
+            color: white;
+            background: rgba(0, 0, 0, 0.6);
+            padding: 6px 12px;
+            border-radius: 8px;
+            z-index: 9999;
+        }
+
+        #mobile-start-overlay {
+            position: fixed;
+            top: 0;
+            left: 0;
+            right: 0;
+            bottom: 0;
+            background: rgba(0, 0, 0, 0.8);
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            z-index: 10000;
+            color: white;
+            text-align: center;
+        }
+
+        #mobile-start-overlay.hidden {
+            display: none;
+        }
+
+        #mobile-start-overlay button {
+            margin-top: 20px;
+            padding: 15px 30px;
+            font-size: 20px;
+            border-radius: 30px;
+            border: none;
+            background: #007bff;
+            color: white;
+            cursor: pointer;
+        }
+
+        /* Desktop: bottoni piccoli e discreti */
+        @media screen and (min-width: 1025px) {
+            .zoom-btn {
+                padding: 4px 6px;
+                font-size: 12px;
+                background: rgba(255, 255, 255, 0.15);
+            }
+
+            .nav-btn {
+                width: 24px;
+                height: 24px;
+                font-size: 14px;
+                background: rgba(255, 255, 255, 0.15);
+            }
+
+            .zoom-btn:hover,
+            .nav-btn:hover {
+                background: rgba(255, 255, 255, 0.35);
+            }
+        }
+
+        /* ===== PORTRAIT MOBILE (iPhone/iOS): dock centrata a pillola ===== */
+        @media screen and (orientation: portrait) and (max-width: 1024px) {
+            /* Disabilita posizionamento fisso individuale */
+            #audio-toggle {
+                position: static;
+            }
+            .right-controls {
+                position: static;
+                flex-direction: row;
+            }
+
+            /* Dock centrata in basso — sopra la home-bar iOS */
+            .portrait-dock {
+                position: fixed;
+                bottom: 30px;
+                left: 50%;
+                transform: translateX(-50%);
+                display: flex;
+                flex-direction: row;
+                gap: 12px;
+                background: rgba(0, 0, 0, 0.45);
+                padding: 8px 16px;
+                border-radius: 40px;
+                backdrop-filter: blur(10px);
+                -webkit-backdrop-filter: blur(10px);
+                z-index: 9999;
+            }
+
+            /* Frecce navigazione: spostate in basso ai lati della dock */
+            .nav-btn {
+                top: auto;
+                bottom: 28px;
+                transform: none;
+                width: 48px;
+                height: 48px;
+                font-size: 28px;
+            }
+            #prev {
+                left: 10px;
+            }
+            #next {
+                right: 10px;
+            }
+        }
+
+        /* Landscape / Desktop: la dock è trasparente, i figli si posizionano da soli */
+        @media screen and (orientation: landscape), screen and (min-width: 1025px) {
+            .portrait-dock {
+                position: static;
+                display: contents; /* "scompare" dal layout, i figli si ancorano da soli */
+                background: none;
+                padding: 0;
+                border-radius: 0;
+                backdrop-filter: none;
+                -webkit-backdrop-filter: none;
+            }
+        }
+    </style>
+</head>
+
+<body>
+
+    <div id="book-wrapper">
+        <div id="zoom-layer">
+            <div id="book"></div>
+        </div>
+    </div>
+
+    <div id="zoom-indicator">100%</div>
+
+    <!-- Dock: in portrait diventa pillola centrata, in landscape/PC scompare e i figli si posizionano da soli -->
+    <div class="portrait-dock">
+        <button id="audio-toggle" class="zoom-btn" title="Mute/Unmute Musica">🔊</button>
+        <div class="right-controls">
+            <button id="fullscreen-toggle" class="zoom-btn" title="Full Screen">⛶</button>
+            <button id="zoom-reset" class="zoom-btn" title="Mostra 2 Pagine">🏚️</button>
+        </div>
+    </div>
+
+    <button id="prev" class="nav-btn">⟨</button>
+    <button id="next" class="nav-btn">⟩</button>
+
+    <div id="mobile-start-overlay">
+        <h2>Album Giusto dire NO</h2>
+        <p>Clicca per avviare l'album!</p>
+        <button id="start-app">INIZIA</button>
+    </div>
+
+
+    <!-- Audio senza src: verrà impostato dal pre-fetch JavaScript con Blob URL per partenza istantanea -->
+    <audio id="bgMusic" loop playsinline></audio>
+
+    <script src="https://cdn.jsdelivr.net/npm/page-flip/dist/js/page-flip.browser.min.js"></script>
+
+    <script>
+        // Risoluzione dinamica: leggera su mobile, alta su desktop
+        const isMobileDevice = /iPhone|iPad|iPod|Android/i.test(navigator.userAgent);
+        const BASE_WIDTH = isMobileDevice ? 1400 : 2480;
+        const BASE_HEIGHT = isMobileDevice ? 990 : 1754;
+
+        /**
+         * Dimensioni REALI: legge direttamente dal wrapper che è
+         * position:fixed;inset:0 → il browser DEVE renderlo a schermo intero.
+         * wrapper.clientWidth/Height riflettono le dimensioni effettive renderizzate,
+         * NON stime viewport come innerHeight / visualViewport / 100vh.
+         */
+        function getViewportSize() {
+            return {
+                width: wrapper.clientWidth || window.innerWidth,
+                height: wrapper.clientHeight || window.innerHeight
+            };
+        }
+
+        let scale = 1;
+        let maxScale = 8;
+
+        let posX = 0;
+        let posY = 0;
+
+        let pageFlip;
+        let appStarted = false; // true dopo che l'utente preme INIZIA
+
+        const zoomLayer = document.getElementById("zoom-layer");
+        const wrapper = document.getElementById("book-wrapper");
+        const zoomIndicator = document.getElementById("zoom-indicator");
+
+        // Adatta zoom-layer E #book alla risoluzione effettiva
+        zoomLayer.style.width = BASE_WIDTH + "px";
+        zoomLayer.style.height = BASE_HEIGHT + "px";
+        document.getElementById("book").style.width = BASE_WIDTH + "px";
+        document.getElementById("book").style.height = BASE_HEIGHT + "px";
+
+
+
+        /* ===== MODALITÀ IMMERSIVA MOBILE ===== */
+
+        function enterFullscreen() {
+            const el = document.documentElement;
+            const rfs =
+                el.requestFullscreen ||
+                el.webkitRequestFullscreen ||
+                el.msRequestFullscreen;
+
+            if (rfs) {
+                const promise = rfs.call(el);
+                if (promise && promise.then) {
+                    promise.then(() => {
+                        // Una volta in fullscreen, forza landscape
+                        forceLandscape();
+                    }).catch(() => { });
+                } else {
+                    // Browser sincrono (vecchi Webkit)
+                    forceLandscape();
+                }
+            }
+        }
+
+        function forceLandscape() {
+            if (screen.orientation && screen.orientation.lock) {
+                screen.orientation.lock('landscape').then(() => {
+                    console.log('🔄 Orientamento forzato: landscape');
+                    settleLayout();
+                }).catch(err => {
+                    console.log('⚠️ Lock landscape non supportato:', err.message);
+                });
+            }
+        }
+
+        /* quando ruoti il telefono aggiorna layout */
+        window.addEventListener("orientationchange", () => {
+            settleLayout();
+        });
+
+        /* ==== AUTO FIT INIZIALE ==== */
+        function calculateInitialScale() {
+            const vp = getViewportSize();
+            // Protezione: se le dimensioni non sono ancora valide, non calcolare
+            if (vp.width < 10 || vp.height < 10) return;
+            const scaleX = vp.width / BASE_WIDTH;
+            const scaleY = vp.height / BASE_HEIGHT;
+            scale = Math.min(scaleX, scaleY);
+            centerContent();
+        }
+
+        function centerContent() {
+            const scaledWidth = BASE_WIDTH * scale;
+            const scaledHeight = BASE_HEIGHT * scale;
+            const vp = getViewportSize();
+
+            posX = (vp.width - scaledWidth) / 2;
+            posY = (vp.height - scaledHeight) / 2;
+        }
+
+        /**
+         * Ricalcola layout in modo robusto:
+         * - un calcolo immediato
+         * - poi ritenta su 10 animation frame consecutivi
+         * - più safety net a 500ms e 1000ms
+         */
+        function settleLayout() {
+            // Calcolo immediato
+            calculateInitialScale();
+            updateTransform();
+
+            // Ritenta su pochi frame (ridotto da 10 a 4 per diminuire
+            // pressione sul main thread e proteggere l'audio da jank)
+            let count = 0;
+            function step() {
+                calculateInitialScale();
+                updateTransform();
+                if (++count < 4) requestAnimationFrame(step);
+            }
+            requestAnimationFrame(step);
+
+            // Safety net per browser lenti (singolo, non doppio)
+            setTimeout(() => { calculateInitialScale(); updateTransform(); }, 500);
+        }
+
+        /* ==== RESIZE OBSERVER: auto-corregge SEMPRE ==== */
+        if (typeof ResizeObserver !== 'undefined') {
+            new ResizeObserver(() => {
+                if (!appStarted) return; // non fare nulla prima di INIZIA
+                calculateInitialScale();
+                updateTransform();
+            }).observe(wrapper);
+        }
+
+        function clampPosition() {
+            const scaledWidth = BASE_WIDTH * scale;
+            const scaledHeight = BASE_HEIGHT * scale;
+            const vp = getViewportSize();
+
+            const minX = vp.width - scaledWidth;
+            const minY = vp.height - scaledHeight;
+
+            if (scaledWidth > vp.width) {
+                posX = Math.min(0, Math.max(minX, posX));
+            } else {
+                posX = (vp.width - scaledWidth) / 2;
+            }
+
+            if (scaledHeight > vp.height) {
+                posY = Math.min(0, Math.max(minY, posY));
+            } else {
+                posY = (vp.height - scaledHeight) / 2;
+            }
+        }
+
+        function updateTransform() {
+            clampPosition();
+            zoomLayer.style.transform =
+                `translate3d(${posX}px, ${posY}px, 0) scale(${scale})`;
+            zoomIndicator.innerText = Math.round(scale * 100) + "%";
+        }
+
+        /* ==== ZOOM CONTROLS E ROTTELLA (WHEEL) ==== */
+        wrapper.addEventListener('wheel', (e) => {
+            e.preventDefault();
+
+            // Trova il punto esatto del mouse per zoomare verso di esso
+            const rect = wrapper.getBoundingClientRect();
+            const mouseX = e.clientX - rect.left;
+            const mouseY = e.clientY - rect.top;
+
+            const offsetX = (mouseX - posX) / scale;
+            const offsetY = (mouseY - posY) / scale;
+
+            // Determina la direzione dello zoom dalla rotellina del mouse
+            const zoomAmount = e.deltaY > 0 ? -0.15 : 0.15;
+            let newScale = Math.min(Math.max(scale + zoomAmount, 0.05), maxScale);
+
+            scale = newScale;
+            posX = mouseX - offsetX * scale;
+            posY = mouseY - offsetY * scale;
+
+            updateTransform();
+        }, { passive: false });
+
+        document.getElementById("zoom-reset").onclick = (e) => {
+            e.stopPropagation();
+            calculateInitialScale();
+            scale = Math.max(scale, 0.01);
+            updateTransform();
+        };
+
+        function toggleFullScreen() {
+            const btn = document.getElementById("fullscreen-toggle");
+            const fsEl = document.fullscreenElement || document.webkitFullscreenElement;
+            if (!fsEl) {
+                const el = document.documentElement;
+                const rfs = el.requestFullscreen || el.webkitRequestFullscreen || el.msRequestFullscreen;
+                if (rfs) {
+                    try {
+                        const promise = rfs.call(el);
+                        if (promise && promise.then) {
+                            promise.then(() => {
+                                btn.innerText = "❌";
+                                if (screen.orientation && screen.orientation.lock) {
+                                    screen.orientation.lock('landscape').catch(() => { });
+                                }
+                            }).catch(err => console.warn("Fullscreen error:", err));
+                        } else {
+                            // Esecuzione sincrona (vecchi browser Webkit)
+                            btn.innerText = "❌";
+                            if (screen.orientation && screen.orientation.lock) {
+                                screen.orientation.lock('landscape').catch(() => { });
+                            }
+                        }
+                    } catch (e) {
+                        console.warn("Fullscreen API non supportata", e);
+                    }
+                }
+            } else {
+                const efs = document.exitFullscreen || document.webkitExitFullscreen || document.msExitFullscreen;
+                if (efs) {
+                    try {
+                        const promise = efs.call(document);
+                        if (promise && promise.then) {
+                            promise.then(() => btn.innerText = "⛶").catch(() => { });
+                        } else {
+                            btn.innerText = "⛶";
+                        }
+                    } catch (e) { }
+                }
+            }
+        }
+
+        document.getElementById("fullscreen-toggle").onclick = (e) => {
+            e.stopPropagation();
+            toggleFullScreen();
+        };
+
+
+
+
+        /* ==== DOUBLE CLICK / TAP CON ZOOM CENTRATO ==== */
+        let lastTap = 0;
+
+        wrapper.addEventListener("pointerup", e => {
+            if (dragOccurred) {
+                dragOccurred = false;
+                return;
+            }
+
+            const now = Date.now();
+            if (now - lastTap < 300) {
+
+                const rect = wrapper.getBoundingClientRect();
+                const clickX = e.clientX - rect.left;
+                const clickY = e.clientY - rect.top;
+
+                const offsetX = (clickX - posX) / scale;
+                const offsetY = (clickY - posY) / scale;
+
+                if (scale < 2) scale = 2;
+                else if (scale < 4) scale = 4;
+                else if (scale < 6) scale = 6;
+                else if (scale < 8) scale = 8;
+                else {
+                    calculateInitialScale();
+                    updateTransform();
+                    lastTap = now;
+                    return;
+                }
+
+                posX = clickX - offsetX * scale;
+                posY = clickY - offsetY * scale;
+
+                updateTransform();
+            }
+            lastTap = now;
+        });
+
+        /* ==== DRAG ==== */
+        let isDragging = false;
+        let dragOccurred = false;
+        let startX, startY;
+
+        wrapper.addEventListener("pointerdown", e => {
+            isDragging = true;
+            dragOccurred = false;
+            startX = e.clientX - posX;
+            startY = e.clientY - posY;
+        });
+
+        wrapper.addEventListener("pointermove", e => {
+            if (!isDragging) return;
+            const newX = e.clientX - startX;
+            const newY = e.clientY - startY;
+
+            if (Math.abs(newX - posX) > 5 || Math.abs(newY - posY) > 5) {
+                dragOccurred = true;
+            }
+
+            posX = newX;
+            posY = newY;
+            updateTransform();
+        });
+
+        wrapper.addEventListener("pointerup", () => {
+            isDragging = false;
+        });
+
+        /* ==== PINCH TO ZOOM ==== */
+        let initialPinchDistance = null;
+        let initialScale = 1;
+        let pinchCenter = { x: 0, y: 0 };
+
+        wrapper.addEventListener('touchstart', (e) => {
+            if (e.touches.length === 2) {
+                isDragging = false;
+                dragOccurred = true; // prevent double tap zoom
+
+                initialPinchDistance = Math.hypot(
+                    e.touches[0].clientX - e.touches[1].clientX,
+                    e.touches[0].clientY - e.touches[1].clientY
+                );
+                initialScale = scale;
+
+                // Calculate center point of the pinch
+                pinchCenter = {
+                    x: (e.touches[0].clientX + e.touches[1].clientX) / 2,
+                    y: (e.touches[0].clientY + e.touches[1].clientY) / 2
+                };
+            }
+        });
+
+        wrapper.addEventListener('touchmove', (e) => {
+            if (e.cancelable) e.preventDefault();
+
+            if (e.touches.length === 2) {
+                // e.preventDefault() here might be needed if passive: false is set, but pointer events handle most
+                const currentDistance = Math.hypot(
+                    e.touches[0].clientX - e.touches[1].clientX,
+                    e.touches[0].clientY - e.touches[1].clientY
+                );
+
+                if (initialPinchDistance) {
+                    const pinchScale = currentDistance / initialPinchDistance;
+                    let newScale = Math.min(Math.max(initialScale * pinchScale, 0.05), maxScale);
+
+                    // Zoom toward pinch center
+                    const rect = wrapper.getBoundingClientRect();
+                    const centerX = pinchCenter.x - rect.left;
+                    const centerY = pinchCenter.y - rect.top;
+
+                    // Calculate offset from current transform origin (posX, posY)
+                    const offsetX = (centerX - posX) / scale;
+                    const offsetY = (centerY - posY) / scale;
+
+                    scale = newScale;
+                    posX = centerX - offsetX * scale;
+                    posY = centerY - offsetY * scale;
+
+                    updateTransform();
+                }
+            }
+        });
+
+        wrapper.addEventListener('touchend', (e) => {
+            if (e.touches.length < 2) {
+                initialPinchDistance = null;
+            }
+        });
+
+        /* ==== AUDIO BACKGROUND E MOBILE/PC START ==== */
+        const bgMusic = document.getElementById("bgMusic");
+        const audioToggleBtn = document.getElementById("audio-toggle");
+        const startOverlay = document.getElementById("mobile-start-overlay");
+        let musicStarted = false;
+        let bgMusicReady = false; // true quando il Blob URL è pronto
+
+        const isMobile = /iPhone|iPad|iPod|Android/i.test(navigator.userAgent);
+        const isIOS = /iPhone|iPad|iPod/i.test(navigator.userAgent);
+
+        /**
+         * GESTIONE AUDIO DIFFERENZIATA
+         * - Android: soffre di latenza all'avvio dell'audio, usiamo il pre-fetch via Blob.
+         * - iOS: blocca o fatica nel looping dei Blob URL. Richiede un file fisico (byte-range).
+         * - PC: il Blob causa un lieve "scatto" di memoria, meglio l'approccio classico.
+         */
+        (function setupBgMusic() {
+            const isAndroid = /Android/i.test(navigator.userAgent);
+            
+            if (!isAndroid) {
+                // PC e iOS usano l'approccio nativo ad alta prestazione
+                console.log("🎵 Impostazione audio classica (PC/iOS)...");
+                bgMusic.src = "../GiustoDireNo.mp3";
+                bgMusic.preload = "auto";
+                bgMusicReady = true;
+                return;
+            }
+
+            console.log("🎵 Pre-fetch audio di sottofondo (Android)...");
+            fetch("../GiustoDireNo.mp3", { priority: "high" })
+                .then(res => {
+                    if (!res.ok) throw new Error("HTTP " + res.status);
+                    return res.blob();
+                })
+                .then(blob => {
+                    const blobUrl = URL.createObjectURL(blob);
+                    bgMusic.src = blobUrl;
+                    bgMusic.load(); // forza il browser a bufferizzare dal Blob (istantaneo)
+                    bgMusicReady = true;
+                    console.log("✅ Audio pre-caricato in memoria Android (" + (blob.size / 1024 / 1024).toFixed(1) + " MB)");
+                })
+                .catch(err => {
+                    // Fallback in caso di errore di rete
+                    console.warn("⚠️ Pre-fetch audio fallito, fallback a src diretto.", err);
+                    bgMusic.src = "../GiustoDireNo.mp3";
+                    bgMusic.preload = "auto";
+                    bgMusicReady = true;
+                });
+        })();
+
+        /* ==== SUONI (WEB AUDIO API) — solo per effetti SFX ==== */
+        let audioCtx;
+        let flipBuffer, openBuffer, closeBuffer;
+
+        function ensureAudioContext() {
+            if (!audioCtx) {
+                audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+                Promise.all([
+                    loadSound("../flip.mp3"),
+                    loadSound("../open.mp3"),
+                    loadSound("../close.mp3")
+                ]).then(buffers => {
+                    flipBuffer = buffers[0];
+                    openBuffer = buffers[1];
+                    closeBuffer = buffers[2];
+                });
+            }
+        }
+
+        async function loadSound(url) {
+            try {
+                const res = await fetch(url);
+                const arrayBuffer = await res.arrayBuffer();
+                return await audioCtx.decodeAudioData(arrayBuffer);
+            } catch (e) {
+                console.error("Audio load failed:", e);
+                return null;
+            }
+        }
+
+        let lastSoundTime = 0;
+
+        function playSound(buffer, offset = 0) {
+            const now = Date.now();
+            if (now - lastSoundTime < 150) return;
+            lastSoundTime = now;
+
+            if (!buffer || !audioCtx) return;
+            if (audioCtx.state === 'suspended') {
+                audioCtx.resume();
+            }
+            const source = audioCtx.createBufferSource();
+            source.buffer = buffer;
+            source.connect(audioCtx.destination);
+            source.start(0, offset);
+        }
+
+        function startMusic() {
+            if (!musicStarted) {
+                console.log("▶️ Tentativo di avvio audio... (ready=" + bgMusicReady + ")");
+                bgMusic.play().then(() => {
+                    console.log("✅ Audio avviato con successo!");
+                    musicStarted = true;
+                    audioToggleBtn.innerText = "🔊";
+                }).catch(err => {
+                    console.log("⚠️ Audio autoplay bloccato dal browser (richiede interazione utente).", err);
+                });
+            }
+        }
+
+        audioToggleBtn.onclick = (e) => {
+            e.stopPropagation();
+            if (!musicStarted) {
+                startMusic();
+                return;
+            }
+            if (bgMusic.paused) {
+                bgMusic.play();
+                audioToggleBtn.innerText = "🔊";
+            } else {
+                bgMusic.pause();
+                audioToggleBtn.innerText = "🔇";
+            }
+        };
+
+        // Click sul pulsantone gigante INIZIA!
+        document.getElementById("start-app").onclick = () => {
+
+            // Azioni sincrone (mantengono il "user gesture" per audio + fullscreen)
+            startMusic();
+            ensureAudioContext();
+
+            // Nascondi overlay via classe CSS
+            startOverlay.classList.add('hidden');
+
+            // Segna che l'app è partita (abilita ResizeObserver)
+            appStarted = true;
+
+            // Fullscreen + forza landscape (il lock funziona solo dopo fullscreen)
+            enterFullscreen();
+
+            // Ricalcola layout robusto
+            settleLayout();
+        };
+
+        // Quando il fullscreen cambia (anche con ESC/gesto sistema), aggiorna zoom
+        function onFullscreenChange() {
+            const btn = document.getElementById("fullscreen-toggle");
+            const isFs = document.fullscreenElement || document.webkitFullscreenElement;
+            btn.innerText = isFs ? "❌" : "⛶";
+            settleLayout();
+        }
+        document.addEventListener("fullscreenchange", onFullscreenChange);
+        document.addEventListener("webkitfullscreenchange", onFullscreenChange);
+
+        /* ==== LOAD BOOK ==== */
+        const urlParams = new URLSearchParams(window.location.search);
+        const format = urlParams.get('format') || '2x3';
+
+        // Aggiorna dinamicamente il titolo nell'overlay in base al formato
+        if (format === 'foto_ricordo') {
+            document.querySelector('#mobile-start-overlay h2').innerText = "Album Foto Ricordo";
+        }
+
+
+        fetch(`../albums/${format}/pages.json`)
+            .then(r => r.json())
+            .then(pages => {
+
+                /* ==== CARICAMENTO PROGRESSIVO IMMAGINI ==== */
+                const bookDiv = document.getElementById("book");
+
+                // iOS: 4 pagine eager (copertina + dedica + primo spread) perché il
+                // meccanismo preloadAndDecode non funziona bene su Safari (cache miss).
+                // Android: 2 pagine (il preload+decode funziona perfettamente).
+                // PC: 4 pagine (banda e CPU abbondanti).
+                const EAGER_COUNT = isIOS ? 4 : (isMobileDevice ? 2 : 4);
+
+                // Le prime 2 pagine (copertina + retro copertina/dedica) hanno
+                // priorità MASSIMA: devono arrivare PRIMA delle pagine 2-3.
+                // Senza fetchpriority, il browser le scarica tutte in parallelo
+                // e renderizza quella che arriva prima → la dedica (spesso più
+                // pesante) compare DOPO la pagina 3.
+                const HIGH_PRIORITY_COUNT = 2;
+
+                // Inietta <link rel="preload"> nel <head> per le prime 2 pagine:
+                // questo fa partire il download PRIMA ancora che gli <img> esistano nel DOM
+                for (let i = 0; i < Math.min(HIGH_PRIORITY_COUNT, pages.length); i++) {
+                    const preloadLink = document.createElement("link");
+                    preloadLink.rel = "preload";
+                    preloadLink.as = "image";
+                    preloadLink.href = `../albums/${format}/${pages[i].image}`;
+                    preloadLink.setAttribute("fetchpriority", "high");
+                    document.head.appendChild(preloadLink);
+                }
+
+                // Placeholder alla STESSA dimensione del background della pagina.
+                // CRITICO per iOS: un 1x1 GIF trasparente su Safari causa un flash
+                // bianco/nero durante il ridimensionamento. Un SVG col colore di fondo
+                // della pagina (#14284b) è invisibile e non flasha.
+                const BLANK_PLACEHOLDER = "data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='1' height='1'%3E%3Crect fill='%2314284b' width='1' height='1'/%3E%3C/svg%3E";
+
+                pages.forEach((p, index) => {
+                    const div = document.createElement("div");
+                    div.className = "page " + p.type;
+
+                    const img = document.createElement("img");
+
+                    // URL immagine (senza cacheBuster — il browser usa la cache naturale)
+                    const imageUrl = `../albums/${format}/${p.image}`;
+
+                    if (index < EAGER_COUNT) {
+                        img.src = imageUrl;
+                        img.loading = "eager";
+                        img.decoding = "sync"; // prime pagine: decode sincrono per evitare flash
+                        // Pagine 0-1 (copertina + dedica): priorità ALTA
+                        // Pagine 2-3: priorità normale (scaricate dopo)
+                        if (index < HIGH_PRIORITY_COUNT) {
+                            img.fetchPriority = "high";
+                        }
+                    } else {
+                        // Placeholder con colore della pagina: ZERO flash visibile
+                        img.src = BLANK_PLACEHOLDER;
+                        img.dataset.src = imageUrl;
+                        img.loading = "lazy";
+                        img.decoding = "async";
+                    }
+
+                    div.appendChild(img);
+                    bookDiv.appendChild(div);
+                });
+
+                pageFlip = new St.PageFlip(bookDiv, {
+                    width: Math.round(BASE_WIDTH / 2),
+                    height: BASE_HEIGHT,
+                    size: "fixed",
+                    showCover: true,
+                    mobileScrollSupport: false,
+                    useMouseEvents: false,
+                    // Mobile: 1000ms (GPU più debole, meno frame da renderizzare)
+                    // Desktop: 1200ms (GPU potente, animazione più cinematica)
+                    flippingTime: isMobileDevice ? 1000 : 1200,
+                    // === ANTI-FLICKER ===
+                    drawShadow: false,
+                    maxShadowOpacity: 0,
+                    startZIndex: 10,
+                    // Abilita la render queue interna di page-flip per
+                    // ridurre i repaint simultanei (anti-flicker Android)
+                    autoSize: false
+                });
+
+                pageFlip.loadFromHTML(document.querySelectorAll('.page'));
+
+                /* ==== GESTIONE DINAMICA LAYER GPU (ANTI-FLICKER MOBILE V2) ====
+                 * PROBLEMA ORIGINALE:
+                 * Su mobile la GPU ha memoria limitata (~100-200MB).
+                 * Ogni layer GPU (will-change+translateZ) consuma ~2-5MB.
+                 * 40 pagine × 5MB = 200MB → la GPU "sfarfalla" perché
+                 * promuove/demote i layer continuamente (layer thrashing).
+                 *
+                 * PROBLEMA V1 (flash Android):
+                 * Togglare brutalmente gpu-active con classList.add/remove
+                 * causava un micro-flash nel frame in cui Chrome decomponeva
+                 * il layer composito e lo ri-rasterizzava.
+                 *
+                 * SOLUZIONE V2:
+                 * 1. gpu-active ora applica SOLO translateZ(0), senza will-change
+                 * 2. will-change viene aggiunto via classe "gpu-flipping" SOLO alle
+                 *    2-3 pagine coinvolte nell'animazione corrente, e rimosso dopo.
+                 * 3. Le transizioni CSS (opacity 0.05s) ammortizzano il flash.
+                 * 4. Usiamo requestAnimationFrame per raggruppare le modifiche DOM.
+                 */
+                const GPU_RANGE = isMobileDevice ? 3 : 6;
+                let lastGPUCenter = -1;
+                let flipCleanupTimer = null;
+
+                function updateGPULayers(centerPage) {
+                    // Evita lavoro inutile se il centro non è cambiato
+                    if (centerPage === lastGPUCenter) return;
+                    lastGPUCenter = centerPage;
+
+                    // Raggruppa tutte le modifiche DOM in un singolo rAF
+                    // per evitare reflow/repaint intermedi che causano flash
+                    requestAnimationFrame(() => {
+                        const allPages = document.querySelectorAll('.page');
+                        const len = allPages.length;
+                        const rangeStart = Math.max(0, centerPage - GPU_RANGE);
+                        const rangeEnd = Math.min(len - 1, centerPage + GPU_RANGE);
+
+                        for (let i = 0; i < len; i++) {
+                            const page = allPages[i];
+                            if (i >= rangeStart && i <= rangeEnd) {
+                                if (!page.classList.contains('gpu-active')) {
+                                    page.classList.add('gpu-active');
+                                }
+                            } else {
+                                if (page.classList.contains('gpu-active')) {
+                                    page.classList.remove('gpu-active');
+                                }
+                                // Pulisce anche flipping residuo
+                                page.classList.remove('gpu-flipping');
+                            }
+                        }
+
+                        // Aggiungi gpu-flipping SOLO alle 2 pagine centrali
+                        // (le uniche che stanno effettivamente animando)
+                        for (let i = Math.max(0, centerPage - 1); i <= Math.min(len - 1, centerPage + 1); i++) {
+                            allPages[i].classList.add('gpu-flipping');
+                        }
+
+                        // Rimuovi gpu-flipping dopo la fine dell'animazione
+                        clearTimeout(flipCleanupTimer);
+                        flipCleanupTimer = setTimeout(() => {
+                            const flipping = document.querySelectorAll('.gpu-flipping');
+                            flipping.forEach(p => p.classList.remove('gpu-flipping'));
+                        }, isMobileDevice ? 1100 : 1300);
+                    });
+                }
+
+                pageFlip.on('init', () => {
+                    updateGPULayers(0);
+                    loadNearbyPages(0);
+                });
+
+                /* ==== LAZY LOAD SPREAD-AWARE (OTTIMIZZATO) ==== */
+                let lastDirection = 1; // 1 = avanti, -1 = indietro
+
+                // Cache globale per immagini pre-decodificate
+                const decodedCache = new Map();
+
+                /**
+                 * Pre-carica E pre-decodifica un'immagine in memoria.
+                 * Restituisce una Promise che si risolve quando l'immagine
+                 * è completamente pronta per il rendering (zero flash).
+                 */
+                function preloadAndDecode(src) {
+                    if (decodedCache.has(src)) return decodedCache.get(src);
+
+                    const promise = new Promise((resolve) => {
+                        const tmp = new Image();
+                        tmp.src = src;
+                        if (tmp.decode) {
+                            tmp.decode().then(() => resolve(tmp)).catch(() => resolve(tmp));
+                        } else {
+                            tmp.onload = () => resolve(tmp);
+                            tmp.onerror = () => resolve(tmp);
+                        }
+                    });
+                    decodedCache.set(src, promise);
+                    return promise;
+                }
+
+                /**
+                 * Attiva un'immagine nella pagina.
+                 * - iOS Safari: assegna src DIRETTAMENTE. Il pattern preloadAndDecode
+                 *   causa un doppio download perché Safari non condivide la cache
+                 *   tra new Image() in JS e <img> nel DOM.
+                 * - Android/PC: usa preloadAndDecode per swap atomico (zero flash).
+                 */
+                function activateImage(img) {
+                    if (!img.dataset.src) return;
+                    const src = img.dataset.src;
+
+                    // Segna subito come "in caricamento" per evitare doppie chiamate
+                    delete img.dataset.src;
+
+                    // === iOS: assegnamento diretto, niente new Image() ===
+                    if (isIOS) {
+                        img.decoding = "async";
+                        img.src = src;
+                        return;
+                    }
+
+                    // === Android/PC: preload+decode per zero-flash swap ===
+                    const cached = decodedCache.get(src);
+                    if (cached && typeof cached.then === 'function') {
+                        cached.then((decodedImg) => {
+                            img.decoding = "sync";
+                            img.src = src;
+                        }).catch(() => {
+                            img.src = src;
+                        });
+                    } else {
+                        preloadAndDecode(src).then(() => {
+                            img.decoding = "sync";
+                            img.src = src;
+                        }).catch(() => {
+                            img.src = src;
+                        });
+                    }
+                }
+
+                function loadNearbyPages(current) {
+                    const imgs = document.querySelectorAll(".page img");
+                    const total = imgs.length;
+
+                    // Buffer generoso: con 1200ms di animazione c'è tempo
+                    // per precaricare più pagine in anticipo
+                    const SPREAD_PRELOAD = isMobileDevice ? 4 : 6;
+
+                    // Boost direzionale: carica più avanti nella direzione di sfoglio
+                    const boost = isMobileDevice ? 4 : 6;
+                    const forwardBoost = lastDirection === 1 ? boost : 0;
+                    const backwardBoost = lastDirection === -1 ? boost : 0;
+
+                    const start = Math.max(0, current - (SPREAD_PRELOAD * 2) - backwardBoost);
+                    const end = Math.min(total - 1, current + (SPREAD_PRELOAD * 2) + forwardBoost);
+
+                    // Fascia prioritaria: attiva subito (src + decode)
+                    for (let i = start; i <= end; i++) {
+                        activateImage(imgs[i]);
+                    }
+
+                    // Fascia secondaria: pre-decode in background (senza attivare src)
+                    const extraBefore = Math.max(0, start - 4);
+                    const extraAfter = Math.min(total - 1, end + 4);
+                    for (let i = extraBefore; i < start; i++) {
+                        if (imgs[i].dataset.src) preloadAndDecode(imgs[i].dataset.src);
+                    }
+                    for (let i = end + 1; i <= extraAfter; i++) {
+                        if (imgs[i].dataset.src) preloadAndDecode(imgs[i].dataset.src);
+                    }
+                }
+
+                /* ==== IDLE BACKGROUND PRELOADER ==== */
+                // Carica progressivamente TUTTE le pagine rimanenti durante i tempi morti.
+                // Con Web Audio API l'audio è su thread separato, quindi possiamo
+                // essere più aggressivi con il preload senza causare stuttering.
+                let idlePreloadIndex = EAGER_COUNT;
+                const IDLE_BATCH_SIZE = 3; // 3 immagini per batch — buon compromesso
+                const IDLE_PAUSE_MS = 50;  // 50ms pausa tra batch — veloce ma gentile
+
+                function idlePreloadStep(deadline) {
+                    const imgs = document.querySelectorAll(".page img");
+                    let loaded = 0;
+                    while (idlePreloadIndex < imgs.length && loaded < IDLE_BATCH_SIZE) {
+                        if (deadline && deadline.timeRemaining() < 2) break;
+
+                        const img = imgs[idlePreloadIndex];
+                        if (img.dataset.src) {
+                            preloadAndDecode(img.dataset.src);
+                            loaded++;
+                        }
+                        idlePreloadIndex++;
+                    }
+
+                    if (idlePreloadIndex < imgs.length) {
+                        // Micro-pausa tra batch — non blocca ma non rallenta
+                        setTimeout(() => {
+                            if (window.requestIdleCallback) {
+                                requestIdleCallback(idlePreloadStep, { timeout: 3000 });
+                            } else {
+                                idlePreloadStep(null);
+                            }
+                        }, IDLE_PAUSE_MS);
+                    } else {
+                        console.log("✅ Tutte le pagine pre-caricate in background");
+                    }
+                }
+
+                // Avvia il preloader idle dopo breve ritardo per non competere col rendering iniziale
+                setTimeout(() => {
+                    if (window.requestIdleCallback) {
+                        requestIdleCallback(idlePreloadStep, { timeout: 3000 });
+                    } else {
+                        idlePreloadStep(null);
+                    }
+                }, 2000);
+
+                /* ==== AUDIO: offset e bottoni ==== */
+
+                // Offset ideali per compensare i silenzi inziali dei file mp3 tagliare una frazione prima dell'inizio effettivo
+                const AUDIO_START = {
+                    flip: 0.03,
+                    open: 0.15,
+                    close: 0.85
+                };
+
+                // Throttle: blocca lo sfoglio per N millisecondi per dare il tempo alla rete di caricare le immagini
+                let isFlippingDisabled = false;
+                const FLIP_COOLDOWN_MS = 2000;
+
+                function throttleFlip(flipAction) {
+                    if (isFlippingDisabled) return;
+                    isFlippingDisabled = true;
+                    
+                    playSound(flipBuffer, AUDIO_START.flip);
+                    flipAction();
+
+                    setTimeout(() => {
+                        isFlippingDisabled = false;
+                    }, FLIP_COOLDOWN_MS);
+                }
+
+                document.getElementById("next").onclick = (e) => {
+                    throttleFlip(() => pageFlip.flipNext());
+                };
+                
+                document.getElementById("prev").onclick = (e) => {
+                    throttleFlip(() => pageFlip.flipPrev());
+                };
+
+                let currentPage = 0;
+
+                /**
+                 * Precarica aggressivamente PRIMA che l'animazione di flip inizi.
+                 * Con 1200ms di animazione c'è abbastanza tempo per decodificare
+                 * le immagini delle pagine successive durante lo sfoglio.
+                 */
+                pageFlip.on('changeOrientation', () => {
+                    // Pre-carica basandosi sulla pagina corrente + direzione
+                    const nextTarget = currentPage + (lastDirection === 1 ? 2 : -2);
+                    if (nextTarget >= 0 && nextTarget < pages.length) {
+                        loadNearbyPages(nextTarget);
+                    }
+                });
+
+                pageFlip.on('flip', (e) => {
+                    const targetPage = e.data;
+
+                    // Traccia direzione per boost preload
+                    lastDirection = targetPage > currentPage ? 1 : -1;
+
+                    // Aggiorna layer GPU: promuovi solo le pagine vicine
+                    updateGPULayers(targetPage);
+
+                    // PRELOAD IMMEDIATO (durante l'animazione)
+                    loadNearbyPages(targetPage);
+
+                    // Look-ahead nella direzione di sfoglio
+                    const lookAhead = targetPage + (lastDirection * 4);
+                    if (lookAhead >= 0 && lookAhead < pages.length) {
+                        loadNearbyPages(lookAhead);
+                    }
+
+                    requestAnimationFrame(() => {
+                        const totalPages = pages.length;
+                        let bufferToPlay = null;
+                        let offsetToPlay = 0;
+
+                        // Se eravamo alla pagina 0 (copertina chiusa frontale) e andiamo avanti -> Apriamo l'album
+                        if (currentPage === 0 && targetPage > 0 && openBuffer) {
+                            bufferToPlay = openBuffer;
+                            offsetToPlay = AUDIO_START.open;
+                        }
+                        // Se eravamo all'ultima pagina (copertina chiusa posteriore) e torniamo indietro -> Apriamo l'album dal retro
+                        else if (currentPage >= totalPages - 1 && targetPage < currentPage && openBuffer) {
+                            bufferToPlay = openBuffer;
+                            offsetToPlay = AUDIO_START.open;
+                        }
+                        // Se ritorniamo alla pagina 0 (chiusura frontale) o andiamo all'ultima (chiusura posteriore) -> Chiudiamo
+                        else if ((targetPage === 0 || targetPage >= totalPages - 1) && closeBuffer) {
+                            bufferToPlay = closeBuffer;
+                            offsetToPlay = AUDIO_START.close;
+                        }
+                        // SFOGLIO NORMALE: l'audio flip è gestito direttamente nei bottoni prev/next
+
+                        currentPage = targetPage;
+
+                        if (bufferToPlay) {
+                            playSound(bufferToPlay, offsetToPlay);
+                        }
+                    });
+                });
+
+                calculateInitialScale();
+                updateTransform();
+            });
+
+        window.addEventListener("resize", () => {
+            if (!appStarted) return;
+            settleLayout();
+        });
+
+        // iOS Safari edge case: non triggera sempre 'resize' ma triggera visualViewport
+        window.visualViewport?.addEventListener('resize', () => {
+            if (!appStarted) return;
+            settleLayout();
+        });
+
+        /* ==== iOS SAFARI: FIX PAGINE INVISIBILI ====
+         * Bug iOS: dopo fullscreen + landscape, Safari può "dimenticare"
+         * di ri-paintare le pagine .page perché il layer composito
+         * non viene invalidato. Forziamo un repaint leggero.
+         */
+        if (isIOS) {
+            document.addEventListener('visibilitychange', () => {
+                if (document.visibilityState === 'visible' && appStarted) {
+                    // Forza repaint di tutte le pagine
+                    const allPages = document.querySelectorAll('.page');
+                    allPages.forEach(p => {
+                        p.style.display = 'none';
+                        // Forza reflow leggendo offsetHeight
+                        void p.offsetHeight;
+                        p.style.display = '';
+                    });
+                    settleLayout();
+                }
+            });
+
+            // Anche su orientationchange iOS talvolta perde le pagine
+            window.addEventListener('orientationchange', () => {
+                setTimeout(() => {
+                    const allPages = document.querySelectorAll('.page');
+                    allPages.forEach(p => {
+                        p.style.display = 'none';
+                        void p.offsetHeight;
+                        p.style.display = '';
+                    });
+                    settleLayout();
+                }, 500);
+            });
+        }
+    </script>
+
+</body>
+
+</html>
