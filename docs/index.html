@@ -1,0 +1,267 @@
+<!DOCTYPE html>
+<html lang="it">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Scegli l'Album - Locandine2Word</title>
+    <style>
+        body {
+            margin: 0;
+            background: #121212;
+            color: #ffffff;
+            font-family: 'Inter', -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            min-height: 100vh;
+        }
+
+        h1 {
+            font-size: 2.5rem;
+            margin-bottom: 0.5rem;
+            text-align: center;
+            color: #f1f1f1;
+        }
+
+        p {
+            color: #aaaaaa;
+            margin-bottom: 2rem;
+            text-align: center;
+            font-size: 1.1rem;
+        }
+
+        .guide-container {
+            background: #1e1e1e;
+            border-radius: 12px;
+            padding: 15px 25px;
+            margin-bottom: 30px;
+            border: 1px solid #333;
+            max-width: 800px;
+            width: 90%;
+            display: flex;
+            flex-direction: column;
+            gap: 12px;
+            font-size: 0.95rem;
+            color: #ccc;
+        }
+
+        .guide-section {
+            display: flex;
+            align-items: center;
+            flex-wrap: wrap;
+            justify-content: center;
+            gap: 10px;
+        }
+
+        .guide-section strong {
+            color: #fff;
+            margin-right: 5px;
+        }
+
+        .guide-tag {
+            background: #333;
+            padding: 4px 10px;
+            border-radius: 6px;
+            display: flex;
+            align-items: center;
+            gap: 5px;
+        }
+
+        .grid-container {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(250px, 1fr));
+            gap: 20px;
+            width: 90%;
+            max-width: 800px;
+        }
+
+        .album-card {
+            background: #1e1e1e;
+            border-radius: 12px;
+            padding: 24px;
+            text-align: center;
+            cursor: pointer;
+            transition: transform 0.2s ease, box-shadow 0.2s ease;
+            text-decoration: none;
+            color: #ffffff;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            border: 1px solid #333;
+        }
+
+        .album-card:hover {
+            transform: translateY(-5px);
+            box-shadow: 0 10px 20px rgba(0, 0, 0, 0.4);
+            border-color: #555;
+            background: #252525;
+        }
+
+        .icon {
+            font-size: 3rem;
+            margin-bottom: 15px;
+        }
+
+        .album-title {
+            font-size: 1.5rem;
+            font-weight: bold;
+            margin-bottom: 8px;
+        }
+
+        .album-desc {
+            font-size: 0.95rem;
+            color: #888;
+        }
+
+        .footer {
+            margin-top: 50px;
+            color: #555;
+            font-size: 0.9rem;
+        }
+    </style>
+</head>
+
+<body>
+
+    <h1>L'album GiustoDireNo come vuoi tu</h1>
+    
+    <div class="guide-container">
+        <div class="guide-section">
+            <strong>Pulsanti:</strong>
+            <span class="guide-tag">⟨ ⟩ Frecce per sfogliare</span>
+            <span class="guide-tag">🔊 Audio ON/OFF</span>
+            <span class="guide-tag">⛶ Schermo intero</span>
+            <span class="guide-tag">🏚️ Home (Reset Zoom)</span>
+        </div>
+        <div class="guide-section">
+            <strong>Gesture:</strong>
+            <span class="guide-tag">✌️ 2 dita o 🖱️ Rotella: Zoom</span>
+            <span class="guide-tag">🖱️ Doppio click sul touchscreen o con il tasto sx del mouse: Zoom rapido</span>
+        </div>
+    </div>
+
+    <div class="grid-container" id="album-grid">
+        <!-- Verranno mostrati solo i formati esistenti -->
+    </div>
+
+    <p id="grid-instruction" style="display:none; color:#888; font-size:1rem; margin-top:10px;">
+        👆 Clicca su un formato per aprire l'album
+    </p>
+
+    <div class="footer">
+        Ideato e creato da Massimiliano Ferrando
+    </div>
+
+    <script>
+        // Lista di tutti i formati supportati nell'app che l'utente può aver generato
+        const formats = [
+            { id: "foto_ricordo", title: "Album Foto Ricordo", desc: "Le tue foto personalizzate (1 per pagina)", icon: "📷" },
+            { id: "1x1", title: "Formato 1x1", desc: "Una singola grande locandina per pagina", icon: "🖼️" },
+            { id: "1x2", title: "Formato 1x2", desc: "Due locandine incolonnate o affiancate", icon: "🃏" },
+            { id: "2x2", title: "Formato 2x2", desc: "Quattro locandine per pagina", icon: "🎴" },
+            { id: "2x3", title: "Formato 2x3", desc: "L'album classico verticale (Standard)", icon: "📘" },
+            { id: "2x4", title: "Formato 2x4", desc: "Otto locandine per pagina", icon: "📓" },
+            { id: "3x3", title: "Formato 3x3", desc: "Nove locandine per pagina", icon: "📗" },
+            { id: "3x4", title: "Formato 3x4", desc: "Dodici locandine per pagina", icon: "📙" },
+            { id: "4x4", title: "Formato 4x4", desc: "Sedici locandine miniaturizzate", icon: "📚" },
+            { id: "4x5", title: "Formato 4x5", desc: "Venti locandine per pagina", icon: "📖" }
+        ];
+
+        const grid = document.getElementById('album-grid');
+        const instruction = document.getElementById('grid-instruction');
+
+        async function checkAndLoadAlbums() {
+            let found = 0;
+            let singleFormatUrl = null;
+            let singleFormatTitle = null;
+
+            for (const f of formats) {
+                try {
+                    // GET + parse JSON: unico modo affidabile su GitHub Pages
+                    // (HEAD può restituire 200 anche su pagine 404 custom)
+                    const response = await fetch(`albums/${f.id}/pages.json`);
+                    if (!response.ok) continue;
+
+                    // Verifica che sia davvero un JSON array valido
+                    const data = await response.json();
+                    if (!Array.isArray(data) || data.length === 0) continue;
+
+                    found++;
+                    const url = `flipbook/album.html?format=${f.id}`;
+                    singleFormatUrl = url;
+                    singleFormatTitle = f.title;
+
+                    const card = document.createElement('a');
+                    card.href = url;
+                    card.className = 'album-card';
+                    card.innerHTML = `
+                        <div class="icon">${f.icon}</div>
+                        <div class="album-title">${f.title}</div>
+                        <div class="album-desc">${f.desc} (${data.length} pagine)</div>
+                    `;
+                    grid.appendChild(card);
+                } catch (e) {
+                    // Non è un JSON valido o errore di rete → formato non presente
+                }
+            }
+
+            if (found === 0) {
+                grid.innerHTML = "<p style='grid-column: 1/-1;'>Nessun album generato trovato. <br>Usa l'app per esportare il tuo primo Flipbook o attendi il deploy su GitHub Pages!</p>";
+            } else if (found === 1 && singleFormatUrl) {
+                // Un solo formato disponibile: auto-redirect dopo 3 secondi
+                instruction.style.display = 'block';
+                instruction.innerHTML = `⏳ Unico album disponibile (<strong>${singleFormatTitle}</strong>) — apertura automatica in <strong style="color:#fff; font-size:1.3rem;">3</strong> secondi...`;
+
+                // === PRE-CARICAMENTO DURANTE IL COUNTDOWN ===
+                // Sfruttiamo i 3 secondi di attesa per pre-caricare audio e immagini nella Cache HTTP
+                // Usiamo fetch() reale invece di <link rel="prefetch"> perché Chrome su mobile
+                // tratta i link con la priorità più bassa ed è inutilizzabile per un MP3 di 5MB.
+                const singleFormatId = singleFormatUrl.split('format=')[1];
+                
+                // 1. Pre-fetch attivo dell'audio di sottofondo (FORZATO)
+                fetch('GiustoDireNo.mp3', { priority: 'high' }).catch(() => {});
+                
+                // 2. Pre-fetch delle prime 2 pagine dell'album
+                try {
+                    fetch(`albums/${singleFormatId}/pages.json`).then(async resp => {
+                        if (resp.ok) {
+                            const pagesData = await resp.json();
+                            const preloadCount = Math.min(2, pagesData.length);
+                            for (let i = 0; i < preloadCount; i++) {
+                                fetch(`albums/${singleFormatId}/${pagesData[i].image}`, { priority: 'low' }).catch(() => {});
+                            }
+                        }
+                    });
+                } catch(e) { /* ignora */ }
+
+                // 3. Pre-fetch dei suoni
+                ['flip.mp3', 'open.mp3', 'close.mp3'].forEach(sound => {
+                    fetch(sound, { priority: 'low' }).catch(() => {});
+                });
+
+                let seconds = 3;
+                const timer = setInterval(() => {
+                    seconds--;
+                    if (seconds <= 0) {
+                        clearInterval(timer);
+                        window.location.href = singleFormatUrl;
+                    } else {
+                        instruction.innerHTML = `⏳ Unico album disponibile (<strong>${singleFormatTitle}</strong>) — apertura automatica in <strong style="color:#fff; font-size:1.3rem;">${seconds}</strong> second${seconds === 1 ? 'o' : 'i'}...`;
+                    }
+                }, 1000);
+
+                // Se l'utente clicca la card prima dello scadere, annulla il timer
+                grid.querySelector('.album-card')?.addEventListener('click', () => clearInterval(timer));
+            } else {
+                // Più formati: mostra istruzione
+                instruction.style.display = 'block';
+            }
+        }
+
+        checkAndLoadAlbums();
+    </script>
+</body>
+
+</html>
