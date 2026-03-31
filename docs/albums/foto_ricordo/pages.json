@@ -1,0 +1,44 @@
+[
+    {
+        "page_number": 1,
+        "image": "page_1.jpg",
+        "type": "cartone",
+        "dpi": 200
+    },
+    {
+        "page_number": 2,
+        "image": "page_2.jpg",
+        "type": "cartone",
+        "dpi": 200
+    },
+    {
+        "page_number": 3,
+        "image": "page_3.jpg",
+        "type": "carta",
+        "dpi": 200
+    },
+    {
+        "page_number": 4,
+        "image": "page_4.jpg",
+        "type": "carta",
+        "dpi": 200
+    },
+    {
+        "page_number": 5,
+        "image": "page_5.jpg",
+        "type": "carta",
+        "dpi": 200
+    },
+    {
+        "page_number": 6,
+        "image": "page_6.jpg",
+        "type": "cartone",
+        "dpi": 200
+    },
+    {
+        "page_number": 7,
+        "image": "page_7.jpg",
+        "type": "cartone",
+        "dpi": 200
+    }
+]
